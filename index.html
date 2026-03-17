@@ -508,6 +508,11 @@ function App(){
 
   // ── Settings ──
   const [np1,setNP1]=useState('');const [np2,setNP2]=useState('');const [pm,setPM]=useState('');
+  const [ssKey,setSSKey]    =useState(()=>localStorage.getItem('b2c18_sskey')||'');
+  const [ssSecret,setSSSec] =useState(()=>localStorage.getItem('b2c18_sssec')||'');
+  const [ssFetching,setSSF] =useState(false);
+  const [ssResult,setSSR]   =useState(null);
+  const [ssMsg,setSSM]      =useState('');
 
   const scanRef=useRef(null);
   const pickers=pksStr.split(',').map(s=>s.trim()).filter(Boolean);
@@ -515,6 +520,8 @@ function App(){
   useEffect(()=>lsSet(LS.LISTS,lists),[lists]);
   useEffect(()=>lsSet(LS.LOG,log.slice(0,500)),[log]);
   useEffect(()=>localStorage.setItem(LS.WH,wh),[wh]);
+  useEffect(()=>localStorage.setItem('b2c18_sskey',ssKey),[ssKey]);
+  useEffect(()=>localStorage.setItem('b2c18_sssec',ssSecret),[ssSecret]);
   useEffect(()=>localStorage.setItem(LS.PKS,pksStr),[pksStr]);
   useEffect(()=>{if(tab==='scan'&&scanRef.current)scanRef.current.focus();},[tab]);
 
@@ -586,6 +593,57 @@ function App(){
     if(!window.confirm('Delete ALL '+todays.length+' list(s) from today?\n\nData remains in Google Sheets.'))return;
     setLists(p=>p.filter(l=>l.date!==today()));
     todays.forEach(l=>sync('deleteList',{pgNo:l.pgNo}));
+  };
+
+  /* ShipStation: fetch orders & auto-create pick lists */
+  const fetchSSOrders=async()=>{
+    if(!wh){setSSM('⚠ Please set Google Sheets URL first');return;}
+    if(!ssKey||!ssSecret){setSSM('⚠ Please enter ShipStation API Key and Secret');return;}
+    setSSF(true);setSSM('');setSSR(null);
+    try{
+      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'fetchSSOrders',apiKey:ssKey,apiSecret:ssSecret,date:today()})});
+      const data=await r.json();
+      if(!data.ok){setSSM('⚠ '+data.error);setSSF(false);return;}
+      setSSR(data);
+      setSSM('✓ Fetched '+data.totalOrders+' orders from ShipStation');
+    }catch(e){setSSM('⚠ '+e.message);}
+    setSSF(false);
+  };
+
+  /* ShipStation: test connection */
+  const testSSConn=async()=>{
+    if(!wh||!ssKey||!ssSecret){setSSM('⚠ Fill in URL, API Key and Secret first');return;}
+    setSSF(true);setSSM('Testing…');
+    try{
+      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'testSSConnection',apiKey:ssKey,apiSecret:ssSecret})});
+      const data=await r.json();
+      setSSM(data.ok?'✓ Connected! '+data.storeCount+' stores found':'⚠ '+data.error);
+    }catch(e){setSSM('⚠ '+e.message);}
+    setSSF(false);
+  };
+
+  /* Auto-create pick lists from SS fetch result */
+  const createListsFromSS=()=>{
+    if(!ssResult||!ssResult.summary)return;
+    ssResult.summary.forEach(s=>{
+      if(!s.orderCount||s.category==='Unknown')return;
+      const existing=lists.find(l=>l.category===s.category&&l.date===today());
+      if(existing){
+        // Update order count
+        upd(existing.id,{orderCount:s.orderCount});
+      } else {
+        // Create new pick list
+        const nl={id:uid(),pgNo:'PG'+Date.now().toString().slice(-8),
+          category:s.category,sku:0,orderCount:s.orderCount,
+          scanned:0,pickStart:null,pickEnd:null,scanStart:null,scanEnd:null,
+          worker:'',date:today(),memo:'Auto from ShipStation'};
+        setLists(p=>[...p,nl]);
+        sync('upsertList',{list:nl});
+      }
+    });
+    setSSM('✓ Pick lists created/updated!');
   };
 
   const changePin=()=>{if(np1.length!==4||!/^\d{4}$/.test(np1)){setPM('Must be 4 digits');return;}if(np1!==np2){setPM('PINs do not match');return;}lsSet(LS.PIN,np1);setNP1('');setNP2('');setPM('✓ PIN changed');};
@@ -761,6 +819,8 @@ function App(){
     CTabs({actions:isMgr&&h(Fragment,null,
       h('button',{className:'btn-primary',style:{padding:'5px 14px',fontSize:12},
         onClick:()=>{setMF({pgNo:'',cat:cat!=='All'?cat:'Official 1',sku:'',orders:'',memo:''});setEId(null);setTab('create');}},'+ Create List'),
+      ssKey&&ssSecret&&h('button',{className:'btn-secondary btn-sec-dark',style:{padding:'5px 12px',fontSize:12,background:'rgba(16,185,129,0.15)',borderColor:'rgba(16,185,129,0.35)',color:'#10b981'},
+        onClick:()=>{setTab('settings');fetchSSOrders();}},ssFetching?'⏳ Fetching…':'📦 SS Fetch'),
       h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'5px 11px',fontSize:12},onClick:exportCSV},'Export CSV'),
       /* Cleanup buttons — manager only */
       todayL.filter(l=>getSt(l)==='complete').length>0&&h('button',{className:'ab today-del',onClick:delCompleted},'Clear Completed'),
@@ -892,6 +952,60 @@ function App(){
         h('div',{style:{display:'flex',alignItems:'center',gap:10}},
           h('button',{className:'btn-primary',style:{padding:'8px 18px'},onClick:changePin},'Update PIN'),
           pm&&h('span',{style:{fontSize:12,color:pm.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:500}},pm)
+        )
+      ),
+      /* ShipStation API */
+      h('div',{className:'card-dark',style:{marginBottom:12}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:6}},
+          h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF'}},'ShipStation API'),
+          h('span',{style:{fontSize:11,padding:'2px 8px',background:'rgba(16,185,129,0.2)',color:'#10b981',borderRadius:100,border:'1px solid rgba(16,185,129,0.3)',fontWeight:600}},'Auto Order Fetch')
+        ),
+        h('p',{style:{fontSize:12,color:'#555',margin:'0 0 12px',lineHeight:1.6}},'Connect ShipStation - auto-fetch order counts by channel.'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}},
+          h('div',null,
+            h('label',{className:'lbl dark'},'API Key'),
+            h('input',{className:'inp-dark',type:'password',value:ssKey,onChange:e=>setSSKey(e.target.value),placeholder:'Enter API Key'})
+          ),
+          h('div',null,
+            h('label',{className:'lbl dark'},'API Secret'),
+            h('input',{className:'inp-dark',type:'password',value:ssSecret,onChange:e=>setSSSec(e.target.value),placeholder:'Enter API Secret'})
+          )
+        ),
+        h('div',{style:{fontSize:11,color:'#444',marginBottom:10,lineHeight:1.6}},
+          '📍 ShipStation → Settings → API Settings → ',
+          h('strong',{style:{color:'#818CF8'}},'API Key & Secret')
+        ),
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+          h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'7px 14px'},onClick:testSSConn,disabled:ssFetching},'🔌 Test Connection'),
+          h('button',{className:'btn-primary',style:{padding:'7px 18px'},onClick:fetchSSOrders,disabled:ssFetching},
+            ssFetching?'⏳ Fetching…':'📦 Fetch Orders'
+          ),
+          ssResult&&ssResult.summary&&h('button',{className:'btn-primary',style:{padding:'7px 18px',background:'linear-gradient(135deg,#10b981,#059669)'},onClick:createListsFromSS},'✅ Create Pick Lists')
+        ),
+        ssMsg&&h('div',{style:{marginTop:8,fontSize:12,color:ssMsg.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:500}},ssMsg),
+        ssResult&&ssResult.summary&&h('div',{style:{marginTop:12,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,padding:'12px'}},
+          h('div',{style:{fontSize:11,fontWeight:700,color:'#8888C0',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},
+            'ShipStation Orders — '+ssResult.date+' (Total: '+ssResult.totalOrders+')'
+          ),
+          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}},
+            ssResult.summary.filter(s=>s.category!=='Unknown').map((s,i)=>{
+              const cs={
+                'Official 1':{bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2'},
+                'Official 2':{bg:'#EDECFE',tx:'#4038B5',br:'#B0A8F2'},
+                'Moida & Hola':{bg:'#E0F5D0',tx:'#1A6A08',br:'#90D870'},
+                'TikTok CBT':{bg:'#FBE8F0',tx:'#8A1A5A',br:'#F0A0C8'},
+                'Seeding':{bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070'},
+                'Reshipment':{bg:'#EEEEED',tx:'#383836',br:'#C0C0B8'},
+              }[s.category]||{bg:'#222',tx:'#888',br:'#444'};
+              return h('div',{key:i,style:{padding:'10px 12px',background:cs.bg+'22',borderRadius:9,border:'1px solid '+cs.br+'44'}},
+                h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
+                  h('span',{style:{fontWeight:700,color:cs.tx+'CC',fontSize:13}},s.category),
+                  h('span',{style:{fontWeight:800,color:'#E8E6FF',fontSize:18}},s.orderCount)
+                ),
+                h('div',{style:{fontSize:10,color:'#555',lineHeight:1.5}},s.storeList)
+              );
+            })
+          )
         )
       ),
       /* Prefix map */
