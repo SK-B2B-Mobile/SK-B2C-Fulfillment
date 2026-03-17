@@ -322,7 +322,7 @@ const detect=b=>{for(const m of PREFIX_MAP)if(b.trim().toUpperCase().startsWith(
 const getSt=l=>{const oc=l.orderCount||0;if(oc>0&&l.scanned>=oc&&l.scanEnd)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
-async function syncData(url,action,payload){if(!url)return;try{await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...payload})});}catch(e){console.warn(e);}}
+async function syncData(url,action,payload){if(!url)return;try{await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});}catch(e){console.warn(e);}}
 const {createElement:h,useState,useRef,useEffect,useCallback,Fragment}=React;
 
 /* ══════ PICKER SELECT ══════ */
@@ -601,7 +601,7 @@ function App(){
     if(!ssKey||!ssSecret){setSSM('⚠ Please enter ShipStation API Key and Secret');return;}
     setSSF(true);setSSM('');setSSR(null);
     try{
-      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'application/json'},
+      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'text/plain'},
         body:JSON.stringify({action:'fetchSSOrders',apiKey:ssKey,apiSecret:ssSecret,date:today()})});
       const data=await r.json();
       if(!data.ok){setSSM('⚠ '+data.error);setSSF(false);return;}
@@ -616,7 +616,7 @@ function App(){
     if(!wh||!ssKey||!ssSecret){setSSM('⚠ Fill in URL, API Key and Secret first');return;}
     setSSF(true);setSSM('Testing…');
     try{
-      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'application/json'},
+      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'text/plain'},
         body:JSON.stringify({action:'testSSConnection',apiKey:ssKey,apiSecret:ssSecret})});
       const data=await r.json();
       setSSM(data.ok?'✓ Connected! '+data.storeCount+' stores found':'⚠ '+data.error);
