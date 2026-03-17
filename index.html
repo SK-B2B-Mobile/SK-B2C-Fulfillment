@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>SK B2C Fulfillment v18</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<style>
+/* ═══ RESET ═══ */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;background:#ECEAE5;color:#111}
+button{cursor:pointer;font-family:inherit;transition:all .15s;user-select:none;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid}
+
+/* ═══ NAV ═══ */
+.nav{
+  height:56px;border-bottom:1.5px solid #CCC;
+  display:flex;align-items:center;padding:0 20px;gap:4px;
+  position:sticky;top:0;z-index:200;
+}
+.nav.light{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.07)}
+.nav.dark {background:#1A1A3E;border-color:rgba(255,255,255,0.1);box-shadow:0 2px 16px rgba(0,0,0,0.4)}
+
+.logo-box{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-box.light{background:linear-gradient(145deg,#FAEEDA,#F2C060);box-shadow:0 1px 4px rgba(0,0,0,0.15)}
+.logo-box.dark {background:linear-gradient(145deg,#5B5EF4,#8B5CF6);box-shadow:0 2px 8px rgba(91,94,244,0.5)}
+.app-title{font-size:15px;font-weight:700;letter-spacing:-.02em;margin:0 4px 0 9px}
+.app-title.light{color:#111;font-size:16px}
+.app-title.dark {color:#E8E6FF;font-size:16px}
+.app-ver{font-size:10px;font-weight:600;padding:1px 6px;border-radius:100px}
+.app-ver.light{color:#888;background:#EBEBEB;border-color:#D8D7D2;font-size:11px;padding:2px 7px}
+.app-ver.dark {color:#666;background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.1)}
+
+.nav-sep{width:1px;height:20px;margin:0 6px}
+.nav-sep.light{background:#DDD}
+.nav-sep.dark {background:rgba(255,255,255,0.1)}
+
+.nav-btn{font-size:13px;padding:5px 12px;border-radius:7px;font-weight:500}
+.nav-btn.light{background:transparent;border-color:transparent;color:#555;font-size:13px}
+.nav-btn.light:hover{background:#EBEBEB;border-color:#D8D7D2;color:#111}
+.nav-btn.light.on{background:#EBEBEB;border-color:#D8D7D2;color:#111;font-weight:600}
+.nav-btn.dark{background:transparent;border-color:transparent;color:#7070A0;font-size:13px}
+.nav-btn.dark:hover{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.12);color:#BBBBDD}
+.nav-btn.dark.on{background:rgba(91,94,244,0.22);border-color:rgba(91,94,244,0.5);color:#A0A8FF;font-weight:600}
+
+.mgr-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;background:rgba(91,94,244,0.25);border:1px solid rgba(91,94,244,0.5);border-radius:100px;font-size:11px;font-weight:700;color:#A0A8FF;letter-spacing:.04em;text-transform:uppercase}
+.mgr-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 16px;border-radius:100px;font-weight:600}
+.mgr-btn.unlock{background:#F0EEFF;border-color:#C4C5FF;color:#5B5EF4}
+.mgr-btn.unlock:hover{background:#E5E3FF}
+.mgr-btn.lock{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);color:#888}
+.mgr-btn.lock:hover{border-color:rgba(255,255,255,0.25);color:#CCC}
+
+/* ═══ STATS BAR ═══ */
+.stats-bar{display:grid;grid-template-columns:repeat(5,1fr);align-items:stretch}
+.stats-bar.light{background:#fff;border-bottom:1.5px solid #D8D7D2}
+.stats-bar.dark {background:#1A1A3E;border-bottom:1.5px solid rgba(255,255,255,0.08)}
+.stat{padding:14px 20px;display:flex;flex-direction:column;justify-content:space-between}
+.stat.light{border-right:1px solid #E8E7E3}
+.stat.dark {border-right:1px solid rgba(255,255,255,0.06)}
+.stat:last-child{border-right:none}
+.stat-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px}
+.stat-lbl.light{color:#AAA}
+.stat-lbl.dark {color:#8888AA}
+.stat-row{display:flex;justify-content:space-between;align-items:baseline}
+.stat-num{font-size:28px;font-weight:700;line-height:1}
+.stat-sub{font-size:12px;margin-left:4px}
+.stat-sub.light{color:#AAA}
+.stat-sub.dark {color:#8888AA}
+.stat-pct{font-size:15px;font-weight:700}
+.stat-bar{height:4px;border-radius:2px;margin-top:7px;overflow:hidden}
+.stat-bar.light{background:#E8E7E3}
+.stat-bar.dark {background:rgba(255,255,255,0.08)}
+.stat-fill{height:100%;border-radius:2px;transition:width .4s}
+
+/* ═══ CATEGORY TABS ═══ */
+.cat-tabs-row{display:flex;align-items:center}
+.cat-tabs-row.light{background:#fff;border-bottom:1.5px solid #D8D7D2}
+.cat-tabs-row.dark {background:#1A1A3E;border-bottom:1.5px solid rgba(255,255,255,0.08)}
+.cat-tabs{display:flex;overflow-x:auto;flex:1;padding:0 16px}
+.cat-tab{display:inline-flex;align-items:center;gap:6px;padding:11px 16px;font-size:14px;font-weight:500;cursor:pointer;border:none;background:transparent;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;white-space:nowrap;border-radius:0}
+.cat-tab.light{color:#888}
+.cat-tab.light:hover{color:#555}
+.cat-tab.light.on{font-weight:700}
+.cat-tab.dark{color:#7070A0}
+.cat-tab.dark:hover{color:#AAAACC}
+.cat-tab.dark.on{font-weight:700}
+.cat-cnt{font-size:11px;font-weight:700;padding:2px 7px;border-radius:100px}
+.cat-cnt.light{background:#EBEBEB;color:#777}
+.cat-cnt.dark {background:rgba(255,255,255,0.08);color:#7070A0}
+.cat-cnt.on-light{background:#111;color:#fff}
+.cat-cnt.on-dark {color:#0D0D1B}
+.tab-actions{display:flex;gap:8px;padding:5px 16px;flex-shrink:0;align-items:center}
+
+/* ═══ CLOCK ═══ */
+.clock-row{display:flex;align-items:center;justify-content:flex-end;padding:5px 20px;gap:10px}
+.clock-row.light{background:#fff;border-bottom:1px solid #E8E7E3}
+.clock-row.dark {background:#1A1A3E;border-bottom:1px solid rgba(255,255,255,0.06)}
+.clock-date{font-size:12px;font-weight:500;color:#AAA}
+.clock-time{font-family:'SF Mono',ui-monospace,Consolas,monospace;font-size:26px;font-weight:700;letter-spacing:-0.01em;line-height:1}
+.clock-time.light{color:#222}
+.clock-time.dark {color:#E8E6FF}
+.clock-sec{font-family:'SF Mono',ui-monospace,Consolas,monospace;font-size:15px;font-weight:600;color:#BBB}
+.clock-ampm{font-size:13px;font-weight:700;color:#888;margin-left:3px}
+
+/* ═══ INFO NOTE ═══ */
+.info-note{padding:6px 22px;font-size:12px;font-style:italic;border-bottom:1px solid}
+.info-note.light{background:#F8F7F4;color:#999;border-color:#E8E7E3}
+.info-note.dark {background:#1A1A3E;color:#6060A0;border-color:rgba(255,255,255,0.06)}
+
+/* ═══ TABLE ═══ */
+.tbl-wrap{overflow-x:auto}
+.tbl-wrap.light{background:#fff}
+.tbl-wrap.dark {background:#0E0E1C}
+.tbl{border-collapse:collapse;width:100%;min-width:1000px}
+.tbl thead th{
+  padding:11px 16px;text-align:left;
+  font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  white-space:nowrap;user-select:none;
+}
+.tbl thead th.light{color:#666;background:#EEECEA;border-top:2px solid #C8C7C2;border-bottom:2px solid #C8C7C2}
+.tbl thead th.dark {color:#B0B0D8;background:#22224A;border-top:2px solid rgba(255,255,255,0.12);border-bottom:2px solid rgba(255,255,255,0.12)}
+.tbl tbody td{
+  padding:13px 16px;font-size:14px;border-bottom:1px solid;
+  vertical-align:middle;white-space:nowrap;
+}
+.tbl tbody td.light{background:#fff;border-color:#EEECEA}
+.tbl tbody td.dark {background:#0E0E1C;border-color:rgba(255,255,255,0.05)}
+.tbl tbody tr.light:hover td.light{background:#FAFAF8}
+.tbl tbody tr.dark:hover td.dark {background:#13132B}
+.tbl td.c{text-align:center}
+.mono{font-family:'SF Mono',ui-monospace,Consolas,monospace}
+
+/* ═══ PILLS ═══ */
+.pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:600;border:1px solid;white-space:nowrap}
+.s0{background:#F2F1EC;color:#666;border-color:#CCC}
+.s1{background:#FFF0DC;color:#7A3A00;border-color:#F5C070}
+.s2{background:#DAEEFF;color:#0A4A8A;border-color:#7ABEF5}
+.s3{background:#FFE8E0;color:#8A2800;border-color:#F5A070}
+.s4{background:#E0F5D0;color:#1A6A08;border-color:#90D870}
+
+/* ═══ PICKER DROPDOWN ═══ */
+.pk-wrap{position:relative;display:inline-block}
+.pk-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:100px;font-size:13px;border:1px solid;white-space:nowrap;font-weight:500}
+.pk-dot{width:7px;height:7px;border-radius:50%;border:2px solid;flex-shrink:0}
+.pk-menu{position:fixed;z-index:9999;border-radius:11px;padding:4px;min-width:175px;max-height:290px;overflow-y:auto}
+.pk-menu.light{background:#fff;border:1.5px solid #D8D7D2;box-shadow:0 8px 28px rgba(0,0,0,0.14)}
+.pk-menu.dark {background:#1E1E44;border:1.5px solid rgba(255,255,255,0.16);box-shadow:0 8px 28px rgba(0,0,0,0.55)}
+.pk-item{padding:9px 13px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px}
+.pk-item.light{color:#333}
+.pk-item.light:hover{background:#F5F4F0}
+.pk-item.dark{color:#CCC}
+.pk-item.dark:hover{background:rgba(255,255,255,0.07)}
+
+/* ═══ ACTION BUTTONS ═══ */
+.ab{border-radius:7px;padding:6px 14px;font-size:13px;font-weight:700;border:1px solid}
+.ab.start{background:#FFF0DC;color:#7A3A00;border-color:#F5C070}
+.ab.start:hover{background:#FAEACF}
+.ab.done {background:#E0F5D0;color:#1A6A08;border-color:#90D870}
+.ab.done:hover{background:#D0EEC0}
+.ab.work {background:#DAEEFF;color:#0A4A8A;border-color:#7ABEF5}
+.ab.work:hover{background:#CCE8FF}
+.ab.plus{border-radius:7px;padding:6px 12px;font-size:13px;font-weight:700;border:1px solid}
+.ab.edit-btn{background:rgba(91,94,244,0.2);border-color:rgba(91,94,244,0.45);color:#A0A8FF;padding:6px 14px;font-size:13px;font-weight:600;border-radius:7px}
+.ab.edit-btn:hover{background:rgba(91,94,244,0.3)}
+.ab.del-btn{background:rgba(220,38,38,0.12);border-color:rgba(220,38,38,0.35);color:#F87171;padding:6px 12px;font-size:13px;font-weight:600;border-radius:7px}
+.ab.del-btn:hover{background:rgba(220,38,38,0.22)}
+.ab.today-del{background:#FCEBEB;border-color:#F5BBBB;color:#9B2020;padding:6px 12px;font-size:12px;font-weight:600;border-radius:7px}
+.ab.today-del:hover{background:#F9DCDC}
+
+/* ═══ GENERIC BUTTONS ═══ */
+.btn-primary{background:linear-gradient(135deg,#5B5EF4,#8B5CF6);border-color:transparent;color:#fff;font-weight:700;box-shadow:0 3px 10px rgba(91,94,244,0.3);border-radius:8px;padding:8px 20px;font-size:13px}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-secondary{border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500}
+.btn-sec-light{background:#fff;border-color:#D8D7D2;color:#333}
+.btn-sec-light:hover{background:#F5F4F0}
+.btn-sec-dark{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.14);color:#CCC}
+.btn-sec-dark:hover{background:rgba(255,255,255,0.13)}
+
+/* ═══ FORM ═══ */
+.lbl{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+.lbl.light{color:#888}
+.lbl.dark {color:#8888C0}
+.inp-dark{background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.16);border-radius:8px;padding:9px 12px;color:#E8E6FF;font-family:inherit;font-size:13px;outline:none;width:100%;display:block}
+.inp-dark:focus{border-color:#5B5EF4;box-shadow:0 0 0 3px rgba(91,94,244,0.18)}
+.inp-dark::placeholder{color:#4A4A7A}
+.sel-dark{background:#1E1E44;border:1.5px solid rgba(255,255,255,0.18);border-radius:8px;padding:9px 32px 9px 12px;color:#E8E6FF;font-family:inherit;font-size:13px;outline:none;width:100%;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
+.sel-dark:focus{border-color:#5B5EF4;box-shadow:0 0 0 3px rgba(91,94,244,0.18);outline:none}
+.sel-dark option,.sel-dark optgroup{background:#1E1E44;color:#E8E6FF}
+.ta-dark{background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.16);border-radius:8px;padding:9px 12px;color:#E8E6FF;font-family:inherit;font-size:13px;outline:none;width:100%;resize:vertical;line-height:1.5}
+.ta-dark:focus{border-color:#5B5EF4}
+.card-dark{background:#1A1A3E;border:1.5px solid rgba(255,255,255,0.09);border-radius:14px;padding:1.25rem;box-shadow:0 4px 20px rgba(0,0,0,0.35)}
+
+/* ═══ MODAL ═══ */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:800;display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(4px)}
+.modal-light{background:#fff;border:1.5px solid #D8D7D2;border-radius:16px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.18)}
+.modal-dark{background:#1C1C40;border:1.5px solid rgba(255,255,255,0.12);border-radius:16px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,0.6);max-height:calc(100vh - 48px);overflow-y:auto}
+.modal-hdr{padding:1.1rem 1.4rem;border-bottom:1px solid}
+.modal-hdr.light{border-color:#E8E7E3}
+.modal-hdr.dark {border-color:rgba(255,255,255,0.08)}
+.modal-body{padding:1.25rem 1.4rem}
+
+/* ═══ PAGE AREAS ═══ */
+.page-wrap{padding:20px 24px 60px}
+.page-wrap.dark{background:#0E0E1C;min-height:calc(100vh - 52px)}
+
+/* ═══ EMPTY ═══ */
+.empty{padding:52px 20px;text-align:center;font-style:italic;font-size:13px}
+.empty.light{color:#BBB}
+.empty.dark {color:#333}
+
+/* ═══ MISC ═══ */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{border-radius:10px;background:rgba(128,128,128,0.2)}
+</style>
+</head>
+<body>
+<div id="root"><div style="display:flex;height:100vh;align-items:center;justify-content:center;color:#888">Loading…</div></div>
+<script>
+/* ══════ CONFIG ══════ */
+const LS={PIN:'b2c18_pin',LISTS:'b2c18_lists',LOG:'b2c18_log',WH:'b2c18_wh',PKS:'b2c18_pickers'};
+const DEF_PIN='1234';
+const DEF_PKS='Kim Jisu,Park Minho,Lee Hayeon,Choi Dawon,Jung Soyeon,Helper 1,Helper 2';
+const PREFIX_MAP=[
+  {p:'US-HMS-',cat:'Moida & Hola',store:'Heimish'},
+  {p:'GSU',   cat:'Official 1', store:'Shein'},
+  {p:'200014',cat:'Official 1', store:'Walmart'},
+  {p:'TOCOBO-',cat:'Official 1',store:'Tocobo'},
+  {p:'SKINFOOD-',cat:'Official 2',store:'Skinfood'},
+  {p:'KAJA-', cat:'Official 2', store:'Kaja'},
+  {p:'IDC-',  cat:'Official 2', store:'I Dew Care'},
+  {p:'jumiso-',cat:'Official 2',store:'Jumiso'},
+  {p:'Betheskin-',cat:'Official 2',store:'Be The Skin'},
+  {p:'MD-',   cat:'Moida & Hola',store:'Moida US'},
+  {p:'HOA',   cat:'Moida & Hola',store:'Hola'},
+  {p:'5773',  cat:'TikTok CBT', store:'TikTok'},
+];
+const CATS=['Official 1','Official 2','Moida & Hola','TikTok CBT','Seeding','Reshipment'];
+const AUTO=['Official 1','Official 2','Moida & Hola','TikTok CBT'];
+const CA={
+  'Official 1': {bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2',ac:'#3B8FE0'},
+  'Official 2': {bg:'#EDECFE',tx:'#4038B5',br:'#B0A8F2',ac:'#7068D8'},
+  'Moida & Hola':{bg:'#E0F5D0',tx:'#1A6A08',br:'#90D870',ac:'#5DA832'},
+  'TikTok CBT': {bg:'#FBE8F0',tx:'#8A1A5A',br:'#F0A0C8',ac:'#C84A82'},
+  'Seeding':    {bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070',ac:'#E89820'},
+  'Reshipment': {bg:'#EEEEED',tx:'#383836',br:'#C0C0B8',ac:'#808078'},
+};
+const PKC=[{bg:'#E6F1FB',tx:'#1254A0'},{bg:'#EDECFE',tx:'#4038B5'},{bg:'#E0F5D0',tx:'#1A6A08'},{bg:'#FFF0DC',tx:'#7A3A00'},{bg:'#FBE8F0',tx:'#8A1A5A'},{bg:'#EEEEED',tx:'#484846'},{bg:'#E8F5D0',tx:'#2A6A0A'},{bg:'#FEE8CC',tx:'#7A3A00'}];
+const pkC=i=>PKC[i%PKC.length];
+const ST=['pending','picking','picked','scanning','complete'];
+const STL=['Pending','Picking','Pick Done','Scanning','Complete'];
+const STC=['s0','s1','s2','s3','s4'];
+
+/* ══════ UTILS ══════ */
+const uid=()=>Math.random().toString(36).slice(2,10);
+const ts=()=>new Date().toISOString();
+const today=()=>new Date().toISOString().slice(0,10);
+const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+const dur=(s,e)=>{if(!s)return'—';const end=e?new Date(e):new Date();const m=Math.round((end-new Date(s))/60000);if(isNaN(m)||m<0)return'—';return m<60?m+'m':Math.floor(m/60)+'h '+(m%60)+'m';};
+const detect=b=>{for(const m of PREFIX_MAP)if(b.trim().toUpperCase().startsWith(m.p.toUpperCase()))return{cat:m.cat,store:m.store};return null;};
+const getSt=l=>{const oc=l.orderCount||0;if(oc>0&&l.scanned>=oc&&l.scanEnd)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
+const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+async function syncData(url,action,payload){if(!url)return;try{await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...payload})});}catch(e){console.warn(e);}}
+const {createElement:h,useState,useRef,useEffect,useCallback,Fragment}=React;
+
+/* ══════ PICKER SELECT ══════ */
+function PickerSelect({value,onChange,pickers,dark}){
+  const [open,setOpen]=useState(false);
+  const [pos,setPos]=useState({top:0,left:0,w:0});
+  const btnRef=useRef(null);const menuRef=useRef(null);
+  useEffect(()=>{
+    const fn=e=>{if(btnRef.current&&!btnRef.current.contains(e.target)&&menuRef.current&&!menuRef.current.contains(e.target))setOpen(false);};
+    document.addEventListener('mousedown',fn);return()=>document.removeEventListener('mousedown',fn);
+  },[]);
+  const open2=()=>{
+    if(!open&&btnRef.current){
+      const r=btnRef.current.getBoundingClientRect();
+      const below=window.innerHeight-r.bottom;const menuH=Math.min(pickers.length*40+44,290);
+      setPos({top:below>menuH?r.bottom+4:r.top-menuH-4,left:r.left,w:Math.max(r.width,180)});
+    }
+    setOpen(o=>!o);
+  };
+  const idx=pickers.indexOf(value);const wc=idx>=0?pkC(idx):{bg:'transparent',tx:'#888'};
+  const D=dark?'dark':'light';
+  return h(Fragment,null,
+    h('div',{ref:btnRef,className:'pk-wrap'},
+      h('button',{className:'pk-btn',onClick:open2,style:{background:value?wc.bg:'transparent',color:value?wc.tx:'#888',borderColor:value?wc.bg:(dark?'rgba(255,255,255,0.15)':'#D8D7D2'),fontWeight:value?600:400}},
+        value&&h('div',{className:'pk-dot',style:{background:wc.bg,borderColor:wc.tx}}),
+        value||'Assign picker…',
+        h('svg',{width:9,height:5,viewBox:'0 0 8 4',fill:'none',style:{opacity:.5,marginLeft:2}},h('path',{d:'M1 1l3 2 3-2',stroke:'currentColor',strokeWidth:'1.4',strokeLinecap:'round'}))
+      )
+    ),
+    open&&h('div',{ref:menuRef,className:'pk-menu '+D,style:{top:pos.top,left:pos.left,minWidth:pos.w}},
+      h('div',{className:'pk-item '+D,style:{fontStyle:'italic',fontSize:12,color:dark?'#555':'#BBB'},onClick:()=>{onChange('');setOpen(false);}},'— Unassign —'),
+      pickers.map((w,i)=>{const c=pkC(i);return h('div',{key:w,className:'pk-item '+D,onClick:()=>{onChange(w);setOpen(false);}},
+        h('div',{className:'pk-dot',style:{background:c.bg,borderColor:c.tx}}),
+        h('span',{style:{flex:1}},w),
+        value===w&&h('span',{style:{color:c.tx,fontWeight:700,fontSize:14}},'✓')
+      );})
+    )
+  );
+}
+
+/* ══════ PIN MODAL ══════ */
+function PinModal({onOK,onCancel}){
+  const [v,setV]=useState('');const [err,setErr]=useState('');const r=useRef(null);
+  useEffect(()=>{if(r.current)r.current.focus();},[]);
+  const check=()=>{if(v===lsGet(LS.PIN,DEF_PIN))onOK();else{setErr('Incorrect PIN');setV('');}};
+  return h('div',{className:'overlay'},
+    h('div',{className:'modal-light',style:{textAlign:'center'}},
+      h('div',{className:'modal-hdr light',style:{display:'flex',flexDirection:'column',alignItems:'center',gap:10}},
+        h('div',{style:{width:46,height:46,borderRadius:12,background:'#F0EEFF',border:'1.5px solid #C4C5FF',display:'flex',alignItems:'center',justifyContent:'center'}},
+          h('svg',{width:22,height:22,viewBox:'0 0 16 16',fill:'none'},h('rect',{x:3,y:7,width:10,height:8,rx:'1.5',stroke:'#5B5EF4',strokeWidth:'1.4'}),h('path',{d:'M5 7V5a3 3 0 0 1 6 0v2',stroke:'#5B5EF4',strokeWidth:'1.4',strokeLinecap:'round'}))
+        ),
+        h('div',{style:{fontSize:16,fontWeight:700,color:'#111'}},'Manager Access'),
+        h('div',{style:{fontSize:11,color:'#888'}},'Enter 4-digit PIN')
+      ),
+      h('div',{className:'modal-body'},
+        h('input',{ref:r,type:'password',maxLength:4,value:v,onChange:e=>setV(e.target.value),onKeyDown:e=>{if(e.key==='Enter')check();},
+          placeholder:'• • • •',style:{display:'block',width:'100%',fontSize:30,letterSpacing:'0.6em',textAlign:'center',padding:'13px',background:'#F6F5F1',border:'1.5px solid '+(err?'#F87171':'#D8D7D2'),borderRadius:10,marginBottom:8,fontFamily:'monospace',outline:'none',color:'#111'}}),
+        err&&h('div',{style:{fontSize:11,color:'#E02020',padding:'6px 10px',background:'#FEE',border:'1px solid #FCC',borderRadius:7,marginBottom:10,textAlign:'center'}},err),
+        h('div',{style:{display:'flex',gap:8}},
+          h('button',{onClick:onCancel,className:'btn-secondary btn-sec-light',style:{flex:'0 0 auto',padding:'10px 20px'}},'Cancel'),
+          h('button',{onClick:check,className:'btn-primary',style:{flex:'1 1 auto',padding:'10px'}},'Enter Manager Mode')
+        ),
+        h('div',{style:{marginTop:10,fontSize:10,color:'#CCC',textAlign:'center'}},'Default PIN: 1234')
+      )
+    )
+  );
+}
+
+/* ══════ EDIT MODAL ══════ */
+function EditModal({list,pickers,onSave,onDel,onCancel}){
+  const fi=iso=>{
+    if(!iso)return'';
+    const d=new Date(iso);
+    const pad=n=>String(n).padStart(2,'0');
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+  };
+  const pi=s=>{if(!s.trim())return null;try{return new Date(s.trim()).toISOString();}catch{return null;}};
+  const [F,setF]=useState({pgNo:list.pgNo,sku:String(list.sku||0),orderCount:String(list.orderCount||0),scanned:String(list.scanned||0),worker:list.worker||'',memo:list.memo||'',pickStart:fi(list.pickStart),pickEnd:fi(list.pickEnd),scanStart:fi(list.scanStart),scanEnd:fi(list.scanEnd)});
+  const [del2,setDel2]=useState(false);
+  const f=(k,v2)=>setF(p=>({...p,[k]:v2}));
+  return h('div',{className:'overlay'},
+    h('div',{className:'modal-dark'},
+      h('div',{className:'modal-hdr dark',style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        h('div',null,
+          h('div',{style:{fontSize:15,fontWeight:700,color:'#E8E6FF'}},'Edit Pick List'),
+          h('div',{className:'mono',style:{fontSize:11,color:'#555',marginTop:2}},list.pgNo+' · '+list.category)
+        ),
+        h('button',{onClick:onCancel,className:'btn-sec-dark btn-secondary',style:{padding:'4px 10px',fontSize:11}},'✕')
+      ),
+      h('div',{className:'modal-body'},
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}},
+          h('div',null,h('label',{className:'lbl dark'},'PG No.'),h('input',{className:'inp-dark',value:F.pgNo,onChange:e=>f('pgNo',e.target.value)})),
+          h('div',null,h('label',{className:'lbl dark'},'SKU'),h('input',{className:'inp-dark',type:'number',value:F.sku,onChange:e=>f('sku',e.target.value)})),
+          h('div',null,h('label',{className:'lbl dark'},'Order Count'),h('input',{className:'inp-dark',type:'number',value:F.orderCount,onChange:e=>f('orderCount',e.target.value)})),
+          h('div',null,h('label',{className:'lbl dark'},'Scanned'),h('input',{className:'inp-dark',type:'number',value:F.scanned,onChange:e=>f('scanned',e.target.value)}))
+        ),
+        h('div',{style:{marginBottom:12}},
+          h('label',{className:'lbl dark'},'Override Picker'),
+          h('select',{className:'sel-dark',value:F.worker,onChange:e=>f('worker',e.target.value)},
+            h('option',{value:''},'— Unassigned —'),
+            ...pickers.map(w=>h('option',{key:w,value:w},w))
+          )
+        ),
+        h('div',{style:{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,padding:'12px',marginBottom:12}},
+          h('div',{style:{fontSize:10,fontWeight:700,color:'#7070A0',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:10}},'Time Overrides — YYYY-MM-DD HH:MM:SS'),
+          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
+            ...[['Pick Start','pickStart'],['Pick End','pickEnd'],['Scan Start','scanStart'],['Scan End','scanEnd']].map(([lb,k])=>
+              h('div',{key:k},h('label',{className:'lbl dark',style:{fontSize:9}},lb),h('input',{className:'inp-dark mono',value:F[k],onChange:e=>f(k,e.target.value),placeholder:'2026-03-16 09:00',style:{fontSize:11}}))
+            )
+          )
+        ),
+        h('div',{style:{marginBottom:14}},
+          h('label',{className:'lbl dark'},'Remarks'),
+          h('input',{className:'inp-dark',value:F.memo,onChange:e=>f('memo',e.target.value),placeholder:'Optional'})
+        ),
+        del2&&h('div',{style:{marginBottom:12,padding:'12px',background:'rgba(220,38,38,0.1)',borderRadius:9,border:'1px solid rgba(220,38,38,0.25)'}},
+          h('div',{style:{fontSize:12,fontWeight:700,color:'#F87171',marginBottom:8}},'Delete '+list.pgNo+'? This cannot be undone.'),
+          h('div',{style:{display:'flex',gap:8}},
+            h('button',{onClick:()=>setDel2(false),className:'btn-sec-dark btn-secondary',style:{flex:'0 0 auto',padding:'7px 14px'}},'Cancel'),
+            h('button',{onClick:()=>onDel(list.id),style:{flex:'1 1 auto',padding:'7px',background:'rgba(220,38,38,0.2)',border:'1px solid rgba(220,38,38,0.4)',color:'#F87171',borderRadius:7,cursor:'pointer',fontWeight:700,fontFamily:'inherit'}},'Yes, Delete')
+          )
+        ),
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}},
+          h('button',{onClick:()=>setDel2(true),className:'ab del-btn'},'🗑 Delete'),
+          h('div',{style:{display:'flex',gap:8}},
+            h('button',{onClick:onCancel,className:'btn-sec-dark btn-secondary',style:{padding:'8px 18px'}},'Cancel'),
+            h('button',{onClick:()=>onSave({...list,...F,sku:+F.sku||0,orderCount:+F.orderCount||0,scanned:+F.scanned||0,pickStart:pi(F.pickStart),pickEnd:pi(F.pickEnd),scanStart:pi(F.scanStart),scanEnd:pi(F.scanEnd)}),className:'btn-primary',style:{padding:'9px 22px'}},'Save')
+          )
+        )
+      )
+    )
+  );
+}
+
+/* ══════ CLOCK ══════ */
+function Clock({dark}){
+  const [t,setT]=useState(()=>new Date());
+  useEffect(()=>{const id=setInterval(()=>setT(new Date()),1000);return()=>clearInterval(id);},[]);
+  const h24=t.getHours();const ampm=h24>=12?'PM':'AM';const h12=h24%12||12;
+  const mm=String(t.getMinutes()).padStart(2,'0');const ss=String(t.getSeconds()).padStart(2,'0');
+  const dateStr=t.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const D=dark?'dark':'light';
+  return h('div',{className:'clock-row '+D},
+    h('span',{className:'clock-date'},dateStr),
+    h('div',{style:{display:'flex',alignItems:'baseline',gap:3}},
+      h('span',{className:'clock-time '+D},h12+':'+mm),
+      h('span',{className:'clock-sec'},':'+ss),
+      h('span',{className:'clock-ampm'},ampm)
+    )
+  );
+}
+
+/* ══════════════════════════
+   MAIN APP
+══════════════════════════ */
+function App(){
+  // ── Page navigation ──
+  // tab: 'records' | 'scan' | 'create' | 'settings'
+  // isMgr: manager mode ON/OFF — determines what's shown, NOT a separate page
+  const [tab,setTab]   =useState('records');
+  const [isMgr,setMgr] =useState(false);
+  const [cat,setCat]   =useState('All');
+
+  // ── Data ──
+  const [lists,setLists]=useState(()=>lsGet(LS.LISTS,[]));
+  const [log,setLog]   =useState(()=>lsGet(LS.LOG,[]));
+  const [wh,setWH]     =useState(()=>localStorage.getItem(LS.WH)||'');
+  const [pksStr,setPKS]=useState(()=>localStorage.getItem(LS.PKS)||DEF_PKS);
+
+  // ── UI ──
+  const [showPin,setPin]=useState(false);
+  const [editL,setEL]  =useState(null);
+  const [syncSt,setSS] =useState('');
+
+  // ── Scan ──
+  const [scanIn,setSI] =useState('');
+  const [lastScan,setLS]=useState(null);
+  const [scanErr,setSE]=useState('');
+
+  // ── Manager form ──
+  const [mf,setMF]=useState({pgNo:'',cat:'Official 1',sku:'',orders:'',memo:''});
+  const [editId,setEId]=useState(null);
+
+  // ── Settings ──
+  const [np1,setNP1]=useState('');const [np2,setNP2]=useState('');const [pm,setPM]=useState('');
+
+  const scanRef=useRef(null);
+  const pickers=pksStr.split(',').map(s=>s.trim()).filter(Boolean);
+
+  useEffect(()=>lsSet(LS.LISTS,lists),[lists]);
+  useEffect(()=>lsSet(LS.LOG,log.slice(0,500)),[log]);
+  useEffect(()=>localStorage.setItem(LS.WH,wh),[wh]);
+  useEffect(()=>localStorage.setItem(LS.PKS,pksStr),[pksStr]);
+  useEffect(()=>{if(tab==='scan'&&scanRef.current)scanRef.current.focus();},[tab]);
+
+  const sync=useCallback((action,payload)=>{
+    if(!wh)return;
+    syncData(wh,action,payload).then(()=>setSS('✓ '+new Date().toLocaleTimeString())).catch(()=>setSS('⚠'));
+  },[wh]);
+
+  /* mutations */
+  const upd=(id,ch)=>setLists(p=>p.map(l=>{if(l.id!==id)return l;const u={...l,...ch};sync('upsertList',{list:u});return u;}));
+  const setWrk=(id,n)=>upd(id,{worker:n});
+  const startPick=id=>{const l=lists.find(x=>x.id===id);if(l&&!l.pickStart)upd(id,{pickStart:ts()});};
+  const endPick  =id=>{const l=lists.find(x=>x.id===id);if(l&&l.pickStart&&!l.pickEnd)upd(id,{pickEnd:ts()});};
+  const startScan=id=>{const l=lists.find(x=>x.id===id);if(l&&!l.scanStart)upd(id,{scanStart:ts()});};
+  const addN=(id,q)=>setLists(prev=>prev.map(l=>{
+    if(l.id!==id)return l;const now=ts();const oc=l.orderCount||0;const nc=Math.min(l.scanned+q,oc);
+    const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd)ch.scanEnd=now;
+    const u={...l,...ch};sync('upsertList',{list:u});return u;
+  }));
+
+  /* scan barcode */
+  const handleScan=e=>{
+    if(e.key!=='Enter')return;const b=scanIn.trim();if(!b)return;setSI('');
+    const d=detect(b);if(!d){setSE('Unrecognized: '+b);setLS(null);return;}
+    setSE('');const now=ts();const td=today();
+    const tgt=lists.find(l=>l.category===d.cat&&l.date===td&&l.scanned<(l.orderCount||0));
+    if(!tgt){setSE(d.cat+' — No active pick list');setLS({barcode:b,cat:d.cat,store:d.store,time:fmtT(now),ok:false});return;}
+    setLists(prev=>prev.map(l=>{
+      if(l.id!==tgt.id)return l;const nc=l.scanned+1;const oc=l.orderCount||0;const ch={scanned:nc};
+      if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd)ch.scanEnd=now;
+      const u={...l,...ch};sync('upsertList',{list:u});return u;
+    }));
+    const entry={barcode:b,cat:d.cat,store:d.store,time:fmtT(now),pgNo:tgt.pgNo,worker:tgt.worker||''};
+    setLS({...entry,ok:true});setLog(prev=>[entry,...prev.slice(0,499)]);sync('addScanLog',{entry});
+  };
+
+  /* manager: save pick list */
+  const mSave=()=>{
+    if(!mf.pgNo||!mf.orders)return;
+    const existing=editId?lists.find(x=>x.id===editId):null;
+    const nl={id:editId||uid(),pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,
+      scanned:existing?.scanned||0,pickStart:existing?.pickStart||null,pickEnd:existing?.pickEnd||null,
+      scanStart:existing?.scanStart||null,scanEnd:existing?.scanEnd||null,worker:existing?.worker||'',
+      date:existing?.date||today(),memo:mf.memo||''};
+    setLists(p=>editId?p.map(x=>x.id===editId?nl:x):[...p,nl]);
+    sync('upsertList',{list:nl});
+    setMF({pgNo:'',cat:cat!=='All'?cat:'Official 1',sku:'',orders:'',memo:''});
+    setEId(null);setTab('records');
+  };
+
+  /* edit save / delete */
+  const editSave=updated=>{setLists(p=>p.map(l=>l.id===updated.id?updated:l));sync('upsertList',{list:updated});setEL(null);};
+  const delItem=id=>{const l=lists.find(x=>x.id===id);setLists(p=>p.filter(x=>x.id!==id));if(l)sync('deleteList',{pgNo:l.pgNo});setEL(null);};
+  const delFromTable=id=>{if(!window.confirm('Delete this pick list?'))return;const l=lists.find(x=>x.id===id);setLists(p=>p.filter(x=>x.id!==id));if(l)sync('deleteList',{pgNo:l.pgNo});};
+
+  /* delete today's completed lists (manager cleanup) */
+  const delCompleted=()=>{
+    const completed=lists.filter(l=>l.date===today()&&getSt(l)==='complete');
+    if(!completed.length){alert('No completed lists today.');return;}
+    if(!window.confirm('Delete '+completed.length+' completed list(s) from today?\n\nData remains in Google Sheets.'))return;
+    setLists(p=>p.filter(l=>!(l.date===today()&&getSt(l)==='complete')));
+    completed.forEach(l=>sync('deleteList',{pgNo:l.pgNo}));
+  };
+
+  /* delete ALL today's lists */
+  const delAllToday=()=>{
+    const todays=lists.filter(l=>l.date===today());
+    if(!todays.length){alert('No lists for today.');return;}
+    if(!window.confirm('Delete ALL '+todays.length+' list(s) from today?\n\nData remains in Google Sheets.'))return;
+    setLists(p=>p.filter(l=>l.date!==today()));
+    todays.forEach(l=>sync('deleteList',{pgNo:l.pgNo}));
+  };
+
+  const changePin=()=>{if(np1.length!==4||!/^\d{4}$/.test(np1)){setPM('Must be 4 digits');return;}if(np1!==np2){setPM('PINs do not match');return;}lsSet(LS.PIN,np1);setNP1('');setNP2('');setPM('✓ PIN changed');};
+  const exportCSV=()=>{const h2=['Date','PG No','Category','SKU','Orders','Scanned','Worker','Pick Start','Pick End','Scan Start','Scan End','Pick Dur','Scan Dur','Status','Remarks'];const rows=lists.map(l=>[l.date,l.pgNo,l.category,l.sku||0,l.orderCount,l.scanned,l.worker||'',fmtT(l.pickStart),fmtT(l.pickEnd),fmtT(l.scanStart),fmtT(l.scanEnd),dur(l.pickStart,l.pickEnd),dur(l.scanStart,l.scanEnd),getSt(l),l.memo||'']);const csv=[h2,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download='B2C_'+today()+'.csv';a.click();};
+
+  /* derived */
+  const todayL=lists.filter(l=>l.date===today());
+  const filtL  =cat==='All'?todayL:todayL.filter(l=>l.category===cat);
+  const tSKU   =todayL.reduce((a,l)=>a+(l.sku||0),0);
+  const tOrd   =todayL.reduce((a,l)=>a+(l.orderCount||0),0);
+  const tScan  =todayL.reduce((a,l)=>a+l.scanned,0);
+  const tDone  =todayL.filter(l=>getSt(l)==='complete').length;
+  const doneSKU=todayL.filter(l=>getSt(l)==='complete').reduce((a,l)=>a+(l.sku||0),0);
+  const actWk  =[...new Set(todayL.filter(l=>!['pending','complete'].includes(getSt(l))&&l.worker).map(l=>l.worker))];
+  const skuPct  =tSKU>0?Math.round((doneSKU/tSKU)*100):0;
+  const ordPct  =tOrd>0?Math.round((tScan/tOrd)*100):0;
+  const jobPct  =todayL.length>0?Math.round((tDone/todayL.length)*100):0;
+  const D=isMgr?'dark':'light';
+
+  /* ── Stats Bar ── */
+  const SB=()=>h('div',{className:'stats-bar '+D},
+    [
+      {lbl:'Total SKU',    big:tSKU,  sub:'items · '+doneSKU+' done', pct:skuPct, showPct:true,  clr:isMgr?'#818CF8':'#3B8FE0'},
+      {lbl:'Total Orders', big:tScan, sub:'/'+tOrd,                   pct:ordPct, showPct:true,  clr:isMgr?'#34D399':'#5DA832'},
+      {lbl:'Scan Progress',big:tScan, sub:'/'+tOrd,                   pct:ordPct, showPct:true,  clr:isMgr?'#FBBF24':'#E89820'},
+      {lbl:'Jobs Complete',big:tDone, sub:'/'+todayL.length,          pct:jobPct, showPct:true,  clr:isMgr?'#F472B6':'#C84A82'},
+      {lbl:'Active Pickers',big:actWk.length,sub:actWk.length?actWk.slice(0,2).join(', ')+(actWk.length>2?'…':''):'none',pct:0,showPct:false,clr:isMgr?'#60A5FA':'#3B8FE0'},
+    ].map((c,i)=>h('div',{key:i,className:'stat '+D},
+      h('div',{className:'stat-lbl '+D},c.lbl),
+      h('div',{className:'stat-row'},
+        h('div',null,h('span',{className:'stat-num',style:{color:c.clr}},c.big),h('span',{className:'stat-sub '+D},c.sub)),
+        c.showPct&&h('span',{className:'stat-pct',style:{color:c.clr}},c.pct+'%')
+      ),
+      h('div',{className:'stat-bar '+D},h('div',{className:'stat-fill',style:{width:c.pct+'%',background:c.clr}}))
+    ))
+  );
+
+  /* ── Category Tabs ── */
+  const CTabs=({actions})=>{
+    const counts=Object.fromEntries(['All',...CATS].map(c=>[c,c==='All'?todayL.length:todayL.filter(l=>l.category===c).length]));
+    return h('div',{className:'cat-tabs-row '+D},
+      h('div',{className:'cat-tabs'},
+        ['All',...CATS].map(c=>{
+          const cs=c!=='All'?CA[c]:null;const on=cat===c;
+          return h('button',{key:c,className:'cat-tab '+D+(on?' on':''),onClick:()=>setCat(c),
+            style:{color:on?(cs?cs.ac:(isMgr?'#A0A8FF':'#111')):'',borderBottomColor:on?(cs?cs.ac:(isMgr?'#A0A8FF':'#111')):'transparent'}},
+            c,
+            counts[c]>0&&h('span',{className:'cat-cnt '+D+(on?' on-'+D:' ')+(on?'':' '),
+              style:on?{background:cs?cs.ac:(isMgr?'#A0A8FF':'#111'),color:isMgr?'#0E0E1C':'#fff'}:{}},counts[c])
+          );
+        })
+      ),
+      actions&&h('div',{className:'tab-actions'},actions)
+    );
+  };
+
+  /* ── Records Table ── */
+  const RT=()=>{
+    const isM=c=>['Seeding','Reshipment'].includes(c);
+    if(filtL.length===0)return h('div',{className:'empty '+D},
+      isMgr?'No pick lists for today. Click "+ Create List" to add one.':'No pick lists yet — ask the manager to create them.'
+    );
+    return h('div',{className:'tbl-wrap '+D},
+      h('table',{className:'tbl'},
+        h('thead',null,
+          h('tr',null,
+            ['#','PG NO','CATEGORY','SKU','ORDERS','SCANNED','%','PICKER','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
+              h('th',{key:col,className:D},col)
+            )
+          )
+        ),
+        h('tbody',null,
+          filtL.map((l,i)=>{
+            const st=getSt(l);const si=ST.indexOf(st);const cs=CA[l.category];const manual=isM(l.category);
+            const pct=(l.orderCount||0)>0?Math.round((l.scanned/(l.orderCount||1))*100):0;
+            return h('tr',{key:l.id,className:D},
+              h('td',{className:D+' c',style:{color:isMgr?'#5555AA':'#CCC',fontWeight:600,fontSize:13,width:38}},i+1),
+              h('td',{className:D},h('span',{className:'mono',style:{fontWeight:700,color:isMgr?'#C4C2FF':'#111',fontSize:14}},l.pgNo)),
+              h('td',{className:D},h('span',{className:'pill',style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},l.category)),
+              h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.sku||0),
+              h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.orderCount||0),
+              h('td',{className:D+' c',style:{fontWeight:700,fontSize:15,color:st==='complete'?(isMgr?'#86EFAC':'#1A6A08'):(isMgr?'#fff':'#111')}},l.scanned),
+              h('td',{className:D+' c',style:{fontWeight:700,fontSize:13,color:cs.ac}},pct+'%'),
+              h('td',{className:D},h(PickerSelect,{value:l.worker||'',onChange:n=>setWrk(l.id,n),pickers,dark:isMgr})),
+              ...[['pickStart'],['pickEnd'],['scanStart'],['scanEnd']].map(([fld])=>
+                h('td',{key:fld,className:D+' mono',
+                  style:{fontSize:12,color:l[fld]?(isMgr?'#7090E0':'#555'):(isMgr?'#2A2A5A':'#CCC'),cursor:isMgr?'pointer':'default'},
+                  onClick:()=>isMgr&&setEL(l)},
+                  l[fld]?h('span',{style:{textDecoration:isMgr?'underline dotted':'none',textUnderlineOffset:'2px'}},fmtS(l[fld])):h('span',null,'—')
+                )
+              ),
+              h('td',{className:D,style:{fontWeight:600,color:isMgr?'#86EFAC':'#555',fontSize:13}},dur(l.pickStart,l.pickEnd)),
+              h('td',{className:D,style:{fontWeight:600,color:isMgr?'#86EFAC':'#555',fontSize:13}},dur(l.scanStart,l.scanEnd)),
+              h('td',{className:D},h('span',{className:'pill '+STC[si]},STL[si])),
+              h('td',{className:D,style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',color:isMgr?'#7070A0':'#888',fontSize:11}},
+                l.memo||'—'
+              ),
+              h('td',{className:D},
+                h('div',{style:{display:'flex',gap:4,alignItems:'center'}},
+                  /* Worker actions */
+                  !isMgr&&!l.pickStart&&h('button',{className:'ab start',onClick:()=>startPick(l.id)},'▶ Start'),
+                  !isMgr&&l.pickStart&&!l.pickEnd&&h('button',{className:'ab done',onClick:()=>endPick(l.id)},'✓ Done'),
+                  !isMgr&&manual&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
+                  !isMgr&&manual&&l.pickEnd&&l.scanStart&&st!=='complete'&&h(Fragment,null,
+                    ...[1,5,10].map(n=>h('button',{key:n,className:'ab plus',onClick:()=>addN(l.id,n),style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},'+'+n))
+                  ),
+                  !isMgr&&!manual&&l.pickEnd&&!l.scanStart&&h('span',{style:{fontSize:11,color:'#AAA',fontStyle:'italic'}},'→ Scan Station'),
+                  !isMgr&&st==='complete'&&h('span',{style:{fontSize:14}},'✅'),
+                  /* Manager actions — always visible in manager mode */
+                  isMgr&&h('button',{className:'ab edit-btn',onClick:()=>setEL(l)},'Edit'),
+                  isMgr&&h('button',{className:'ab del-btn',onClick:()=>delFromTable(l.id)},'Del')
+                )
+              )
+            );
+          })
+        )
+      )
+    );
+  };
+
+  /* ══════════════════════════
+     NAV
+  ══════════════════════════ */
+  const Nav=()=>h('div',{className:'nav '+D},
+    h('div',{className:'logo-box '+D},
+      h('svg',{width:15,height:13,viewBox:'0 0 14 14',fill:'none'},
+        h('rect',{x:'0.6',y:'2.6',width:'12.8',height:'8.8',rx:'1.2',stroke:isMgr?'#fff':'#854F0B',strokeWidth:'1.3'}),
+        h('path',{d:'M0.6 5.4h12.8M4.6 5.4v6',stroke:isMgr?'#fff':'#854F0B',strokeWidth:'1.3'})
+      )
+    ),
+    h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
+    h('span',{className:'app-ver '+D},'v18'),
+
+    /* Manager mode pill */
+    isMgr&&h(Fragment,null,
+      h('div',{className:'nav-sep dark'}),
+      h('div',{className:'mgr-pill'},
+        h('svg',{width:9,height:9,viewBox:'0 0 16 16',fill:'none'},h('rect',{x:3,y:7,width:10,height:8,rx:'1.5',stroke:'currentColor',strokeWidth:'1.5'}),h('path',{d:'M5 7V5a3 3 0 0 1 6 0v2',stroke:'currentColor',strokeWidth:'1.5',strokeLinecap:'round'})),
+        'Manager'
+      )
+    ),
+
+    h('div',{className:'nav-sep '+D}),
+
+    /* Navigation tabs — always Records visible, manager extras only when unlocked */
+    ...[
+      ['records','Records'],
+      ['scan','Scan Station'],
+      // Manager-only tabs
+      ...(isMgr?[['create',editId?'Edit List':'Create List'],['settings','Settings']]:[] ),
+    ].map(([p,l])=>h('button',{key:p,onClick:()=>setTab(p),className:'nav-btn '+D+(tab===p?' on':'')},l)),
+
+    h('div',{style:{flex:1}}),
+
+    syncSt&&h('span',{style:{fontSize:10,color:isMgr?'#86EFAC':'#1A6A08',marginRight:8,fontWeight:500}},syncSt),
+
+    /* Manager toggle button */
+    isMgr
+      ? h('button',{className:'mgr-btn lock',onClick:()=>{setMgr(false);setTab('records');}},
+          '🔓 Worker Mode'
+        )
+      : h('button',{className:'mgr-btn unlock',onClick:()=>setPin(true)},
+          h('svg',{width:11,height:11,viewBox:'0 0 16 16',fill:'none'},h('rect',{x:3,y:7,width:10,height:8,rx:'1.5',stroke:'currentColor',strokeWidth:'1.4'}),h('path',{d:'M5 7V5a3 3 0 0 1 6 0v2',stroke:'currentColor',strokeWidth:'1.4',strokeLinecap:'round'})),
+          'Manager'
+        )
+  );
+
+  /* ══════════════════════════
+     RECORDS PAGE (shared, both modes)
+  ══════════════════════════ */
+  const RecordsPage=()=>h(Fragment,null,
+    SB(),
+    CTabs({actions:isMgr&&h(Fragment,null,
+      h('button',{className:'btn-primary',style:{padding:'5px 14px',fontSize:12},
+        onClick:()=>{setMF({pgNo:'',cat:cat!=='All'?cat:'Official 1',sku:'',orders:'',memo:''});setEId(null);setTab('create');}},'+ Create List'),
+      h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'5px 11px',fontSize:12},onClick:exportCSV},'Export CSV'),
+      /* Cleanup buttons — manager only */
+      todayL.filter(l=>getSt(l)==='complete').length>0&&h('button',{className:'ab today-del',onClick:delCompleted},'Clear Completed'),
+      todayL.length>0&&h('button',{className:'ab today-del',onClick:delAllToday},'Clear All Today'),
+    )}),
+    h(Clock,{dark:isMgr}),
+    isMgr
+      ? h('div',{className:'info-note dark'},'💡 Click any time value in the table to edit · "Clear Completed" removes done lists (data stays in Sheets)')
+      : todayL.length>0&&h('div',{className:'info-note light'},todayL.length+' pick list'+(todayL.length!==1?'s':'')+' today · Assign your name as Picker then click ▶ Start'),
+    RT()
+  );
+
+  /* ══════════════════════════
+     SCAN PAGE
+  ══════════════════════════ */
+  const ScanPage=()=>h('div',{style:{padding:'20px 24px 60px',maxWidth:560,background:'#ECEAE5',minHeight:'calc(100vh - 52px)'}},
+    h('h2',{style:{fontSize:18,fontWeight:700,color:'#111',marginBottom:4}},'Scan Station'),
+    h('p',{style:{fontSize:13,color:'#666',marginBottom:14}},'Scan packing slip barcode → auto-detect channel → update count'),
+    h('div',{style:{marginBottom:14,padding:'10px 14px',background:'#FFF0DC',borderRadius:10,fontSize:11,color:'#7A3A00',border:'1px solid #F5C070',display:'flex',gap:8,alignItems:'center'}},
+      h('span',{style:{flexShrink:0}},'ℹ️'),h('span',null,h('strong',null,'Seeding · Reshipment'),': use +1/+5/+10 in the Records table.')
+    ),
+    h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.25rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
+      h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'Barcode Input'),
+      h('input',{ref:scanRef,value:scanIn,onChange:e=>setSI(e.target.value),onKeyDown:handleScan,autoFocus:true,
+        placeholder:'Scan packing slip or type Order# then Enter…',
+        style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid '+(scanErr?'#E24B4A':'#5B5EF4'),borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}}),
+      lastScan&&h('div',{style:{marginTop:12,padding:'12px 14px',borderRadius:10,background:lastScan.ok?CA[lastScan.cat].bg:'#FFF0DC',border:'1px solid '+(lastScan.ok?CA[lastScan.cat].br:'#F5C070')}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+          h('div',null,
+            h('div',{style:{fontSize:13,fontWeight:700,color:lastScan.ok?CA[lastScan.cat].tx:'#7A3A00'}},lastScan.ok?'✓ '+lastScan.cat+' — '+lastScan.store:'⚠ '+lastScan.cat),
+            h('div',{className:'mono',style:{fontSize:11,marginTop:3,color:'#666'}},lastScan.barcode)
+          ),
+          lastScan.pgNo&&h('div',{style:{textAlign:'right',marginLeft:14}},
+            h('div',{style:{fontSize:9,fontWeight:700,color:'#999',textTransform:'uppercase',marginBottom:2}},'Pick List'),
+            h('div',{className:'mono',style:{fontWeight:700,fontSize:14,color:'#111'}},lastScan.pgNo)
+          )
+        )
+      ),
+      scanErr&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:10,background:'#FCEBEB',color:'#9B2020',fontSize:12,border:'1px solid #F5BBBB',fontWeight:500}},scanErr)
+    )
+  );
+
+  /* ══════════════════════════
+     CREATE LIST PAGE (manager only)
+  ══════════════════════════ */
+  const CreatePage=()=>h('div',{className:'page-wrap dark'},
+    h('div',{style:{maxWidth:540}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:20}},
+        h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'5px 13px',borderRadius:100,fontSize:12},onClick:()=>{setTab('records');setEId(null);}},'← Back'),
+        h('div',null,
+          h('h2',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF'}},editId?'Edit Pick List':'Create New Pick List'),
+          h('div',{style:{fontSize:12,color:'#555',marginTop:2}},editId?('Editing: '+lists.find(x=>x.id===editId)?.pgNo):('Category: '+mf.cat))
+        )
+      ),
+      h('div',{className:'card-dark'},
+        /* Category badge */
+        h('div',{style:{display:'inline-flex',alignItems:'center',gap:8,marginBottom:14,padding:'7px 13px',background:(CA[mf.cat]?.bg||'#eee')+'22',border:'1px solid '+(CA[mf.cat]?.br||'#aaa')+'44',borderRadius:9}},
+          h('span',{style:{fontSize:11,color:CA[mf.cat]?.ac||'#888',fontWeight:700}},'Category:'),
+          h('span',{className:'pill',style:{background:CA[mf.cat]?.bg,color:CA[mf.cat]?.tx,borderColor:CA[mf.cat]?.br,fontSize:11}},mf.cat),
+          h('span',{style:{fontSize:11,color:'#444',marginLeft:4}},'(selected from tab)')
+        ),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}},
+          h('div',{style:{gridColumn:'1/-1'}},
+            h('label',{className:'lbl dark'},'Pick List No. *'),
+            h('input',{className:'inp-dark',value:mf.pgNo,onChange:e=>setMF(p=>({...p,pgNo:e.target.value})),placeholder:'PG00004473',style:{maxWidth:260}})
+          ),
+          h('div',null,h('label',{className:'lbl dark'},'SKU Count'),h('input',{className:'inp-dark',type:'number',min:0,value:mf.sku,onChange:e=>setMF(p=>({...p,sku:e.target.value})),placeholder:'0'})),
+          h('div',null,h('label',{className:'lbl dark'},'Order Count *'),h('input',{className:'inp-dark',type:'number',min:1,value:mf.orders,onChange:e=>setMF(p=>({...p,orders:e.target.value})),placeholder:'200'})),
+          h('div',{style:{gridColumn:'1/-1'}},h('label',{className:'lbl dark'},'Remarks'),h('input',{className:'inp-dark',value:mf.memo,onChange:e=>setMF(p=>({...p,memo:e.target.value})),placeholder:'Optional note for workers'}))
+        ),
+        h('div',{style:{background:'rgba(91,94,244,0.1)',border:'1px solid rgba(91,94,244,0.2)',borderRadius:9,padding:'10px 14px',marginBottom:16,fontSize:11,color:'#818CF8',lineHeight:1.6}},
+          '💡 Picker is assigned by workers themselves in the Records table.',h('br'),'You can override picker and timestamps via the Edit button.'
+        ),
+        h('div',{style:{display:'flex',justifyContent:'flex-end',gap:10}},
+          h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'9px 20px'},onClick:()=>setTab('records')},'Cancel'),
+          h('button',{className:'btn-primary',style:{padding:'10px 24px'},onClick:mSave},editId?'Save Changes':'Create')
+        )
+      )
+    )
+  );
+
+  /* ══════════════════════════
+     SETTINGS PAGE (manager only)
+  ══════════════════════════ */
+  const SettingsPage=()=>h('div',{className:'page-wrap dark'},
+    h('div',{style:{maxWidth:560}},
+      h('h2',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:16}},'Settings'),
+      /* Google Sheets */
+      h('div',{className:'card-dark',style:{marginBottom:12}},
+        h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Google Sheets Endpoint'),
+        h('p',{style:{fontSize:12,color:'#555',margin:'0 0 10px',lineHeight:1.6}},'Apps Script URL — auto-syncs on every status change.'),
+        h('input',{className:'inp-dark',value:wh,onChange:e=>setWH(e.target.value),placeholder:'https://script.google.com/macros/s/…/exec',style:{marginBottom:10}}),
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+          h('button',{className:'btn-primary',style:{padding:'8px 18px'},onClick:()=>{if(!wh)return;syncData(wh,'bulkLists',{lists}).then(()=>syncData(wh,'bulkScanLog',{entries:log})).then(()=>setSS('✓ Pushed')).catch(()=>setSS('⚠ Failed'));}},'Push To Server'),
+          h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'8px 14px'},onClick:exportCSV},'Export CSV'),
+          syncSt&&h('span',{style:{fontSize:11,color:'#86EFAC',fontWeight:500}},syncSt)
+        )
+      ),
+      /* Data management */
+      h('div',{className:'card-dark',style:{marginBottom:12}},
+        h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Data Cleanup'),
+        h('p',{style:{fontSize:12,color:'#555',margin:'0 0 12px',lineHeight:1.6}},'Clears records from the browser. Data in Google Sheets is never deleted.'),
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+          h('button',{className:'ab today-del',style:{padding:'7px 14px',fontSize:12},onClick:delCompleted},
+            'Clear Completed ('+todayL.filter(l=>getSt(l)==='complete').length+')'
+          ),
+          h('button',{className:'ab today-del',style:{padding:'7px 14px',fontSize:12},onClick:delAllToday},
+            'Clear All Today ('+todayL.length+')'
+          ),
+          h('button',{className:'ab today-del',style:{padding:'7px 14px',fontSize:12,color:'#9B2020',borderColor:'#F5BBBB'},
+            onClick:()=>{if(!window.confirm('Clear ALL records from ALL dates?\n\nGoogle Sheets data is NOT affected.'))return;setLists([]);}},
+            'Clear All Dates'
+          )
+        )
+      ),
+      /* Pickers */
+      h('div',{className:'card-dark',style:{marginBottom:12}},
+        h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Picker Names'),
+        h('textarea',{className:'ta-dark',value:pksStr,onChange:e=>setPKS(e.target.value),rows:3,placeholder:'Name1, Name2, Name3',style:{marginBottom:6,outline:'none'}}),
+        h('div',{style:{fontSize:11,color:'#444'}},'Active: '+pickers.join(' · '))
+      ),
+      /* PIN */
+      h('div',{className:'card-dark',style:{marginBottom:12}},
+        h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Change Manager PIN'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}},
+          h('div',null,h('label',{className:'lbl dark'},'New PIN'),h('input',{className:'inp-dark mono',type:'password',maxLength:4,value:np1,onChange:e=>setNP1(e.target.value),placeholder:'• • • •',style:{fontSize:20,letterSpacing:'.4em',textAlign:'center'}})),
+          h('div',null,h('label',{className:'lbl dark'},'Confirm'),h('input',{className:'inp-dark mono',type:'password',maxLength:4,value:np2,onChange:e=>setNP2(e.target.value),placeholder:'• • • •',style:{fontSize:20,letterSpacing:'.4em',textAlign:'center'}}))
+        ),
+        h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+          h('button',{className:'btn-primary',style:{padding:'8px 18px'},onClick:changePin},'Update PIN'),
+          pm&&h('span',{style:{fontSize:12,color:pm.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:500}},pm)
+        )
+      ),
+      /* Prefix map */
+      h('div',{className:'card-dark'},
+        h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:10}},'Order Prefix Detection Map'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}},
+          PREFIX_MAP.map((m2,i)=>{const cs=CA[m2.cat];return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',padding:'7px 10px',background:cs.bg+'18',borderRadius:8,border:'1px solid '+cs.br+'33'}},
+            h('span',{className:'mono',style:{fontWeight:700,color:cs.ac,fontSize:11}},m2.p),
+            h('span',{style:{color:cs.ac,opacity:.6,fontSize:11}},m2.store)
+          );})
+        )
+      )
+    )
+  );
+
+  /* ═══ FINAL RENDER ═══ */
+  try{
+    return h(Fragment,null,
+      Nav(),
+      tab==='records' &&RecordsPage(),
+      tab==='scan'    &&ScanPage(),
+      tab==='create'  &&isMgr&&CreatePage(),
+      tab==='settings'&&isMgr&&SettingsPage(),
+      showPin&&h(PinModal,{onOK:()=>{setMgr(true);setPin(false);},onCancel:()=>setPin(false)}),
+      editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:handleDel,onCancel:()=>setEL(null)})
+    );
+  }catch(renderErr){
+    console.error('Render error:', renderErr);
+    return h('div',{style:{padding:'30px',fontFamily:'monospace',color:'#c00',background:'#fff'}},
+      h('h2',null,'Render Error'),
+      h('pre',null,renderErr.message),
+      h('p',null,'Please check browser console (F12) for details.'),
+      h('button',{onClick:()=>{setEL(null);setTab('records');},style:{marginTop:'10px',padding:'8px 16px',cursor:'pointer'}},'Reset to Records')
+    );
+  }
+}
+
+try{
+  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+}catch(err){
+  document.getElementById('root').innerHTML='<div style="padding:40px;font-family:sans-serif;color:#c00"><h2>Error</h2><pre>'+err.message+'</pre></div>';
+  console.error(err);
+}
+</script>
+</body>
+</html>
