@@ -588,6 +588,8 @@ function App(){
   const [ssFetching,setSSF] =useState(false);
   const [ssResult,setSSR]   =useState(null);
   const [ssMsg,setSSM]      =useState('');
+  const [ssModal,setSSModal]=useState(false);
+  const [ssModalData,setSSModalData]=useState([]);
 
   const scanRef=useRef(null);
   const pickers=pksStr.split(',').map(s=>s.trim()).filter(Boolean);
@@ -975,6 +977,35 @@ function App(){
       )
     )
   );
+
+  const openSSModal=()=>{
+    if(!ssResult||!ssResult.summary)return;
+    const rows=ssResult.summary.filter(s=>s.orderCount&&s.category!=='Unknown').map(s=>({
+      category:s.category,orderCount:s.orderCount,storeList:s.storeList,pgNo:'',sku:'',
+    }));
+    setSSModalData(rows);
+    setSSModal(true);
+  };
+
+  const confirmCreateLists=()=>{
+    ssModalData.forEach(s=>{
+      if(!s.orderCount)return;
+      const existing=lists.find(l=>l.category===s.category&&l.date===today());
+      const pgNo=s.pgNo||('PG'+Date.now().toString().slice(-8));
+      if(existing){
+        upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,pgNo});
+      } else {
+        const nl={id:uid(),pgNo,category:s.category,sku:+s.sku||0,
+          orderCount:s.orderCount,scanned:0,pickStart:null,pickEnd:null,
+          scanStart:null,scanEnd:null,worker:'',date:today(),memo:'Auto from ShipStation'};
+        setLists(p=>[...p,nl]);
+        sync('upsertList',{list:nl});
+      }
+    });
+    setSSM('✓ Pick lists created/updated!');
+    setSSModal(false);
+    setTab('records');
+  };
 
   /* ══════════════════════════
      SETTINGS PAGE (manager only) — 완전 재설계
