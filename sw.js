@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sk-b2c-v18';
+const CACHE_NAME = 'sk-b2c-v19';
 const urlsToCache = [
   '/SK-B2C-Fulfillment/',
   '/SK-B2C-Fulfillment/index.html',
