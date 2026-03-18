@@ -331,7 +331,39 @@ const ts=()=>new Date().toISOString();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
-const dur=(s,e)=>{if(!s)return'—';const end=e?new Date(e):new Date();const m=Math.round((end-new Date(s))/60000);if(isNaN(m)||m<0)return'—';return m<60?m+'m':Math.floor(m/60)+'h '+(m%60)+'m';};
+const dur=(s,e)=>{
+  if(!s)return'—';
+  const start=new Date(s);const end=e?new Date(e):new Date();
+  if(isNaN(start)||isNaN(end)||end<=start)return'—';
+  // 근무시간 설정 (분 단위)
+  const WS=8*60+30;   // 08:30 출근
+  const LS=12*60;     // 12:00 점심시작
+  const LE=13*60;     // 13:00 점심끝
+  const WE=17*60+30;  // 17:30 퇴근
+  const toM=d=>d.getHours()*60+d.getMinutes();
+  // 하루 내 근무분 계산
+  const dayWork=(sm,em)=>{
+    sm=Math.max(sm,WS);em=Math.min(em,WE);
+    if(em<=sm)return 0;
+    let m=0;
+    if(sm<LS)m+=Math.min(em,LS)-sm;       // 오전
+    if(em>LE)m+=em-Math.max(sm,LE);       // 오후
+    return Math.max(0,m);
+  };
+  let total=0;
+  let cur=new Date(start);
+  let guard=0;
+  while(cur<end&&guard++<400){
+    const y=cur.getFullYear(),mo=cur.getMonth(),d=cur.getDate();
+    const nextDay=new Date(y,mo,d+1,8,30,0);
+    const sm=toM(cur);
+    const em=cur.toDateString()===end.toDateString()?toM(end):WE;
+    total+=dayWork(sm,Math.min(em,WE));
+    cur=nextDay;if(cur>=end)break;
+  }
+  if(total<=0)return'—';
+  return total<60?total+'m':Math.floor(total/60)+'h '+(total%60)+'m';
+};
 const detect=b=>{for(const m of PREFIX_MAP)if(b.trim().toUpperCase().startsWith(m.p.toUpperCase()))return{cat:m.cat,store:m.store};return null;};
 const getSt=l=>{const oc=l.orderCount||0;if(oc>0&&l.scanned>=oc&&l.scanEnd)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
