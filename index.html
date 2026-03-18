@@ -292,7 +292,7 @@ button{cursor:pointer;font-family:inherit;transition:all .15s;user-select:none;d
 <div id="root"><div style="display:flex;height:100vh;align-items:center;justify-content:center;color:#888">Loading…</div></div>
 <script>
 /* ══════ CONFIG ══════ */
-const LS={PIN:'b2c18_pin',LISTS:'b2c18_lists',LOG:'b2c18_log',WH:'b2c18_wh',PKS:'b2c18_pickers'};
+const LS={PIN:'b2c18_pin',LISTS:'b2c18_lists',LOG:'b2c18_log',WH:'b2c18_wh',PKS:'b2c18_pickers',PKC_MAP:'b2c18_pkcolors'};
 const DEF_PIN='1234';
 const DEF_PKS='Kim Jisu,Park Minho,Lee Hayeon,Choi Dawon,Jung Soyeon,Helper 1,Helper 2';
 const PREFIX_MAP=[
@@ -319,8 +319,20 @@ const CA={
   'Seeding':    {bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070',ac:'#E89820'},
   'Reshipment': {bg:'#EEEEED',tx:'#383836',br:'#C0C0B8',ac:'#808078'},
 };
-const PKC=[{bg:'#E6F1FB',tx:'#1254A0'},{bg:'#EDECFE',tx:'#4038B5'},{bg:'#E0F5D0',tx:'#1A6A08'},{bg:'#FFF0DC',tx:'#7A3A00'},{bg:'#FBE8F0',tx:'#8A1A5A'},{bg:'#EEEEED',tx:'#484846'},{bg:'#E8F5D0',tx:'#2A6A0A'},{bg:'#FEE8CC',tx:'#7A3A00'}];
-const pkC=i=>PKC[i%PKC.length];
+const PKC_PRESETS=[
+  {bg:'#E6F1FB',tx:'#1254A0',label:'Blue'},
+  {bg:'#EDECFE',tx:'#4038B5',label:'Purple'},
+  {bg:'#E0F5D0',tx:'#1A6A08',label:'Green'},
+  {bg:'#FFF0DC',tx:'#7A3A00',label:'Orange'},
+  {bg:'#FBE8F0',tx:'#8A1A5A',label:'Pink'},
+  {bg:'#EEEEED',tx:'#484846',label:'Gray'},
+  {bg:'#E8F5D0',tx:'#2A6A0A',label:'Lime'},
+  {bg:'#FEE8CC',tx:'#7A3A00',label:'Peach'},
+  {bg:'#D0F0FF',tx:'#005A8A',label:'Sky'},
+  {bg:'#FFD6D6',tx:'#8A0000',label:'Red'},
+  {bg:'#D6FFE8',tx:'#006633',label:'Mint'},
+  {bg:'#FFF5CC',tx:'#7A6000',label:'Yellow'},
+];
 const ST=['pending','picking','picked','scanning','complete'];
 const STL=['Pending','Picking','Pick Done','Scanning','Complete'];
 const STC=['s0','s1','s2','s3','s4'];
@@ -372,7 +384,8 @@ async function syncData(url,action,payload){if(!url)return;try{await fetch(url,{
 const {createElement:h,useState,useRef,useEffect,useCallback,Fragment}=React;
 
 /* ══════ PICKER SELECT ══════ */
-function PickerSelect({value,onChange,pickers,dark}){
+function PickerSelect({value,onChange,pickers,dark,pkC}){
+  pkC=pkC||(i=>({bg:'#E6F1FB',tx:'#1254A0'}));
   const [open,setOpen]=useState(false);
   const [pos,setPos]=useState({top:0,left:0,w:0});
   const btnRef=useRef(null);const menuRef=useRef(null);
@@ -388,7 +401,7 @@ function PickerSelect({value,onChange,pickers,dark}){
     }
     setOpen(o=>!o);
   };
-  const idx=pickers.indexOf(value);const wc=idx>=0?pkC(idx):{bg:'transparent',tx:'#888'};
+  const wc=value?pkC(value):pkC(0);
   const D=dark?'dark':'light';
   return h(Fragment,null,
     h('div',{ref:btnRef,className:'pk-wrap'},
@@ -400,7 +413,7 @@ function PickerSelect({value,onChange,pickers,dark}){
     ),
     open&&h('div',{ref:menuRef,className:'pk-menu '+D,style:{top:pos.top,left:pos.left,minWidth:pos.w}},
       h('div',{className:'pk-item '+D,style:{fontStyle:'italic',fontSize:12,color:dark?'#555':'#BBB'},onClick:()=>{onChange('');setOpen(false);}},'— Unassign —'),
-      pickers.map((w,i)=>{const c=pkC(i);return h('div',{key:w,className:'pk-item '+D,onClick:()=>{onChange(w);setOpen(false);}},
+      pickers.map((w,i)=>{const c=pkC(w);return h('div',{key:w,className:'pk-item '+D,onClick:()=>{onChange(w);setOpen(false);}},
         h('div',{className:'pk-dot',style:{background:c.bg,borderColor:c.tx}}),
         h('span',{style:{flex:1}},w),
         value===w&&h('span',{style:{color:c.tx,fontWeight:700,fontSize:14}},'✓')
@@ -537,6 +550,20 @@ function App(){
   const [log,setLog]   =useState(()=>lsGet(LS.LOG,[]));
   const [wh,setWH]     =useState(()=>localStorage.getItem(LS.WH)||'');
   const [pksStr,setPKS]=useState(()=>localStorage.getItem(LS.PKS)||DEF_PKS);
+  const [pkColorMap,setPkColorMap]=useState(()=>lsGet(LS.PKC_MAP,{}));
+
+  useEffect(()=>lsSet(LS.PKC_MAP,pkColorMap),[pkColorMap]);
+
+  // Picker 색상 조회 — 커스텀 설정 우선, 없으면 순서대로
+  const pkC=(nameOrIdx)=>{
+    if(typeof nameOrIdx==='string'){
+      if(pkColorMap[nameOrIdx])return pkColorMap[nameOrIdx];
+      const pickers2=pksStr.split(',').map(s=>s.trim()).filter(Boolean);
+      const i=pickers2.indexOf(nameOrIdx);
+      return PKC_PRESETS[(i>=0?i:0)%PKC_PRESETS.length];
+    }
+    return PKC_PRESETS[nameOrIdx%PKC_PRESETS.length];
+  };
 
   // ── UI ──
   const [showPin,setPin]=useState(false);
@@ -712,10 +739,10 @@ function App(){
   /* ── Stats Bar ── */
   const SB=()=>h('div',{className:'stats-bar '+D},
     [
-      {lbl:'Total SKU',    big:tSKU,  sub:'items · '+doneSKU+' done', pct:skuPct, showPct:true,  clr:isMgr?'#818CF8':'#3B8FE0'},
-      {lbl:'Total Orders', big:tScan, sub:'/'+tOrd,                   pct:ordPct, showPct:true,  clr:isMgr?'#34D399':'#5DA832'},
-      {lbl:'Scan Progress',big:tScan, sub:'/'+tOrd,                   pct:ordPct, showPct:true,  clr:isMgr?'#FBBF24':'#E89820'},
-      {lbl:'Jobs Complete',big:tDone, sub:'/'+todayL.length,          pct:jobPct, showPct:true,  clr:isMgr?'#F472B6':'#C84A82'},
+      {lbl:'Total SKU',    big:doneSKU, sub:'/'+tSKU,          pct:skuPct, showPct:true,  clr:isMgr?'#818CF8':'#3B8FE0'},
+      {lbl:'Total Orders', big:tScan,  sub:'/'+tOrd,           pct:ordPct, showPct:true,  clr:isMgr?'#34D399':'#5DA832'},
+      {lbl:'Scan Progress',big:tScan,  sub:'/'+tOrd,           pct:ordPct, showPct:true,  clr:isMgr?'#FBBF24':'#E89820'},
+      {lbl:'Jobs Complete',big:tDone,  sub:'/'+todayL.length,  pct:jobPct, showPct:true,  clr:isMgr?'#F472B6':'#C84A82'},
       {lbl:'Active Pickers',big:actWk.length,sub:actWk.length?actWk.slice(0,2).join(', ')+(actWk.length>2?'…':''):'none',pct:0,showPct:false,clr:isMgr?'#60A5FA':'#3B8FE0'},
     ].map((c,i)=>h('div',{key:i,className:'stat '+D},
       h('div',{className:'stat-lbl '+D},c.lbl),
@@ -756,7 +783,7 @@ function App(){
       h('table',{className:'tbl'},
         h('thead',null,
           h('tr',null,
-            ['#','PG NO','CATEGORY','SKU','ORDERS','SCANNED','%','PICKER','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
+            ['#','PG NO','CATEGORY','SKU','ORDERS','SCANNED','PICKER','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
               h('th',{key:col,className:D},col)
             )
           )
@@ -772,8 +799,7 @@ function App(){
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.sku||0),
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.orderCount||0),
               h('td',{className:D+' c',style:{fontWeight:700,fontSize:15,color:st==='complete'?(isMgr?'#86EFAC':'#1A6A08'):(isMgr?'#fff':'#111')}},l.scanned),
-              h('td',{className:D+' c',style:{fontWeight:700,fontSize:13,color:cs.ac}},pct+'%'),
-              h('td',{className:D},h(PickerSelect,{value:l.worker||'',onChange:n=>setWrk(l.id,n),pickers,dark:isMgr})),
+              h('td',{className:D},h(PickerSelect,{value:l.worker||'',onChange:n=>setWrk(l.id,n),pickers,dark:isMgr,pkC})),
               ...[['pickStart'],['pickEnd'],['scanStart'],['scanEnd']].map(([fld])=>
                 h('td',{key:fld,className:D+' mono',
                   style:{fontSize:12,color:l[fld]?(isMgr?'#7090E0':'#555'):(isMgr?'#2A2A5A':'#CCC'),cursor:isMgr?'pointer':'default'},
@@ -797,7 +823,7 @@ function App(){
                     ...[1,5,10].map(n=>h('button',{key:n,className:'ab plus',onClick:()=>addN(l.id,n),style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},'+'+n))
                   ),
                   !isMgr&&!manual&&l.pickEnd&&!l.scanStart&&h('span',{style:{fontSize:11,color:'#AAA',fontStyle:'italic'}},'→ Scan Station'),
-                  !isMgr&&st==='complete'&&h('span',{style:{fontSize:14}},'✅'),
+                  !isMgr&&st==='complete'&&h('button',{className:'ab done',style:{cursor:'default',opacity:0.85}},'✓ Complete'),
                   /* Manager actions — always visible in manager mode */
                   isMgr&&h('button',{className:'ab edit-btn',onClick:()=>setEL(l)},'Edit'),
                   isMgr&&h('button',{className:'ab del-btn',onClick:()=>delFromTable(l.id)},'Del')
@@ -984,9 +1010,23 @@ function App(){
       ),
       /* Pickers */
       h('div',{className:'card-dark',style:{marginBottom:12}},
-        h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Picker Names'),
-        h('textarea',{className:'ta-dark',value:pksStr,onChange:e=>setPKS(e.target.value),rows:3,placeholder:'Name1, Name2, Name3',style:{marginBottom:6,outline:'none'}}),
-        h('div',{style:{fontSize:11,color:'#444'}},'Active: '+pickers.join(' · '))
+        h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Picker Names & Colors'),
+        h('textarea',{className:'ta-dark',value:pksStr,onChange:e=>setPKS(e.target.value),rows:3,placeholder:'Name1, Name2, Name3',style:{marginBottom:10,outline:'none'}}),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+          pickers.map(w=>{
+            const cur=pkC(w);
+            return h('div',{key:w,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'rgba(255,255,255,0.04)',borderRadius:9,border:'1px solid rgba(255,255,255,0.08)'}},
+              h('div',{style:{width:28,height:28,borderRadius:7,background:cur.bg,border:'2px solid '+cur.tx,flexShrink:0}}),
+              h('span',{style:{flex:1,fontWeight:600,color:'#E8E6FF',fontSize:13}},w),
+              h('div',{style:{display:'flex',gap:5,flexWrap:'wrap'}},
+                PKC_PRESETS.map((c,ci)=>h('div',{key:ci,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),
+                  style:{width:20,height:20,borderRadius:5,background:c.bg,border:cur===c||pkColorMap[w]===c?'2.5px solid '+c.tx:'2px solid transparent',cursor:'pointer',boxSizing:'border-box',transition:'transform .1s'},
+                  title:c.label
+                }))
+              )
+            );
+          })
+        )
       ),
       /* PIN */
       h('div',{className:'card-dark',style:{marginBottom:12}},
