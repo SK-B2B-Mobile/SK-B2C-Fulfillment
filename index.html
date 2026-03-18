@@ -328,7 +328,7 @@ const STC=['s0','s1','s2','s3','s4'];
 /* ══════ UTILS ══════ */
 const uid=()=>Math.random().toString(36).slice(2,10);
 const ts=()=>new Date().toISOString();
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
 const dur=(s,e)=>{if(!s)return'—';const end=e?new Date(e):new Date();const m=Math.round((end-new Date(s))/60000);if(isNaN(m)||m<0)return'—';return m<60?m+'m':Math.floor(m/60)+'h '+(m%60)+'m';};
