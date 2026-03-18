@@ -976,230 +976,220 @@ function App(){
     )
   );
 
-  // SS Create Modal state
-  const [ssModal,setSSModal]=useState(false);
-  const [ssModalData,setSSModalData]=useState([]);
-
-  const openSSModal=()=>{
-    if(!ssResult||!ssResult.summary)return;
-    const rows=ssResult.summary.filter(s=>s.orderCount&&s.category!=='Unknown').map(s=>({
-      category:s.category,orderCount:s.orderCount,storeList:s.storeList,
-      pgNo:'',sku:'',
-    }));
-    setSSModalData(rows);
-    setSSModal(true);
-  };
-
-  const confirmCreateLists=()=>{
-    ssModalData.forEach(s=>{
-      if(!s.orderCount)return;
-      const existing=lists.find(l=>l.category===s.category&&l.date===today());
-      const pgNo=s.pgNo||('PG'+Date.now().toString().slice(-8));
-      if(existing){
-        upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,pgNo:pgNo});
-      } else {
-        const nl={id:uid(),pgNo:pgNo,category:s.category,sku:+s.sku||0,
-          orderCount:s.orderCount,scanned:0,pickStart:null,pickEnd:null,
-          scanStart:null,scanEnd:null,worker:'',date:today(),memo:'Auto from ShipStation'};
-        setLists(p=>[...p,nl]);
-        sync('upsertList',{list:nl});
-      }
-    });
-    setSSM('✓ Pick lists created/updated!');
-    setSSModal(false);
-    setTab('records');
-  };
-
   /* ══════════════════════════
-     SETTINGS PAGE (manager only)
+     SETTINGS PAGE (manager only) — 완전 재설계
   ══════════════════════════ */
-  const SettingsPage=()=>h('div',{style:{background:'#0E0E1C',minHeight:'calc(100vh - 56px)',padding:'24px 32px 60px'}},
-    /* SS Create Modal */
-    ssModal&&h('div',{className:'overlay'},
-      h('div',{style:{background:'#1C1C40',border:'1.5px solid rgba(255,255,255,0.12)',borderRadius:16,width:'100%',maxWidth:640,maxHeight:'calc(100vh - 48px)',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.6)'}},
-        h('div',{style:{padding:'18px 24px',borderBottom:'1px solid rgba(255,255,255,0.08)',display:'flex',justifyContent:'space-between',alignItems:'center'}},
-          h('div',null,
-            h('div',{style:{fontSize:16,fontWeight:700,color:'#E8E6FF'}},'✅ Create Pick Lists'),
-            h('div',{style:{fontSize:12,color:'#666',marginTop:2}},'Enter PG# and SKU for each channel')
+  const SettingsPage=()=>{
+    const S={
+      page:{background:'#0B0B1A',minHeight:'calc(100vh - 56px)',padding:'32px 40px 80px'},
+      title:{fontSize:22,fontWeight:800,color:'#E8E6FF',marginBottom:28,letterSpacing:'-0.02em'},
+      section:{background:'#13132B',border:'1px solid rgba(255,255,255,0.07)',borderRadius:16,padding:'24px 28px',marginBottom:20},
+      sTitle:{fontSize:13,fontWeight:700,color:'#8888BB',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:16,display:'flex',alignItems:'center',gap:8},
+      label:{display:'block',fontSize:11,fontWeight:700,color:'#6060A0',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:6},
+      divider:{height:1,background:'rgba(255,255,255,0.06)',margin:'16px 0'},
+    };
+    return h('div',{style:S.page},
+      /* SS Create Modal */
+      ssModal&&h('div',{className:'overlay'},
+        h('div',{style:{background:'#1C1C40',border:'1.5px solid rgba(255,255,255,0.12)',borderRadius:20,width:'100%',maxWidth:580,maxHeight:'calc(100vh - 48px)',overflowY:'auto',boxShadow:'0 24px 80px rgba(0,0,0,0.7)'}},
+          h('div',{style:{padding:'22px 28px',borderBottom:'1px solid rgba(255,255,255,0.07)'}},
+            h('div',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Create Pick Lists'),
+            h('div',{style:{fontSize:13,color:'#6060A0'}},'Enter PG# and SKU count for each channel, then create.')
           ),
-          h('button',{onClick:()=>setSSModal(false),className:'btn-sec-dark btn-secondary',style:{padding:'4px 10px',fontSize:11}},'✕')
-        ),
-        h('div',{style:{padding:'16px 24px',display:'flex',flexDirection:'column',gap:10}},
-          ssModalData.map((s,i)=>{
-            const cs={
-              'Official 1':{bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2'},
-              'Official 2':{bg:'#EDECFE',tx:'#4038B5',br:'#B0A8F2'},
-              'Moida & Hola':{bg:'#E0F5D0',tx:'#1A6A08',br:'#90D870'},
-              'TikTok CBT':{bg:'#FBE8F0',tx:'#8A1A5A',br:'#F0A0C8'},
-              'Seeding':{bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070'},
-              'Reshipment':{bg:'#EEEEED',tx:'#383836',br:'#C0C0B8'},
-            }[s.category]||{bg:'#222',tx:'#888',br:'#444'};
-            return h('div',{key:i,style:{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'14px 16px'}},
-              h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:10}},
-                h('span',{className:'pill',style:{background:cs.bg,color:cs.tx,borderColor:cs.br,fontSize:12}},s.category),
-                h('span',{style:{color:'#86EFAC',fontWeight:700,fontSize:15}},s.orderCount+' orders'),
-                h('span',{style:{color:'#555',fontSize:11}},s.storeList)
-              ),
-              h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
-                h('div',null,
-                  h('label',{className:'lbl dark'},'PG No. *'),
-                  h('input',{className:'inp-dark',value:s.pgNo,placeholder:'PG00004473',
-                    onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],pgNo:e.target.value};setSSModalData(nd);}})
+          h('div',{style:{padding:'20px 28px',display:'flex',flexDirection:'column',gap:14}},
+            ssModalData.map((s,i)=>{
+              const cc={bg:CA[s.category]?.bg||'#eee',tx:CA[s.category]?.tx||'#333',br:CA[s.category]?.br||'#ccc'};
+              return h('div',{key:i,style:{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:'16px 20px'}},
+                h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}},
+                  h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+                    h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:12,padding:'4px 12px'}},s.category),
+                    h('span',{style:{color:'#6060A0',fontSize:12}},s.storeList)
+                  ),
+                  h('span',{style:{fontWeight:800,color:'#86EFAC',fontSize:18}},s.orderCount+' orders')
                 ),
-                h('div',null,
-                  h('label',{className:'lbl dark'},'SKU Count'),
-                  h('input',{className:'inp-dark',type:'number',min:0,value:s.sku,placeholder:'0',
-                    onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],sku:e.target.value};setSSModalData(nd);}})
+                h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
+                  h('div',null,
+                    h('label',{style:S.label},'PG No.'),
+                    h('input',{className:'inp-dark',value:s.pgNo,placeholder:'PG00004473',
+                      onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],pgNo:e.target.value};setSSModalData(nd);}})
+                  ),
+                  h('div',null,
+                    h('label',{style:S.label},'SKU Count'),
+                    h('input',{className:'inp-dark',type:'number',min:0,value:s.sku,placeholder:'0',
+                      onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],sku:e.target.value};setSSModalData(nd);}})
+                  )
+                )
+              );
+            })
+          ),
+          h('div',{style:{padding:'20px 28px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',justifyContent:'flex-end',gap:12}},
+            h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'11px 24px',fontSize:14},onClick:()=>setSSModal(false)},'Cancel'),
+            h('button',{className:'btn-primary',style:{padding:'11px 32px',fontSize:14,fontWeight:700},onClick:confirmCreateLists},'🚀 Create All')
+          )
+        )
+      ),
+
+      h('div',{style:{maxWidth:1100,margin:'0 auto'}},
+        h('div',{style:S.title},'Settings'),
+
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,alignItems:'start'}},
+
+          /* ══ LEFT COLUMN ══ */
+          h('div',{style:{display:'flex',flexDirection:'column',gap:20}},
+
+            /* Google Sheets */
+            h('div',{style:S.section},
+              h('div',{style:S.sTitle},'🔗 Google Sheets Endpoint'),
+              h('label',{style:S.label},'Apps Script URL'),
+              h('input',{className:'inp-dark',value:wh,onChange:e=>setWH(e.target.value),
+                placeholder:'https://script.google.com/macros/s/…/exec',
+                style:{marginBottom:14,fontSize:12}}),
+              h('div',{style:{display:'flex',gap:10,alignItems:'center'}},
+                h('button',{className:'btn-primary',style:{padding:'9px 20px'},
+                  onClick:()=>{if(!wh)return;syncData(wh,'bulkLists',{lists}).then(()=>syncData(wh,'bulkScanLog',{entries:log})).then(()=>setSS('✓ Synced')).catch(()=>setSS('⚠ Failed'));}},
+                  '↑ Push To Server'),
+                h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'9px 16px'},onClick:exportCSV},'Export CSV'),
+                syncSt&&h('span',{style:{fontSize:12,color:'#86EFAC',fontWeight:600}},syncSt)
+              )
+            ),
+
+            /* Data Cleanup */
+            h('div',{style:S.section},
+              h('div',{style:S.sTitle},'🗑 Data Cleanup'),
+              h('p',{style:{fontSize:13,color:'#5050A0',marginBottom:16,lineHeight:1.7}},'Removes records from browser only. Google Sheets data is always preserved.'),
+              h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+                h('button',{className:'ab today-del',style:{padding:'10px 16px',fontSize:13,borderRadius:10,textAlign:'left'},onClick:delCompleted},
+                  'Clear Completed  · '+todayL.filter(l=>getSt(l)==='complete').length+' lists'
+                ),
+                h('button',{className:'ab today-del',style:{padding:'10px 16px',fontSize:13,borderRadius:10,textAlign:'left'},onClick:delAllToday},
+                  'Clear All Today  · '+todayL.length+' lists'
+                ),
+                h('button',{className:'ab today-del',style:{padding:'10px 16px',fontSize:13,borderRadius:10,textAlign:'left',borderColor:'rgba(220,38,38,0.4)',color:'#F87171'},
+                  onClick:()=>{if(!window.confirm('Clear ALL records from ALL dates?\n\nGoogle Sheets data is NOT affected.'))return;setLists([]);}},
+                  'Clear All Dates  · All history'
                 )
               )
-            );
-          })
-        ),
-        h('div',{style:{padding:'16px 24px',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',justifyContent:'flex-end',gap:10}},
-          h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'10px 20px'},onClick:()=>setSSModal(false)},'Cancel'),
-          h('button',{className:'btn-primary',style:{padding:'10px 28px',fontSize:14},onClick:confirmCreateLists},'🚀 Create All Pick Lists')
-        )
-      )
-    ),
-    h('div',{style:{maxWidth:1200,margin:'0 auto'}},
-      h('h2',{style:{fontSize:20,fontWeight:700,color:'#E8E6FF',marginBottom:20}},'Settings'),
-      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}},
+            ),
 
-        /* ── LEFT COLUMN ── */
-        h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
-
-          /* Google Sheets */
-          h('div',{className:'card-dark'},
-            h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:6}},'🔗 Google Sheets Endpoint'),
-            h('p',{style:{fontSize:12,color:'#7070A0',margin:'0 0 10px',lineHeight:1.6}},'Apps Script URL — auto-syncs on every status change.'),
-            h('input',{className:'inp-dark',value:wh,onChange:e=>setWH(e.target.value),placeholder:'https://script.google.com/macros/s/…/exec',style:{marginBottom:10}}),
-            h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
-              h('button',{className:'btn-primary',style:{padding:'8px 18px'},onClick:()=>{if(!wh)return;syncData(wh,'bulkLists',{lists}).then(()=>syncData(wh,'bulkScanLog',{entries:log})).then(()=>setSS('✓ Pushed')).catch(()=>setSS('⚠ Failed'));}},'Push To Server'),
-              h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'8px 14px'},onClick:exportCSV},'Export CSV'),
-              syncSt&&h('span',{style:{fontSize:11,color:'#86EFAC',fontWeight:500}},syncSt)
-            )
-          ),
-
-          /* Data Cleanup */
-          h('div',{className:'card-dark'},
-            h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:6}},'🗑 Data Cleanup'),
-            h('p',{style:{fontSize:12,color:'#7070A0',margin:'0 0 12px',lineHeight:1.6}},'Clears records from the browser. Data in Google Sheets is never deleted.'),
-            h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-              h('button',{className:'ab today-del',style:{padding:'7px 14px',fontSize:12},onClick:delCompleted},
-                'Clear Completed ('+todayL.filter(l=>getSt(l)==='complete').length+')'
+            /* Manager PIN */
+            h('div',{style:S.section},
+              h('div',{style:S.sTitle},'🔐 Manager PIN'),
+              h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}},
+                h('div',null,
+                  h('label',{style:S.label},'New PIN'),
+                  h('input',{className:'inp-dark mono',type:'password',maxLength:4,value:np1,
+                    onChange:e=>setNP1(e.target.value),placeholder:'• • • •',
+                    style:{fontSize:24,letterSpacing:'.5em',textAlign:'center',height:52}})
+                ),
+                h('div',null,
+                  h('label',{style:S.label},'Confirm PIN'),
+                  h('input',{className:'inp-dark mono',type:'password',maxLength:4,value:np2,
+                    onChange:e=>setNP2(e.target.value),placeholder:'• • • •',
+                    style:{fontSize:24,letterSpacing:'.5em',textAlign:'center',height:52}})
+                )
               ),
-              h('button',{className:'ab today-del',style:{padding:'7px 14px',fontSize:12},onClick:delAllToday},
-                'Clear All Today ('+todayL.length+')'
-              ),
-              h('button',{className:'ab today-del',style:{padding:'7px 14px',fontSize:12,color:'#9B2020',borderColor:'#F5BBBB'},
-                onClick:()=>{if(!window.confirm('Clear ALL records from ALL dates?\n\nGoogle Sheets data is NOT affected.'))return;setLists([]);}},
-                'Clear All Dates'
+              h('div',{style:{display:'flex',alignItems:'center',gap:12}},
+                h('button',{className:'btn-primary',style:{padding:'10px 22px'},onClick:changePin},'Update PIN'),
+                pm&&h('span',{style:{fontSize:13,color:pm.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:600}},pm)
               )
             )
           ),
 
-          /* PIN */
-          h('div',{className:'card-dark'},
-            h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:6}},'🔐 Change Manager PIN'),
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}},
-              h('div',null,h('label',{className:'lbl dark'},'New PIN'),h('input',{className:'inp-dark mono',type:'password',maxLength:4,value:np1,onChange:e=>setNP1(e.target.value),placeholder:'• • • •',style:{fontSize:20,letterSpacing:'.4em',textAlign:'center'}})),
-              h('div',null,h('label',{className:'lbl dark'},'Confirm'),h('input',{className:'inp-dark mono',type:'password',maxLength:4,value:np2,onChange:e=>setNP2(e.target.value),placeholder:'• • • •',style:{fontSize:20,letterSpacing:'.4em',textAlign:'center'}}))
-            ),
-            h('div',{style:{display:'flex',alignItems:'center',gap:10}},
-              h('button',{className:'btn-primary',style:{padding:'8px 18px'},onClick:changePin},'Update PIN'),
-              pm&&h('span',{style:{fontSize:12,color:pm.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:500}},pm)
-            )
-          )
-        ),
+          /* ══ RIGHT COLUMN ══ */
+          h('div',{style:{display:'flex',flexDirection:'column',gap:20}},
 
-        /* ── RIGHT COLUMN ── */
-        h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
-
-          /* Picker Names & Colors */
-          h('div',{className:'card-dark'},
-            h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:6}},'👷 Picker Names & Colors'),
-            h('textarea',{className:'ta-dark',value:pksStr,onChange:e=>setPKS(e.target.value),rows:2,placeholder:'Name1, Name2, Name3',style:{marginBottom:10,outline:'none'}}),
-            h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
-              pickers.map(w=>{
-                const cur=pkC(w);
-                return h('div',{key:w,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'rgba(255,255,255,0.04)',borderRadius:9,border:'1px solid rgba(255,255,255,0.08)'}},
-                  h('div',{style:{width:24,height:24,borderRadius:6,background:cur.bg,border:'2px solid '+cur.tx,flexShrink:0}}),
-                  h('span',{style:{flex:1,fontWeight:600,color:'#E8E6FF',fontSize:13}},w),
-                  h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
-                    PKC_PRESETS.map((c,ci)=>h('div',{key:ci,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),
-                      style:{width:18,height:18,borderRadius:4,background:c.bg,border:(pkColorMap[w]||PKC_PRESETS[pickers.indexOf(w)%PKC_PRESETS.length])===c?'2.5px solid '+c.tx:'2px solid rgba(255,255,255,0.15)',cursor:'pointer'},
-                      title:c.label
-                    }))
-                  )
-                );
-              })
-            )
-          ),
-
-          /* ShipStation */
-          h('div',{className:'card-dark'},
-            h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:6}},
-              h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF'}},'📦 ShipStation API'),
-              h('span',{style:{fontSize:11,padding:'2px 8px',background:'rgba(16,185,129,0.2)',color:'#10b981',borderRadius:100,border:'1px solid rgba(16,185,129,0.3)',fontWeight:600}},'Auto Order Fetch')
-            ),
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}},
-              h('div',null,
-                h('label',{className:'lbl dark'},'API Key'),
-                h('input',{className:'inp-dark',type:'password',value:ssKey,onChange:e=>setSSKey(e.target.value),placeholder:'Enter API Key'})
-              ),
-              h('div',null,
-                h('label',{className:'lbl dark'},'API Secret'),
-                h('input',{className:'inp-dark',type:'password',value:ssSecret,onChange:e=>setSSSec(e.target.value),placeholder:'Enter API Secret'})
+            /* Picker Names & Colors */
+            h('div',{style:S.section},
+              h('div',{style:S.sTitle},'👷 Picker Names & Colors'),
+              h('label',{style:S.label},'Names (comma-separated)'),
+              h('textarea',{className:'ta-dark',value:pksStr,onChange:e=>setPKS(e.target.value),
+                rows:2,placeholder:'Kim Jisu, Park Minho, Lee Hayeon',
+                style:{marginBottom:16,outline:'none',fontSize:13,lineHeight:1.7}}),
+              h('div',{style:S.divider}),
+              h('label',{style:{...S.label,marginBottom:12}},'Color Assignment'),
+              h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+                pickers.map(w=>{
+                  const cur=pkC(w);
+                  return h('div',{key:w,style:{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',background:'rgba(255,255,255,0.03)',borderRadius:10,border:'1px solid rgba(255,255,255,0.06)'}},
+                    h('div',{style:{width:26,height:26,borderRadius:7,background:cur.bg,border:'2px solid '+cur.tx,flexShrink:0}}),
+                    h('span',{style:{width:110,fontWeight:600,color:'#D0D0F0',fontSize:13,flexShrink:0}},w),
+                    h('div',{style:{display:'flex',gap:5,flexWrap:'wrap',flex:1}},
+                      PKC_PRESETS.map((c,ci)=>h('div',{key:ci,
+                        onClick:()=>setPkColorMap(p=>({...p,[w]:c})),
+                        title:c.label,
+                        style:{
+                          width:22,height:22,borderRadius:6,background:c.bg,cursor:'pointer',
+                          border:(pkColorMap[w]?pkColorMap[w]===c:(pickers.indexOf(w)%PKC_PRESETS.length===ci))?'2.5px solid '+c.tx:'1.5px solid rgba(255,255,255,0.12)',
+                          flexShrink:0,
+                        }
+                      }))
+                    )
+                  );
+                })
               )
             ),
-            h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:8}},
-              h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'7px 14px'},onClick:testSSConn,disabled:ssFetching},'🔌 Test Connection'),
-              h('button',{className:'btn-primary',style:{padding:'7px 18px'},onClick:fetchSSOrders,disabled:ssFetching},
-                ssFetching?'⏳ Fetching…':'📦 Fetch Orders'
+
+            /* ShipStation */
+            h('div',{style:S.section},
+              h('div',{style:{...S.sTitle,justifyContent:'space-between'}},
+                h('span',null,'📦 ShipStation'),
+                h('span',{style:{fontSize:11,padding:'3px 10px',background:'rgba(16,185,129,0.15)',color:'#10b981',borderRadius:100,border:'1px solid rgba(16,185,129,0.25)',fontWeight:600,textTransform:'none',letterSpacing:'normal'}},'Auto Order Fetch')
               ),
-              ssResult&&ssResult.summary&&h('button',{className:'btn-primary',style:{padding:'7px 18px',background:'linear-gradient(135deg,#10b981,#059669)'},onClick:openSSModal},'✅ Create Pick Lists')
+              h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}},
+                h('div',null,
+                  h('label',{style:S.label},'API Key'),
+                  h('input',{className:'inp-dark',type:'password',value:ssKey,onChange:e=>setSSKey(e.target.value),placeholder:'Enter API Key'})
+                ),
+                h('div',null,
+                  h('label',{style:S.label},'API Secret'),
+                  h('input',{className:'inp-dark',type:'password',value:ssSecret,onChange:e=>setSSSec(e.target.value),placeholder:'Enter API Secret'})
+                )
+              ),
+              h('div',{style:{display:'flex',gap:10,alignItems:'center',marginBottom:ssMsg?8:0}},
+                h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'9px 18px'},onClick:testSSConn,disabled:ssFetching},'🔌 Test'),
+                h('button',{className:'btn-primary',style:{padding:'9px 20px'},onClick:fetchSSOrders,disabled:ssFetching},
+                  ssFetching?'⏳ Fetching…':'📦 Fetch Orders'),
+                ssResult&&ssResult.summary&&h('button',{className:'btn-primary',
+                  style:{padding:'9px 20px',background:'linear-gradient(135deg,#059669,#047857)'},
+                  onClick:openSSModal},'✅ Create Lists')
+              ),
+              ssMsg&&h('div',{style:{fontSize:13,color:ssMsg.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:600,marginBottom:4}},ssMsg),
+              ssResult&&ssResult.summary&&h(Fragment,null,
+                h('div',{style:S.divider}),
+                h('div',{style:{fontSize:12,fontWeight:700,color:'#6060A0',marginBottom:10}},
+                  ssResult.date+' — Total '+ssResult.totalOrders+' orders'
+                ),
+                h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+                  ssResult.summary.filter(s=>s.category!=='Unknown').map((s,i)=>{
+                    const cc=CA[s.category]||{bg:'#222',tx:'#888',br:'#444',ac:'#666'};
+                    return h('div',{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'rgba(255,255,255,0.03)',borderRadius:10,border:'1px solid rgba(255,255,255,0.06)'}},
+                      h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:11,padding:'3px 10px',flexShrink:0}},s.category),
+                      h('span',{style:{flex:1,fontSize:12,color:'#7070A0'}},s.storeList),
+                      h('span',{style:{fontWeight:800,color:'#E8E6FF',fontSize:20,flexShrink:0}},s.orderCount)
+                    );
+                  })
+                )
+              )
             ),
-            ssMsg&&h('div',{style:{fontSize:12,color:ssMsg.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:500,marginBottom:8}},ssMsg),
-            ssResult&&ssResult.summary&&h('div',{style:{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'12px'}},
-              h('div',{style:{fontSize:11,fontWeight:700,color:'#A0A0CC',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},
-                'ShipStation Orders — '+ssResult.date+' (Total: '+ssResult.totalOrders+')'
-              ),
+
+            /* Prefix Map */
+            h('div',{style:S.section},
+              h('div',{style:S.sTitle},'🗺 Order Prefix Map'),
               h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}},
-                ssResult.summary.filter(s=>s.category!=='Unknown').map((s,i)=>{
-                  const cs={
-                    'Official 1':{bg:'#1a3a5c',tx:'#7BB8F5',br:'#2a5a8c'},
-                    'Official 2':{bg:'#2a1a5c',tx:'#A89CF5',br:'#4a3a8c'},
-                    'Moida & Hola':{bg:'#1a3a1a',tx:'#7BE07B',br:'#2a6a2a'},
-                    'TikTok CBT':{bg:'#3a1a2a',tx:'#F57BB8',br:'#6a2a4a'},
-                    'Seeding':{bg:'#3a2a0a',tx:'#F5C870',br:'#6a4a0a'},
-                    'Reshipment':{bg:'#2a2a2a',tx:'#C0C0B8',br:'#4a4a4a'},
-                  }[s.category]||{bg:'#222',tx:'#888',br:'#444'};
-                  return h('div',{key:i,style:{padding:'12px 14px',background:cs.bg,borderRadius:10,border:'1px solid '+cs.br}},
-                    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
-                      h('span',{style:{fontWeight:700,color:cs.tx,fontSize:13}},s.category),
-                      h('span',{style:{fontWeight:800,color:'#FFFFFF',fontSize:22}},s.orderCount)
-                    ),
-                    h('div',{style:{fontSize:11,color:'#9090B0',lineHeight:1.6}},s.storeList)
+                PREFIX_MAP.map((m2,i)=>{
+                  const cc=CA[m2.cat]||{bg:'#eee',tx:'#333',br:'#ccc',ac:'#666'};
+                  return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',background:'rgba(255,255,255,0.03)',borderRadius:9,border:'1px solid rgba(255,255,255,0.06)'}},
+                    h('span',{className:'mono',style:{fontWeight:700,color:cc.ac,fontSize:12}},m2.p),
+                    h('span',{style:{fontSize:12,color:'#5050A0'}},m2.store)
                   );
                 })
               )
             )
-          ),
-
-          /* Prefix Map */
-          h('div',{className:'card-dark'},
-            h('div',{style:{fontSize:14,fontWeight:700,color:'#E8E6FF',marginBottom:10}},'🗺 Order Prefix Detection Map'),
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}},
-              PREFIX_MAP.map((m2,i)=>{const cs=CA[m2.cat]||{bg:'#eee',tx:'#333',br:'#ccc',ac:'#666'};return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',padding:'7px 10px',background:cs.bg+'18',borderRadius:8,border:'1px solid '+cs.br+'33'}},
-                h('span',{className:'mono',style:{fontWeight:700,color:cs.ac,fontSize:11}},m2.p),
-                h('span',{style:{color:cs.ac,opacity:.8,fontSize:11}},m2.store)
-              );})
-            )
           )
         )
       )
-    )
-  );
+    );
+  };
 
   /* ═══ FINAL RENDER ═══ */
   try{
