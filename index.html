@@ -585,6 +585,7 @@ function App(){
   const [showPin,setPin]=useState(false);
   const [editL,setEL]  =useState(null);
   const [syncSt,setSS] =useState('');
+  const [showPrev,setShowPrev]=useState(false); // 미완료 이전 항목 보기
 
   // ── Scan ──
   const [scanIn,setSI] =useState('');
@@ -742,7 +743,11 @@ function App(){
 
   /* derived */
   const todayL=lists.filter(l=>l.date===today());
-  const filtL  =cat==='All'?todayL:todayL.filter(l=>l.category===cat);
+  // 이전 날짜 미완료 항목 (pending/picking/picked/scanning)
+  const prevIncomplete=lists.filter(l=>l.date!==today()&&!['complete'].includes(getSt(l)));
+  // 표시할 목록 (오늘 + 미완료 이전 항목)
+  const displayL=showPrev?[...prevIncomplete,...todayL]:todayL;
+  const filtL=cat==='All'?displayL:displayL.filter(l=>l.category===cat);
   const tSKU   =todayL.reduce((a,l)=>a+(l.sku||0),0);
   const tOrd   =todayL.reduce((a,l)=>a+(l.orderCount||0),0);
   const tScan  =todayL.reduce((a,l)=>a+l.scanned,0);
@@ -807,7 +812,7 @@ function App(){
       h('table',{className:'tbl'},
         h('thead',null,
           h('tr',null,
-            ['#','PG NO','CATEGORY','SKU','ORDERS','SCANNED','PICKER','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
+            ['#', ...(showPrev&&prevIncomplete.length>0?['DATE']:[]), 'PG NO','CATEGORY','SKU','ORDERS','SCANNED','PICKER','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
               h('th',{key:col,className:D},col)
             )
           )
@@ -815,9 +820,13 @@ function App(){
         h('tbody',null,
           filtL.map((l,i)=>{
             const st=getSt(l);const si=ST.indexOf(st);const cs=CA[l.category];const manual=isM(l.category);
-            const pct=(l.orderCount||0)>0?Math.round((l.scanned/(l.orderCount||1))*100):0;
-            return h('tr',{key:l.id,className:D},
+            const isPrev=l.date!==today();
+            return h('tr',{key:l.id,className:D,style:isPrev?{background:isMgr?'rgba(245,158,11,0.06)':'rgba(245,158,11,0.04)'}:{}},
               h('td',{className:D+' c',style:{color:isMgr?'#5555AA':'#CCC',fontWeight:600,fontSize:13,width:38}},i+1),
+              ...(showPrev&&prevIncomplete.length>0?[
+                h('td',{className:D,style:{fontSize:11,fontWeight:600,color:isPrev?'#F59E0B':'#AAA',whiteSpace:'nowrap'}},
+                  isPrev?l.date:'today')
+              ]:[]),
               h('td',{className:D},h('span',{className:'mono',style:{fontWeight:700,color:isMgr?'#C4C2FF':'#111',fontSize:14}},l.pgNo)),
               h('td',{className:D},h('span',{className:'pill',style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},l.category)),
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.sku||0),
@@ -925,7 +934,22 @@ function App(){
     h(Clock,{dark:isMgr}),
     isMgr
       ? h('div',{className:'info-note dark'},'💡 Click any time value in the table to edit · "Clear Completed" removes done lists (data stays in Sheets)')
-      : todayL.length>0&&h('div',{className:'info-note light'},todayL.length+' pick list'+(todayL.length!==1?'s':'')+' today · Assign your name as Picker then click ▶ Start'),
+      : h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 20px',
+          background:isMgr?'#1A1A3E':'#fff',borderBottom:'1px solid '+(isMgr?'rgba(255,255,255,0.06)':'#EEEDF5')}},
+          h('span',{style:{fontSize:12,color:'#AAA',fontStyle:'italic'}},
+            displayL.length+' pick list'+(displayL.length!==1?'s':'')+
+            (showPrev&&prevIncomplete.length>0?' ('+prevIncomplete.length+' from previous days)':'')
+          ),
+          prevIncomplete.length>0&&h('button',{
+            onClick:()=>setShowPrev(p=>!p),
+            style:{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,padding:'5px 12px',
+              borderRadius:100,border:'1px solid',cursor:'pointer',fontFamily:'inherit',
+              background:showPrev?'#FFF0DC':'transparent',
+              color:showPrev?'#7A3A00':'#AAA',
+              borderColor:showPrev?'#F5C070':'#DDD'}},
+            '⚠️ '+prevIncomplete.length+' Incomplete'+(showPrev?' ✕':'')
+          )
+        ),
     RT()
   );
 
