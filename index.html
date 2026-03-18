@@ -1083,12 +1083,12 @@ function App(){
                 'Seeding':{bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070'},
                 'Reshipment':{bg:'#EEEEED',tx:'#383836',br:'#C0C0B8'},
               }[s.category]||{bg:'#222',tx:'#888',br:'#444'};
-              return h('div',{key:i,style:{padding:'10px 12px',background:cs.bg+'22',borderRadius:9,border:'1px solid '+cs.br+'44'}},
+              return h('div',{key:i,style:{padding:'10px 12px',background:cs.bg+'33',borderRadius:9,border:'1px solid '+cs.br+'66'}},
                 h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
-                  h('span',{style:{fontWeight:700,color:cs.tx+'CC',fontSize:13}},s.category),
-                  h('span',{style:{fontWeight:800,color:'#E8E6FF',fontSize:18}},s.orderCount)
+                  h('span',{style:{fontWeight:700,color:cs.tx,fontSize:13}},s.category),
+                  h('span',{style:{fontWeight:800,color:'#FFFFFF',fontSize:20}},s.orderCount)
                 ),
-                h('div',{style:{fontSize:10,color:'#555',lineHeight:1.5}},s.storeList)
+                h('div',{style:{fontSize:11,color:'#C0C0E0',lineHeight:1.6}},s.storeList)
               );
             })
           )
