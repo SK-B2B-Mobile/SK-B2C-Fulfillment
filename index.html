@@ -962,46 +962,96 @@ function App(){
   /* ══════════════════════════
      CREATE LIST PAGE (manager only)
   ══════════════════════════ */
-  const CreatePage=()=>h('div',{className:'page-wrap dark'},
-    h('div',{style:{maxWidth:540}},
-      h('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:20}},
-        h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'5px 13px',borderRadius:100,fontSize:12},onClick:()=>{setTab('records');setEId(null);}},'← Back'),
-        h('div',null,
-          h('h2',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF'}},editId?'Edit Pick List':'Create New Pick List'),
-          h('div',{style:{fontSize:12,color:'#555',marginTop:2}},editId?('Editing: '+lists.find(x=>x.id===editId)?.pgNo):('Category: '+mf.cat))
-        )
-      ),
-      h('div',{className:'card-dark'},
-        /* Category badge */
-        h('div',{style:{display:'inline-flex',alignItems:'center',gap:8,marginBottom:14,padding:'7px 13px',background:(CA[mf.cat]?.bg||'#eee')+'22',border:'1px solid '+(CA[mf.cat]?.br||'#aaa')+'44',borderRadius:9}},
-          h('span',{style:{fontSize:11,color:CA[mf.cat]?.ac||'#888',fontWeight:700}},'Category:'),
-          h('span',{className:'pill',style:{background:CA[mf.cat]?.bg,color:CA[mf.cat]?.tx,borderColor:CA[mf.cat]?.br,fontSize:11}},mf.cat),
-          h('span',{style:{fontSize:11,color:'#444',marginLeft:4}},'(selected from tab)')
-        ),
-        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}},
-          h('div',{style:{gridColumn:'1/-1'}},
-            h('label',{className:'lbl dark'},'Pick List No. *'),
-            h('input',{className:'inp-dark',value:mf.pgNo,onChange:e=>setMF(p=>({...p,pgNo:e.target.value})),placeholder:'PG00004473',style:{maxWidth:260}})
+  const CreatePage=()=>{
+    const cc=CA[mf.cat]||{bg:'#eee',tx:'#333',br:'#ccc',ac:'#666'};
+    const inp2={background:'rgba(255,255,255,0.06)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'13px 16px',color:'#E8E6FF',fontFamily:'inherit',fontSize:14,outline:'none',width:'100%',display:'block'};
+    const lbl2={display:'block',fontSize:11,fontWeight:700,color:'#6060A0',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:8};
+    return h('div',{style:{background:'#0A0A1A',minHeight:'calc(100vh - 56px)',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'40px 24px'}},
+      h('div',{style:{width:'100%',maxWidth:680}},
+
+        /* Header */
+        h('div',{style:{display:'flex',alignItems:'center',gap:16,marginBottom:32}},
+          h('button',{style:{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',color:'#8080C0',borderRadius:10,padding:'9px 18px',fontSize:13,cursor:'pointer',fontFamily:'inherit'},
+            onClick:()=>{setTab('records');setEId(null);}},
+            '← Back'
           ),
-          h('div',null,h('label',{className:'lbl dark'},'SKU Count'),h('input',{className:'inp-dark',type:'number',min:0,value:mf.sku,onChange:e=>setMF(p=>({...p,sku:e.target.value})),placeholder:'0'})),
-          h('div',null,h('label',{className:'lbl dark'},'Order Count *'),h('input',{className:'inp-dark',type:'number',min:1,value:mf.orders,onChange:e=>setMF(p=>({...p,orders:e.target.value})),placeholder:'200'})),
-          h('div',{style:{gridColumn:'1/-1'}},h('label',{className:'lbl dark'},'Remarks'),h('input',{className:'inp-dark',value:mf.memo,onChange:e=>setMF(p=>({...p,memo:e.target.value})),placeholder:'Optional note for workers'}))
+          h('div',null,
+            h('h2',{style:{fontSize:22,fontWeight:800,color:'#E8E6FF',letterSpacing:'-0.02em'}},
+              editId?'Edit Pick List':'Create New Pick List'),
+            h('div',{style:{fontSize:13,color:'#5050A0',marginTop:4}},
+              editId?'Editing: '+lists.find(x=>x.id===editId)?.pgNo:'Fill in the details below to create a pick list')
+          )
         ),
-        h('div',{style:{background:'rgba(91,94,244,0.1)',border:'1px solid rgba(91,94,244,0.2)',borderRadius:9,padding:'10px 14px',marginBottom:16,fontSize:11,color:'#818CF8',lineHeight:1.6}},
-          '💡 Picker is assigned by workers themselves in the Records table.',h('br'),'You can override picker and timestamps via the Edit button.'
+
+        /* Category indicator */
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:24,padding:'12px 18px',
+          background:cc.bg+'18',border:'1px solid '+cc.br+'44',borderRadius:12}},
+          h('div',{style:{width:10,height:10,borderRadius:'50%',background:cc.ac,flexShrink:0}}),
+          h('span',{style:{fontSize:13,color:'#8080C0'}},'Category'),
+          h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:13,padding:'4px 14px'}},mf.cat),
+          h('span',{style:{fontSize:12,color:'#4040A0'}},'← selected from tab')
         ),
-        h('div',{style:{display:'flex',justifyContent:'flex-end',gap:10}},
-          h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'9px 20px'},onClick:()=>setTab('records')},'Cancel'),
-          h('button',{className:'btn-primary',style:{padding:'10px 24px'},onClick:mSave},editId?'Save Changes':'Create')
+
+        /* Main form card */
+        h('div',{style:{background:'#13132B',border:'1px solid rgba(255,255,255,0.07)',borderRadius:18,overflow:'hidden',boxShadow:'0 8px 40px rgba(0,0,0,0.4)'}},
+
+          /* PG No — full width prominent */
+          h('div',{style:{padding:'28px 32px',borderBottom:'1px solid rgba(255,255,255,0.06)'}},
+            h('label',{style:{...lbl2,fontSize:12}},'Pick List No. *'),
+            h('input',{style:{...inp2,fontSize:18,fontWeight:700,fontFamily:'monospace',letterSpacing:'0.04em'},
+              value:mf.pgNo,onChange:e=>setMF(p=>({...p,pgNo:e.target.value})),
+              placeholder:'PG00004473',autoFocus:true})
+          ),
+
+          /* SKU + Orders — 2 columns */
+          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',padding:'28px 32px',gap:24,borderBottom:'1px solid rgba(255,255,255,0.06)'}},
+            h('div',null,
+              h('label',{style:lbl2},'SKU Count'),
+              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},
+                type:'number',min:0,value:mf.sku,
+                onChange:e=>setMF(p=>({...p,sku:e.target.value})),
+                placeholder:'0'}),
+              h('div',{style:{fontSize:11,color:'#3030A0',marginTop:6,textAlign:'center'}},'Number of unique products')
+            ),
+            h('div',null,
+              h('label',{style:lbl2},'Order Count *'),
+              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},
+                type:'number',min:1,value:mf.orders,
+                onChange:e=>setMF(p=>({...p,orders:e.target.value})),
+                placeholder:'0'}),
+              h('div',{style:{fontSize:11,color:'#3030A0',marginTop:6,textAlign:'center'}},'Total orders to fulfill')
+            )
+          ),
+
+          /* Remarks — full width */
+          h('div',{style:{padding:'28px 32px',borderBottom:'1px solid rgba(255,255,255,0.06)'}},
+            h('label',{style:lbl2},'Remarks / Instructions for Workers'),
+            h('textarea',{style:{...inp2,resize:'vertical',lineHeight:1.7,minHeight:80},
+              value:mf.memo,onChange:e=>setMF(p=>({...p,memo:e.target.value})),
+              placeholder:'예: 오후 2시까지 완료 필요 · 취급주의 상품 포함 · 냉장보관 등…'})
+          ),
+
+          /* Footer */
+          h('div',{style:{padding:'20px 32px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'rgba(255,255,255,0.02)'}},
+            h('div',{style:{fontSize:12,color:'#3030A0',lineHeight:1.6}},
+              '💡 Picker는 작업자가 직접 배정합니다.'
+            ),
+            h('div',{style:{display:'flex',gap:12}},
+              h('button',{style:{background:'transparent',border:'1px solid rgba(255,255,255,0.1)',color:'#6060A0',borderRadius:10,padding:'11px 24px',fontSize:14,cursor:'pointer',fontFamily:'inherit'},
+                onClick:()=>setTab('records')},'Cancel'),
+              h('button',{className:'btn-primary',style:{padding:'11px 32px',fontSize:14,fontWeight:700},
+                onClick:mSave},editId?'Save Changes':'✅ Create Pick List')
+            )
+          )
         )
       )
-    )
-  );
+    );
+  };
 
   const openSSModal=()=>{
     if(!ssResult||!ssResult.summary)return;
     const rows=ssResult.summary.filter(s=>s.orderCount&&s.category!=='Unknown').map(s=>({
-      category:s.category,orderCount:s.orderCount,storeList:s.storeList,pgNo:'',sku:'',
+      category:s.category,orderCount:s.orderCount,storeList:s.storeList,pgNo:'',sku:'',memo:'',
     }));
     setSSModalData(rows);
     setSSModal(true);
@@ -1013,11 +1063,11 @@ function App(){
       const existing=lists.find(l=>l.category===s.category&&l.date===today());
       const pgNo=s.pgNo||('PG'+Date.now().toString().slice(-8));
       if(existing){
-        upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,pgNo});
+        upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,pgNo,memo:s.memo||existing.memo||''});
       } else {
         const nl={id:uid(),pgNo,category:s.category,sku:+s.sku||0,
           orderCount:s.orderCount,scanned:0,pickStart:null,pickEnd:null,
-          scanStart:null,scanEnd:null,worker:'',date:today(),memo:'Auto from ShipStation'};
+          scanStart:null,scanEnd:null,worker:'',date:today(),memo:s.memo||''};
         setLists(p=>[...p,nl]);
         sync('upsertList',{list:nl});
       }
@@ -1263,6 +1313,11 @@ function App(){
                     h('input',{style:inp,type:'number',min:0,value:s.sku,placeholder:'0',
                       onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],sku:e.target.value};setSSModalData(nd);}})
                   )
+                ),
+                h('div',{style:{marginTop:10}},
+                  h('label',{style:{...lbl,fontSize:11}},'Remarks'),
+                  h('input',{style:{...inp,fontSize:13},value:s.memo||'',placeholder:'작업자 전달사항 (선택)',
+                    onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],memo:e.target.value};setSSModalData(nd);}})
                 )
               );
             })
