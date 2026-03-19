@@ -1217,7 +1217,7 @@ function App(){
         ),
         ssMsg&&h('div',{style:{padding:'10px 16px',borderRadius:9,background:ssMsg.startsWith('✓')?'rgba(134,239,172,0.08)':'rgba(248,113,113,0.08)',border:'1px solid '+(ssMsg.startsWith('✓')?'rgba(134,239,172,0.2)':'rgba(248,113,113,0.2)'),fontSize:13,color:ssMsg.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:600}},ssMsg),
         ssResult&&ssResult.summary&&h('div',{style:{marginTop:20}},
-          h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:12,letterSpacing:'.02em'}},
+          h('div',{style:{fontSize:12,fontWeight:600,color:'#A0AABB',marginBottom:12,letterSpacing:'.02em'}},
             ssResult.date+' — '+ssResult.totalOrders+' AWAITING SHIPMENT'
           ),
           h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
@@ -1225,7 +1225,7 @@ function App(){
               const cc=CA[s.category]||{bg:'#222',tx:'#888',br:'#444'};
               return h('div',{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'14px 18px',background:'rgba(255,255,255,0.03)',borderRadius:12,border:'1px solid rgba(255,255,255,0.07)'}},
                 h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:12,flexShrink:0}},s.category),
-                h('span',{style:{flex:1,fontSize:12,color:'#5050A0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},s.storeList),
+                h('span',{style:{flex:1,fontSize:12,color:'#A0AABB',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},s.storeList),
                 h('span',{style:{fontWeight:800,color:'#E8E6FF',fontSize:22,flexShrink:0,minWidth:40,textAlign:'right'}},s.orderCount)
               );
             })
@@ -1239,7 +1239,7 @@ function App(){
             const cc=CA[m2.cat]||{bg:'#222',tx:'#888',br:'#444',ac:'#666'};
             return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'rgba(255,255,255,0.03)',borderRadius:9,border:'1px solid rgba(255,255,255,0.06)'}},
               h('span',{className:'mono',style:{fontWeight:700,color:cc.ac,fontSize:12}},m2.p),
-              h('span',{style:{fontSize:12,color:'#4848A0'}},m2.store)
+              h('span',{style:{fontSize:12,color:'#A0AABB'}},m2.store)
             );
           })
         )
@@ -1329,7 +1329,7 @@ function App(){
                 h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}},
                   h('div',{style:{display:'flex',alignItems:'center',gap:8}},
                     h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:12}},s.category),
-                    h('span',{style:{color:'#4848A0',fontSize:12}},s.storeList)
+                    h('span',{style:{color:'#A0AABB',fontSize:12}},s.storeList)
                   ),
                   h('span',{style:{fontWeight:800,color:'#86EFAC',fontSize:16}},s.orderCount+' orders')
                 ),
