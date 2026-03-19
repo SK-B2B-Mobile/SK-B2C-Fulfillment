@@ -360,10 +360,41 @@ const ts=()=>new Date().toISOString();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
-const dur=(s,e)=>{
+const dur=(s,e,listDate)=>{
   if(!s)return'—';
-  const start=new Date(s);const end=e?new Date(e):new Date();
-  if(isNaN(start)||isNaN(end)||end<=start)return'—';
+
+  // ★ Google Sheets 시간값 파싱 수정
+  // Sheets가 시간을 1899-12-30 Date 객체로 저장하는 문제 처리
+  const parseTime=(val,baseDate)=>{
+    if(!val)return null;
+    const str=String(val).trim();
+    // 1) HH:mm:ss 또는 H:mm:ss 형식 → 날짜 붙이기
+    if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(str)){
+      const base=baseDate||today();
+      return new Date(base+' '+str);
+    }
+    // 2) yyyy-MM-dd HH:mm:ss 전체 형식
+    if(/^\d{4}-\d{2}-\d{2}/.test(str)) return new Date(str);
+    // 3) 기타 파싱 시도
+    const d=new Date(val);
+    if(!isNaN(d)){
+      // 1899년 또는 1970년 이전이면 시간만 추출 후 오늘 날짜 붙이기
+      if(d.getFullYear()<1970){
+        const base=baseDate||today();
+        const hh=String(d.getHours()).padStart(2,'0');
+        const mm=String(d.getMinutes()).padStart(2,'0');
+        const ss=String(d.getSeconds()).padStart(2,'0');
+        return new Date(base+' '+hh+':'+mm+':'+ss);
+      }
+      return d;
+    }
+    return null;
+  };
+
+  const base=listDate||today();
+  const start=parseTime(s,base);
+  const end=e?parseTime(e,base):new Date();
+  if(!start||isNaN(start)||!end||isNaN(end)||end<=start)return'—';
   // 근무시간 설정 (분 단위)
   const WS=8*60+30;   // 08:30 출근
   const LS=12*60;     // 12:00 점심시작
@@ -831,7 +862,7 @@ function App(){
   };
 
   const changePin=()=>{if(np1.length!==4||!/^\d{4}$/.test(np1)){setPM('Must be 4 digits');return;}if(np1!==np2){setPM('PINs do not match');return;}lsSet(LS.PIN,np1);setNP1('');setNP2('');setPM('✓ PIN changed');};
-  const exportCSV=()=>{const h2=['Date','PG No','Category','SKU','Orders','Scanned','Worker','Pick Start','Pick End','Scan Start','Scan End','Pick Dur','Scan Dur','Status','Remarks'];const rows=lists.map(l=>[l.date,l.pgNo,l.category,l.sku||0,l.orderCount,l.scanned,l.worker||'',fmtT(l.pickStart),fmtT(l.pickEnd),fmtT(l.scanStart),fmtT(l.scanEnd),dur(l.pickStart,l.pickEnd),dur(l.scanStart,l.scanEnd),getSt(l),l.memo||'']);const csv=[h2,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download='B2C_'+today()+'.csv';a.click();};
+  const exportCSV=()=>{const h2=['Date','PG No','Category','SKU','Orders','Scanned','Worker','Pick Start','Pick End','Scan Start','Scan End','Pick Dur','Scan Dur','Status','Remarks'];const rows=lists.map(l=>[l.date,l.pgNo,l.category,l.sku||0,l.orderCount,l.scanned,l.worker||'',fmtT(l.pickStart),fmtT(l.pickEnd),fmtT(l.scanStart),fmtT(l.scanEnd),dur(l.pickStart,l.pickEnd,l.date),dur(l.scanStart,l.scanEnd,l.date),getSt(l),l.memo||'']);const csv=[h2,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download='B2C_'+today()+'.csv';a.click();};
 
   /* derived */
   const todayL=lists.filter(l=>l.date===today());
@@ -932,8 +963,8 @@ function App(){
                   l[fld]?h('span',{style:{textDecoration:isMgr?'underline dotted':'none',textUnderlineOffset:'2px'}},fmtS(l[fld])):h('span',null,'—')
                 )
               ),
-              h('td',{className:D,style:{fontWeight:600,color:isMgr?'#86EFAC':'#555',fontSize:13}},dur(l.pickStart,l.pickEnd)),
-              h('td',{className:D,style:{fontWeight:600,color:isMgr?'#86EFAC':'#555',fontSize:13}},dur(l.scanStart,l.scanEnd)),
+              h('td',{className:D,style:{fontWeight:600,color:isMgr?'#86EFAC':'#555',fontSize:13}},dur(l.pickStart,l.pickEnd,l.date)),
+              h('td',{className:D,style:{fontWeight:600,color:isMgr?'#86EFAC':'#555',fontSize:13}},dur(l.scanStart,l.scanEnd,l.date)),
               h('td',{className:D},h('span',{className:'pill '+STC[si]},STL[si])),
               h('td',{className:D,style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',color:isMgr?'#7070A0':'#888',fontSize:11}},
                 l.memo||'—'
