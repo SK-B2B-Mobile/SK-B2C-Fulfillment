@@ -393,7 +393,13 @@ const dur=(s,e)=>{
   if(total<=0)return'—';
   return total<60?total+'m':Math.floor(total/60)+'h '+(total%60)+'m';
 };
-const detect=b=>{for(const m of PREFIX_MAP)if(b.trim().toUpperCase().startsWith(m.p.toUpperCase()))return{cat:m.cat,store:m.store};return null;};
+const IGNORE_PREFIXES=['kpopglow'];
+const detect=b=>{
+  const u=b.trim().toUpperCase();
+  for(const ig of IGNORE_PREFIXES) if(u.startsWith(ig.toUpperCase())) return null;
+  for(const m of PREFIX_MAP) if(u.startsWith(m.p.toUpperCase())) return{cat:m.cat,store:m.store};
+  return null;
+};
 const getSt=l=>{const oc=l.orderCount||0;if(oc>0&&l.scanned>=oc&&l.scanEnd)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
