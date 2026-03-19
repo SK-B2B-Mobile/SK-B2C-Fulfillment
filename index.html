@@ -625,6 +625,51 @@ function App(){
   useEffect(()=>localStorage.setItem(LS.PKS,pksStr),[pksStr]);
   useEffect(()=>{if(tab==='scan'&&scanRef.current)scanRef.current.focus();},[tab]);
 
+  // ★ 30초마다 GAS 버전 체크 → 변경 감지 시 자동 Pull
+  const lastVerRef = React.useRef('');
+  useEffect(()=>{
+    if(!wh) return;
+    const poll = async () => {
+      try {
+        const res = await fetch(wh+'?op=ver');
+        const data = await res.json();
+        if(!data.ok) return;
+        const newVer = String(data.ver||'');
+        if(lastVerRef.current && newVer !== lastVerRef.current) {
+          // 버전 변경 감지 → 오늘 데이터 자동 Pull
+          const r2 = await fetch(wh+'?op=getLists&date='+today());
+          const d2 = await r2.json();
+          if(d2.ok && d2.lists) {
+            const fetched = d2.lists.filter(l=>l.status!=='Deleted');
+            if(fetched.length>0) {
+              setLists(prev=>{
+                const merged=[...prev];
+                fetched.forEach(remote=>{
+                  const idx=merged.findIndex(l=>l.id&&l.id===remote.id);
+                  const nl={
+                    id:remote.id,date:remote.date,pgNo:remote.pgNo,category:remote.category,
+                    sku:remote.sku||0,orderCount:remote.orderCount||0,scanned:remote.scanned||0,
+                    worker:remote.worker||'',pickStart:remote.pickStart||'',pickEnd:remote.pickEnd||'',
+                    scanStart:remote.scanStart||'',scanEnd:remote.scanEnd||'',
+                    status:remote.status||'Pending',memo:remote.memo||'',
+                  };
+                  if(idx>=0) merged[idx]=nl; else merged.push(nl);
+                });
+                lsSet(LS.LISTS,merged);
+                return merged;
+              });
+              setSS('↻ '+new Date().toLocaleTimeString());
+            }
+          }
+        }
+        lastVerRef.current = newVer;
+      } catch(e){}
+    };
+    poll(); // 최초 1회 즉시 실행
+    const id = setInterval(poll, 30000); // 30초마다
+    return ()=>clearInterval(id);
+  },[wh]);
+
   const sync=useCallback((action,payload)=>{
     if(!wh)return;
     syncData(wh,action,payload).then(()=>setSS('✓ '+new Date().toLocaleTimeString())).catch(()=>setSS('⚠'));
