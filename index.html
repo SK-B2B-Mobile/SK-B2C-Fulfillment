@@ -607,6 +607,7 @@ function App(){
   const [np1,setNP1]=useState('');const [np2,setNP2]=useState('');const [pm,setPM]=useState('');
   const [ssKey,setSSKey]    =useState(()=>localStorage.getItem('b2c18_sskey')||'');
   const [ssSecret,setSSSec] =useState(()=>localStorage.getItem('b2c18_sssec')||'');
+  const [syncMsg,setSyncMsg]=useState('');
   const [ssFetching,setSSF] =useState(false);
   const [ssResult,setSSR]   =useState(null);
   const [ssMsg,setSSM]      =useState('');
@@ -677,7 +678,46 @@ function App(){
   const delFromTable=id=>{if(!window.confirm('Delete this pick list?'))return;const l=lists.find(x=>x.id===id);setLists(p=>p.filter(x=>x.id!==id));if(l)sync('deleteList',{pgNo:l.pgNo});};
 
   /* delete today's completed lists (manager cleanup) */
-  const delCompleted=()=>{
+  // ★ Google Sheets → 웹앱 동기화 (Pull)
+  const syncFromSheets = async () => {
+    if (!wh) { setSyncMsg('⚠ GAS URL이 설정되지 않았습니다. Settings → Google Sheets에서 먼저 설정해주세요.'); return; }
+    setSyncMsg('⏳ Google Sheets에서 데이터 가져오는 중...');
+    try {
+      // 전체 날짜 데이터 가져오기
+      const res = await fetch(wh + '?op=getLists&date=', { method: 'GET' });
+      const data = await res.json();
+      if (!data.ok) { setSyncMsg('⚠ 데이터 가져오기 실패: ' + (data.error||'unknown')); return; }
+
+      const fetched = (data.lists || []).filter(l => l.status !== 'Deleted');
+      if (fetched.length === 0) { setSyncMsg('⚠ Google Sheets에 데이터가 없습니다.'); return; }
+
+      // localStorage 기존 데이터와 병합 (id 기준 upsert)
+      setLists(prev => {
+        const merged = [...prev];
+        fetched.forEach(remote => {
+          const idx = merged.findIndex(l => l.id && l.id === remote.id);
+          const nl = {
+            id: remote.id || ('gs_'+Date.now()+'_'+Math.random()),
+            date: remote.date, pgNo: remote.pgNo, category: remote.category,
+            sku: remote.sku||0, orderCount: remote.orderCount||0, scanned: remote.scanned||0,
+            worker: remote.worker||'', pickStart: remote.pickStart||'', pickEnd: remote.pickEnd||'',
+            scanStart: remote.scanStart||'', scanEnd: remote.scanEnd||'',
+            status: remote.status||'Pending', memo: remote.memo||'',
+          };
+          if (idx >= 0) merged[idx] = nl;
+          else merged.push(nl);
+        });
+        lsSet(LS.LISTS, merged);
+        return merged;
+      });
+
+      setSyncMsg('✓ ' + fetched.length + '개 항목을 Google Sheets에서 동기화했습니다. (' + new Date().toLocaleTimeString() + ')');
+    } catch(e) {
+      setSyncMsg('⚠ 오류: ' + e.message);
+    }
+  };
+
+  const delCompleted=()=>{\n
     const completed=lists.filter(l=>l.date===today()&&getSt(l)==='complete');
     if(!completed.length){alert('No completed lists today.');return;}
     if(!window.confirm('Delete '+completed.length+' completed list(s) from today?\n\nData remains in Google Sheets.'))return;
@@ -1274,7 +1314,27 @@ function App(){
     const DataTab=()=>h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
       h('div',null,
         h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Data Cleanup'),
-        h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Remove records from the browser. Google Sheets data is always preserved and unaffected.')
+        h('p',{style:{fontSize:14,color:'#A0AABB',lineHeight:1.7}},'Remove records from the browser. Google Sheets data is always preserved and unaffected.')
+      ),
+      h('div',{style:card},
+        h('div',{style:{marginBottom:14}},
+          h('div',{style:{fontSize:12,fontWeight:700,color:'#A0AABB',letterSpacing:'.05em',marginBottom:4}},'☁️ SYNC FROM GOOGLE SHEETS'),
+          h('p',{style:{fontSize:13,color:'#7070A0',lineHeight:1.6,margin:0}},'Google Sheets 데이터를 브라우저로 가져옵니다. 기존 데이터와 병합됩니다.')
+        ),
+        h('button',{
+          style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px',background:'rgba(99,102,241,0.08)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:12,cursor:'pointer',fontFamily:'inherit',color:'#A5B4FC',fontSize:14,fontWeight:600,width:'100%'},
+          onClick:syncFromSheets
+        },
+          h('div',{style:{display:'flex',alignItems:'center',gap:12}},
+            h('span',{style:{fontSize:20}},'☁️'),
+            h('div',{style:{textAlign:'left'}},
+              h('div',null,'Sync from Google Sheets'),
+              h('div',{style:{fontSize:12,color:'#6060A0',marginTop:2}},'Sheets → 브라우저 (수동 Pull)')
+            )
+          ),
+          h('span',{style:{background:'rgba(99,102,241,0.15)',padding:'4px 12px',borderRadius:100,fontSize:13,color:'#818CF8'}},'Pull ↓')
+        ),
+        syncMsg&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:8,background:syncMsg.startsWith('✓')?'rgba(134,239,172,0.08)':'rgba(248,113,113,0.08)',border:'1px solid '+(syncMsg.startsWith('✓')?'rgba(134,239,172,0.2)':'rgba(248,113,113,0.2)'),fontSize:13,color:syncMsg.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:600}},syncMsg)
       ),
       h('div',{style:card},
         h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
