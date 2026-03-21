@@ -322,7 +322,7 @@ const PREFIX_MAP=[
   {p:'Hyaah-',cat:'Official 2', store:'Hyaah'},
   {p:'MD-',   cat:'Moida & Hola',store:'Moida US'},
   {p:'HOA',   cat:'Moida & Hola',store:'Hola'},
-  {p:'5773',  cat:'TikTok CBT', store:'TikTok'},
+  {p:'5773',  cat:'TikTok CBT', store:'TikTok CBT'},
   {p:'MBX',   cat:'Seeding',    store:'Seeding MBX'},
   {p:'RTN',   cat:'Seeding',    store:'Returns'},
 ];
@@ -1350,14 +1350,35 @@ function App(){
       ),
       h('div',{style:card},
         h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:16,letterSpacing:'.02em'}},'ORDER PREFIX DETECTION MAP'),
-        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},
-          PREFIX_MAP.map((m2,i)=>{
-            const cc=CA[m2.cat]||{bg:'#222',tx:'#888',br:'#444',ac:'#666'};
-            return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'rgba(255,255,255,0.03)',borderRadius:9,border:'1px solid rgba(255,255,255,0.06)'}},
-              h('span',{className:'mono',style:{fontWeight:700,color:cc.ac,fontSize:12}},m2.p),
-              h('span',{style:{fontSize:12,color:'#A0AABB'}},m2.store)
-            );
-          })
+        // ── ShipStation 채널 ──
+        h('div',{style:{marginBottom:12}},
+          h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}},
+            h('span',{style:{fontSize:11,fontWeight:700,color:'#5B8DEF',letterSpacing:'.05em',background:'rgba(91,141,239,0.12)',padding:'2px 10px',borderRadius:20,border:'1px solid rgba(91,141,239,0.25)'}},'📦 ShipStation'),
+          ),
+          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},
+            PREFIX_MAP.filter(m2=>m2.cat!=='TikTok CBT').map((m2,i)=>{
+              const cc=CA[m2.cat]||{bg:'#222',tx:'#888',br:'#444',ac:'#666'};
+              return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'rgba(255,255,255,0.03)',borderRadius:9,border:'1px solid rgba(255,255,255,0.06)'}},
+                h('span',{className:'mono',style:{fontWeight:700,color:cc.ac,fontSize:12}},m2.p),
+                h('span',{style:{fontSize:12,color:'#A0AABB'}},m2.store)
+              );
+            })
+          )
+        ),
+        // ── TikTok CBT 채널 ──
+        h('div',null,
+          h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}},
+            h('span',{style:{fontSize:11,fontWeight:700,color:'#C84A82',letterSpacing:'.05em',background:'rgba(200,74,130,0.12)',padding:'2px 10px',borderRadius:20,border:'1px solid rgba(200,74,130,0.25)'}},'🛍️ seller-us.tiktok.com'}),
+          ),
+          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},
+            PREFIX_MAP.filter(m2=>m2.cat==='TikTok CBT').map((m2,i)=>{
+              const cc=CA[m2.cat]||{bg:'#222',tx:'#888',br:'#444',ac:'#666'};
+              return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'rgba(200,74,130,0.06)',borderRadius:9,border:'1px solid rgba(200,74,130,0.2)'}},
+                h('span',{className:'mono',style:{fontWeight:700,color:cc.ac,fontSize:12}},m2.p),
+                h('span',{style:{fontSize:12,color:'#F0A0C8'}},m2.store)
+              );
+            })
+          )
         )
       )
     );
