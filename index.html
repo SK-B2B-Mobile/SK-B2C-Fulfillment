@@ -435,7 +435,14 @@ const detect=b=>{
 const getSt=l=>{const oc=l.orderCount||0;if(oc>0&&l.scanned>=oc&&l.scanEnd)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
-async function syncData(url,action,payload){if(!url)return;try{await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});}catch(e){console.warn(e);}}
+async function syncData(url,action,payload){
+  if(!url)return;
+  try{
+    // ★ v35: mode:'no-cors' → CORS 에러 해결 (GAS POST 정상 전송)
+    // no-cors는 response를 읽을 수 없지만 GAS는 요청을 정상 수신/처리함
+    await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});
+  }catch(e){console.warn('syncData error:',e);}
+}
 const {createElement:h,useState,useRef,useEffect,useCallback,Fragment}=React;
 
 /* ══════ PICKER SELECT ══════ */
@@ -681,7 +688,9 @@ function App(){
                   const nl={
                     id:remote.id,date:remote.date,pgNo:remote.pgNo,category:remote.category,
                     sku:remote.sku||0,orderCount:remote.orderCount||0,scanned:remote.scanned||0,
-                    worker:remote.worker||'',pickStart:remote.pickStart||'',pickEnd:remote.pickEnd||'',
+                    // ★ v35: 로컬 worker 우선 보존 (GAS POST CORS 실패로 remote에 없을 수 있음)
+                    worker: remote.worker || (idx>=0 ? merged[idx].worker : '') || '',
+                    pickStart:remote.pickStart||'',pickEnd:remote.pickEnd||'',
                     scanStart:remote.scanStart||'',scanEnd:remote.scanEnd||'',
                     status:remote.status||'Pending',memo:remote.memo||'',
                   };
@@ -777,7 +786,9 @@ function App(){
             id: remote.id || ('gs_'+Date.now()+'_'+Math.random()),
             date: remote.date, pgNo: remote.pgNo, category: remote.category,
             sku: remote.sku||0, orderCount: remote.orderCount||0, scanned: remote.scanned||0,
-            worker: remote.worker||'', pickStart: remote.pickStart||'', pickEnd: remote.pickEnd||'',
+            // ★ v35: 로컬 worker 우선 보존
+            worker: remote.worker || (idx>=0 ? merged[idx].worker : '') || '',
+            pickStart: remote.pickStart||'', pickEnd: remote.pickEnd||'',
             scanStart: remote.scanStart||'', scanEnd: remote.scanEnd||'',
             status: remote.status||'Pending', memo: remote.memo||'',
           };
