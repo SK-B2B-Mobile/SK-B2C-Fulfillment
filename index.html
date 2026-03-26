@@ -888,7 +888,8 @@ function App(){
   const tScan  =todayL.reduce((a,l)=>a+l.scanned,0);
   const tDone  =todayL.filter(l=>getSt(l)==='complete').length;
   const doneSKU=todayL.filter(l=>getSt(l)==='complete').reduce((a,l)=>a+(l.sku||0),0);
-  const actWk  =[...new Set(todayL.filter(l=>!['pending','complete'].includes(getSt(l))&&l.worker).map(l=>l.worker))];
+  // ★ v35: 오늘 작업한 모든 피커 표시 (complete 포함, pending+미배정 제외)
+  const actWk  =[...new Set(todayL.filter(l=>getSt(l)!=='pending'&&l.worker).map(l=>l.worker))];
   const skuPct  =tSKU>0?Math.round((doneSKU/tSKU)*100):0;
   const ordPct  =tOrd>0?Math.round((tScan/tOrd)*100):0;
   const jobPct  =todayL.length>0?Math.round((tDone/todayL.length)*100):0;
@@ -901,7 +902,7 @@ function App(){
       {lbl:'Total Orders', big:tScan,  sub:'/'+tOrd,          pct:ordPct, showPct:true, clr:'#10B981'},
       {lbl:'Scan Progress',big:tScan,  sub:'/'+tOrd,          pct:ordPct, showPct:true, clr:'#F59E0B'},
       {lbl:'Jobs Complete',big:tDone,  sub:'/'+todayL.length, pct:jobPct, showPct:true, clr:'#EC4899'},
-      {lbl:'Active Pickers',big:actWk.length,sub:actWk.length?actWk.slice(0,2).join(', ')+(actWk.length>2?'…':''):'—',pct:0,showPct:false,clr:'#3B82F6'},
+      {lbl:'Active Pickers',big:actWk.length,sub:actWk.length?actWk.join(', '):'—',pct:0,showPct:false,clr:'#3B82F6'},
     ].map((c,i)=>h('div',{key:i,className:'stat '+D},
       h('div',{className:'stat-accent',style:{background:c.clr}}),
       h('div',{className:'stat-lbl '+D},c.lbl),
