@@ -71,7 +71,7 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .stats-bar.light{background:#FFFFFF;border-bottom:2px solid #E8E8F0;box-shadow:0 4px 20px rgba(0,0,0,0.08)}
 .stats-bar.dark {background:linear-gradient(135deg,#141430,#1A1A3E);border-bottom:1px solid rgba(255,255,255,0.08)}
 .stat{
-  padding: clamp(16px, 1.8vw, 32px) clamp(18px, 2vw, 36px);
+  padding: clamp(12px, 1.2vw, 22px) clamp(16px, 1.6vw, 28px);
   display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;
   animation:statFadeIn .5s ease both
 }
@@ -93,16 +93,16 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 
 /* 유동적 글씨 크기 — clamp(최소, 뷰포트기준, 최대) */
 .stat-lbl{
-  font-size: clamp(9px, 0.75vw, 13px);
+  font-size: clamp(9px, 0.65vw, 11px);
   font-weight:700;text-transform:uppercase;letter-spacing:.12em;
-  margin-bottom: clamp(8px, 0.8vw, 16px);
-  margin-top: clamp(6px, 0.6vw, 12px)
+  margin-bottom: clamp(6px, 0.6vw, 10px);
+  margin-top: clamp(4px, 0.4vw, 8px)
 }
 .stat-lbl.light{color:#888}
 .stat-lbl.dark {color:#7070B8}
 .stat-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .stat-num{
-  font-size: clamp(28px, 3.2vw, 58px);
+  font-size: clamp(24px, 2.2vw, 38px);
   font-weight:900;line-height:1;letter-spacing:-0.03em;
   animation:numPop .6s cubic-bezier(.34,1.56,.64,1) both
 }
@@ -110,23 +110,23 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .stat-num.light{color:#111}
 .stat-num.dark{color:#E8E6FF}
 .stat-sub{
-  font-size: clamp(12px, 1.2vw, 20px);
+  font-size: clamp(11px, 0.95vw, 16px);
   font-weight:500
 }
 .stat-sub.light{color:#BBB}
 .stat-sub.dark {color:#5050A8}
 .stat-pct{
-  font-size: clamp(10px, 0.9vw, 15px);
+  font-size: clamp(10px, 0.75vw, 13px);
   font-weight:700;
-  padding: clamp(2px,0.2vw,5px) clamp(7px,0.7vw,14px);
+  padding: clamp(2px,0.18vw,4px) clamp(7px,0.6vw,12px);
   border-radius:100px;flex-shrink:0;transition:all .3s
 }
 .stat-pct.light{background:#F0F0F8;color:#555}
 .stat-pct.dark{background:rgba(255,255,255,0.08);color:#9090C0}
 .stat-bar{
-  height: clamp(5px, 0.5vw, 9px);
+  height: clamp(4px, 0.4vw, 7px);
   border-radius:4px;
-  margin-top: clamp(10px, 1vw, 18px);
+  margin-top: clamp(8px, 0.7vw, 14px);
   overflow:hidden;position:relative
 }
 .stat-bar.light{background:#F0F0F8}
@@ -146,8 +146,8 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .cat-tabs{display:flex;overflow-x:auto;flex:1;padding:0 clamp(12px,1.5vw,28px);gap:4px}
 .cat-tab{
   display:inline-flex;align-items:center;gap: clamp(5px,0.5vw,10px);
-  padding: clamp(11px,1.1vw,18px) clamp(13px,1.4vw,26px);
-  font-size: clamp(12px, 1.1vw, 16px);
+  padding: clamp(10px,0.9vw,15px) clamp(12px,1.2vw,22px);
+  font-size: clamp(12px, 0.95vw, 14px);
   font-weight:500;cursor:pointer;border:none;background:transparent;
   border-bottom:3px solid transparent;margin-bottom:-2px;
   white-space:nowrap;border-radius:0;transition:all .2s;font-family:inherit
@@ -193,17 +193,17 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .tbl-wrap.dark {background:#0E0E1C}
 .tbl{border-collapse:collapse;width:100%;min-width:900px}
 .tbl thead th{
-  padding: clamp(9px,0.9vw,15px) clamp(10px,1.2vw,20px);
+  padding: clamp(8px,0.7vw,13px) clamp(10px,1.1vw,18px);
   text-align:left;
-  font-size: clamp(10px,0.8vw,13px);
+  font-size: clamp(10px,0.72vw,12px);
   font-weight:700;text-transform:uppercase;letter-spacing:.05em;
   white-space:nowrap;user-select:none;
 }
 .tbl thead th.light{color:#555;background:#EEECEA;border-top:2px solid #C8C7C2;border-bottom:2px solid #C8C7C2}
 .tbl thead th.dark {color:#C0C0E0;background:#22224A;border-top:2px solid rgba(255,255,255,0.12);border-bottom:2px solid rgba(255,255,255,0.12)}
 .tbl tbody td{
-  padding: clamp(10px,1vw,17px) clamp(10px,1.2vw,20px);
-  font-size: clamp(12px,1.05vw,16px);
+  padding: clamp(9px,0.85vw,14px) clamp(10px,1.1vw,18px);
+  font-size: clamp(12px,0.95vw,15px);
   border-bottom:1px solid;
   vertical-align:middle;white-space:nowrap;
 }
