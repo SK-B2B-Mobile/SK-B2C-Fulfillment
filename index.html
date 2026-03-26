@@ -66,12 +66,15 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .mgr-btn.lock{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);color:#888}
 .mgr-btn.lock:hover{border-color:rgba(255,255,255,0.25);color:#CCC}
 
-/* ═══ STATS BAR ═══ */
+/* ═══ STATS BAR — 유동적 스케일링 ═══ */
 .stats-bar{display:grid;grid-template-columns:repeat(5,1fr);align-items:stretch}
 .stats-bar.light{background:#FFFFFF;border-bottom:2px solid #E8E8F0;box-shadow:0 4px 20px rgba(0,0,0,0.08)}
 .stats-bar.dark {background:linear-gradient(135deg,#141430,#1A1A3E);border-bottom:1px solid rgba(255,255,255,0.08)}
-.stat{padding:20px 24px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;
-  animation:statFadeIn .5s ease both}
+.stat{
+  padding: clamp(16px, 1.8vw, 32px) clamp(18px, 2vw, 36px);
+  display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;
+  animation:statFadeIn .5s ease both
+}
 .stat:nth-child(1){animation-delay:.05s}
 .stat:nth-child(2){animation-delay:.1s}
 .stat:nth-child(3){animation-delay:.15s}
@@ -81,94 +84,127 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .stat.light{border-right:1px solid #F0F0F8}
 .stat.dark {border-right:1px solid rgba(255,255,255,0.06)}
 .stat:last-child{border-right:none}
-/* 상단 컬러 accent — 두껍게 + glow */
 .stat-accent{position:absolute;top:0;left:0;right:0;height:5px;border-radius:0;
   animation:accentGlow 2.5s ease-in-out infinite alternate}
 @keyframes accentGlow{from{opacity:.8}to{opacity:1;filter:brightness(1.3)}}
-/* 배경 shimmer */
 .stat::before{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,0.04) 50%,transparent 60%);
   background-size:200% 100%;animation:shimmer 3s linear infinite;pointer-events:none}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.stat-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px;margin-top:8px}
-.stat-lbl.light{color:#999}
-.stat-lbl.dark {color:#6060A8}
+
+/* 유동적 글씨 크기 — clamp(최소, 뷰포트기준, 최대) */
+.stat-lbl{
+  font-size: clamp(9px, 0.75vw, 13px);
+  font-weight:700;text-transform:uppercase;letter-spacing:.12em;
+  margin-bottom: clamp(8px, 0.8vw, 16px);
+  margin-top: clamp(6px, 0.6vw, 12px)
+}
+.stat-lbl.light{color:#888}
+.stat-lbl.dark {color:#7070B8}
 .stat-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.stat-num{font-size:36px;font-weight:900;line-height:1;letter-spacing:-0.03em;
-  animation:numPop .6s cubic-bezier(.34,1.56,.64,1) both}
+.stat-num{
+  font-size: clamp(28px, 3.2vw, 58px);
+  font-weight:900;line-height:1;letter-spacing:-0.03em;
+  animation:numPop .6s cubic-bezier(.34,1.56,.64,1) both
+}
 @keyframes numPop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
 .stat-num.light{color:#111}
 .stat-num.dark{color:#E8E6FF}
-.stat-sub{font-size:14px;font-weight:500}
+.stat-sub{
+  font-size: clamp(12px, 1.2vw, 20px);
+  font-weight:500
+}
 .stat-sub.light{color:#BBB}
-.stat-sub.dark {color:#4848A0}
-.stat-pct{font-size:12px;font-weight:700;padding:3px 10px;border-radius:100px;flex-shrink:0;
-  transition:all .3s}
+.stat-sub.dark {color:#5050A8}
+.stat-pct{
+  font-size: clamp(10px, 0.9vw, 15px);
+  font-weight:700;
+  padding: clamp(2px,0.2vw,5px) clamp(7px,0.7vw,14px);
+  border-radius:100px;flex-shrink:0;transition:all .3s
+}
 .stat-pct.light{background:#F0F0F8;color:#555}
 .stat-pct.dark{background:rgba(255,255,255,0.08);color:#9090C0}
-.stat-bar{height:7px;border-radius:4px;margin-top:14px;overflow:hidden;position:relative}
+.stat-bar{
+  height: clamp(5px, 0.5vw, 9px);
+  border-radius:4px;
+  margin-top: clamp(10px, 1vw, 18px);
+  overflow:hidden;position:relative
+}
 .stat-bar.light{background:#F0F0F8}
 .stat-bar.dark {background:rgba(255,255,255,0.07)}
 .stat-fill{height:100%;border-radius:4px;
   transition:width 1.2s cubic-bezier(.4,0,.2,1);
   position:relative;overflow:hidden}
-/* fill 위 반짝임 */
 .stat-fill::after{content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;
   background:linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent);
   animation:fillShine 2.2s ease-in-out infinite}
 @keyframes fillShine{0%{left:-60%}100%{left:120%}}
 
-/* ═══ CATEGORY TABS ═══ */
+/* ═══ CATEGORY TABS — 유동적 ═══ */
 .cat-tabs-row{display:flex;align-items:center}
 .cat-tabs-row.light{background:#FAFAFA;border-bottom:2px solid #EEEEF8}
 .cat-tabs-row.dark {background:#141430;border-bottom:1px solid rgba(255,255,255,0.1)}
-.cat-tabs{display:flex;overflow-x:auto;flex:1;padding:0 20px;gap:4px}
-/* 다크 탭 기본 색상 — 훨씬 밝게 */
-.cat-tab{display:inline-flex;align-items:center;gap:7px;padding:14px 20px;font-size:13.5px;font-weight:500;cursor:pointer;border:none;background:transparent;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;border-radius:0;transition:all .2s;font-family:inherit}
+.cat-tabs{display:flex;overflow-x:auto;flex:1;padding:0 clamp(12px,1.5vw,28px);gap:4px}
+.cat-tab{
+  display:inline-flex;align-items:center;gap: clamp(5px,0.5vw,10px);
+  padding: clamp(11px,1.1vw,18px) clamp(13px,1.4vw,26px);
+  font-size: clamp(12px, 1.1vw, 16px);
+  font-weight:500;cursor:pointer;border:none;background:transparent;
+  border-bottom:3px solid transparent;margin-bottom:-2px;
+  white-space:nowrap;border-radius:0;transition:all .2s;font-family:inherit
+}
 .cat-tab.light{color:#999}
 .cat-tab.light:hover{color:#333;background:rgba(0,0,0,0.03)}
 .cat-tab.light.on{font-weight:700;color:#111}
 .cat-tab.dark{color:#8080C0}
 .cat-tab.dark:hover{color:#C0C0F0;background:rgba(255,255,255,0.04)}
 .cat-tab.dark.on{font-weight:700;color:#E0DEFF}
-.cat-cnt{font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px;transition:all .2s}
+.cat-cnt{
+  font-size: clamp(10px, 0.8vw, 13px);
+  font-weight:700;
+  padding: clamp(2px,0.2vw,4px) clamp(6px,0.6vw,10px);
+  border-radius:100px;transition:all .2s
+}
 .cat-cnt.light{background:#EBEBEB;color:#666}
-.cat-cnt.light:hover{background:#E0E0E0}
 .cat-cnt.dark {background:rgba(255,255,255,0.1);color:#9090C0}
 .cat-cnt.on-light{background:#111;color:#fff}
 .cat-cnt.on-dark {color:#0D0D1B}
-.tab-actions{display:flex;gap:8px;padding:5px 16px;flex-shrink:0;align-items:center}
+.tab-actions{display:flex;gap:8px;padding:5px clamp(10px,1vw,20px);flex-shrink:0;align-items:center}
 
-/* ═══ CLOCK ═══ */
-.clock-row{display:flex;align-items:center;justify-content:flex-end;padding:5px 20px;gap:10px}
+/* ═══ CLOCK — 유동적 ═══ */
+.clock-row{display:flex;align-items:center;justify-content:flex-end;padding: clamp(4px,0.4vw,8px) clamp(14px,1.5vw,28px);gap:12px}
 .clock-row.light{background:#fff;border-bottom:1px solid #E8E7E3}
 .clock-row.dark {background:#1A1A3E;border-bottom:1px solid rgba(255,255,255,0.06)}
-.clock-date{font-size:12px;font-weight:500;color:#AAA}
-.clock-time{font-family:'DM Mono',ui-monospace,Consolas,monospace;font-size:26px;font-weight:700;letter-spacing:-0.01em;line-height:1}
+.clock-date{font-size: clamp(11px,0.9vw,14px);font-weight:500;color:#AAA}
+.clock-time{font-family:'DM Mono',ui-monospace,Consolas,monospace;font-size: clamp(20px,2.2vw,36px);font-weight:700;letter-spacing:-0.01em;line-height:1}
 .clock-time.light{color:#222}
 .clock-time.dark {color:#E8E6FF}
-.clock-sec{font-family:'DM Mono',ui-monospace,Consolas,monospace;font-size:15px;font-weight:600;color:#BBB}
-.clock-ampm{font-size:13px;font-weight:700;color:#888;margin-left:3px}
+.clock-sec{font-family:'DM Mono',ui-monospace,Consolas,monospace;font-size: clamp(13px,1.2vw,20px);font-weight:600;color:#BBB}
+.clock-ampm{font-size: clamp(11px,0.9vw,15px);font-weight:700;color:#888;margin-left:3px}
 
 /* ═══ INFO NOTE ═══ */
-.info-note{padding:6px 22px;font-size:12px;font-style:italic;border-bottom:1px solid}
+.info-note{padding: clamp(5px,0.5vw,9px) clamp(16px,1.8vw,28px);font-size: clamp(11px,0.9vw,14px);font-style:italic;border-bottom:1px solid}
 .info-note.light{background:#F8F7F4;color:#999;border-color:#E8E7E3}
 .info-note.dark {background:#1A1A3E;color:#6060A0;border-color:rgba(255,255,255,0.06)}
 
 
-/* ═══ TABLE ═══ */
+/* ═══ TABLE — 유동적 ═══ */
 .tbl-wrap{overflow-x:auto}
 .tbl-wrap.light{background:#fff}
 .tbl-wrap.dark {background:#0E0E1C}
-.tbl{border-collapse:collapse;width:100%;min-width:1000px}
+.tbl{border-collapse:collapse;width:100%;min-width:900px}
 .tbl thead th{
-  padding:11px 16px;text-align:left;
-  font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  padding: clamp(9px,0.9vw,15px) clamp(10px,1.2vw,20px);
+  text-align:left;
+  font-size: clamp(10px,0.8vw,13px);
+  font-weight:700;text-transform:uppercase;letter-spacing:.05em;
   white-space:nowrap;user-select:none;
 }
-.tbl thead th.light{color:#666;background:#EEECEA;border-top:2px solid #C8C7C2;border-bottom:2px solid #C8C7C2}
-.tbl thead th.dark {color:#B0B0D8;background:#22224A;border-top:2px solid rgba(255,255,255,0.12);border-bottom:2px solid rgba(255,255,255,0.12)}
+.tbl thead th.light{color:#555;background:#EEECEA;border-top:2px solid #C8C7C2;border-bottom:2px solid #C8C7C2}
+.tbl thead th.dark {color:#C0C0E0;background:#22224A;border-top:2px solid rgba(255,255,255,0.12);border-bottom:2px solid rgba(255,255,255,0.12)}
 .tbl tbody td{
-  padding:13px 16px;font-size:14px;border-bottom:1px solid;
+  padding: clamp(10px,1vw,17px) clamp(10px,1.2vw,20px);
+  font-size: clamp(12px,1.05vw,16px);
+  border-bottom:1px solid;
   vertical-align:middle;white-space:nowrap;
 }
 .tbl tbody td.light{background:#fff;border-color:#EEECEA}
@@ -270,40 +306,39 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 ::-webkit-scrollbar-thumb{border-radius:10px;background:rgba(128,128,128,0.2)}
 
 /* ═══ RESPONSIVE ═══ */
-/* Large monitor (1400px+): full size */
-@media (min-width: 1400px) {
-  .tbl thead th { font-size:12px; padding:11px 16px }
-  .tbl tbody td { font-size:14px; padding:13px 16px }
-  .stat-num     { font-size:28px }
-}
-/* Standard desktop (1100~1399px) */
-@media (max-width:1399px) and (min-width:1100px) {
-  .tbl thead th { font-size:11px; padding:9px 12px }
-  .tbl tbody td { font-size:13px; padding:11px 12px }
-  .stat-num     { font-size:24px }
-  .stat-lbl     { font-size:10px }
-  .cat-tab      { font-size:12px; padding:9px 12px }
-}
-/* Laptop (800~1099px) */
-@media (max-width:1099px) and (min-width:800px) {
-  .nav          { padding:0 14px }
+/* clamp()로 대부분 자동 처리됨. 아래는 매우 작은/큰 화면만 보정 */
+
+/* 소형 태블릿/노트북 (600~899px) — 컴팩트 보정 */
+@media (max-width:899px) and (min-width:600px) {
+  .nav          { padding:0 10px; gap:2px; height:48px }
   .app-title    { font-size:13px !important }
-  .tbl          { min-width:820px }
-  .tbl thead th { font-size:10px; padding:8px 10px; letter-spacing:.02em }
-  .tbl tbody td { font-size:12px; padding:10px 10px }
-  .stat         { padding:10px 12px }
-  .stat-num     { font-size:20px }
-  .stat-lbl     { font-size:10px; letter-spacing:.02em }
-  .stat-sub     { font-size:11px }
-  .cat-tab      { font-size:12px; padding:8px 10px }
-  .cat-tabs     { padding:0 10px }
-  .tab-actions  { gap:6px; padding:0 10px }
-  .btn-primary  { padding:6px 12px; font-size:12px }
-  .btn-secondary{ padding:6px 10px; font-size:12px }
-  .ab           { padding:5px 10px; font-size:12px }
-  .ab.edit-btn  { padding:4px 9px; font-size:11px }
-  .ab.del-btn   { padding:4px 8px; font-size:11px }
-  .clock-time   { font-size:20px !important }
+  .app-ver      { display:none }
+  .nav-sep      { display:none }
+  .stats-bar    { grid-template-columns:repeat(3,1fr) }
+  .stat:nth-child(4){ border-top:1px solid rgba(255,255,255,0.06) }
+  .stat:nth-child(5){ border-top:1px solid rgba(255,255,255,0.06) }
+  .tbl          { min-width:700px }
+  .clock-date   { display:none }
+}
+/* 모바일 (< 600px) */
+@media (max-width:599px) {
+  .stats-bar    { grid-template-columns:repeat(2,1fr) }
+  .nav-sep      { display:none }
+  .app-ver      { display:none }
+  .tbl          { min-width:600px }
+}
+/* 와이드 모니터 (2560px+) — 너무 커지지 않도록 */
+@media (min-width:2560px) {
+  .stat-num  { font-size:64px }
+  .stat-sub  { font-size:22px }
+  .stat-lbl  { font-size:14px }
+  .cat-tab   { font-size:18px }
+}
+/* 수평 스크롤 항상 허용 */
+.tbl-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 }
 /* Small laptop / tablet (600~799px) */
 @media (max-width:799px) and (min-width:600px) {
@@ -955,24 +990,24 @@ function App(){
             h('span',{className:'stat-sub '+D},actWk.length?'pickers':'—')
           )
         ),
-        h('div',{style:{marginTop:10,display:'flex',flexWrap:'wrap',gap:5}},
+        h('div',{style:{marginTop:12,display:'flex',flexWrap:'wrap',gap:6}},
           actWk.length===0
-            ? h('span',{style:{fontSize:11,color:isMgr?'#4848A0':'#CCC',fontStyle:'italic'}},'No active pickers')
+            ? h('span',{style:{fontSize:12,color:isMgr?'#4848A0':'#CCC',fontStyle:'italic'}},'No active pickers')
             : actWk.map(w=>{
                 const c=pkC(w);
                 return h('span',{key:w,style:{
-                  display:'inline-flex',alignItems:'center',gap:4,
-                  background:isMgr?'rgba(255,255,255,0.06)':c.bg,
-                  border:'1px solid '+(isMgr?'rgba(255,255,255,0.12)':c.br||c.bg),
-                  borderRadius:100,padding:'3px 9px 3px 6px',
-                  fontSize:11,fontWeight:600,
-                  color:isMgr?'#C0C0E8':c.tx,
+                  display:'inline-flex',alignItems:'center',gap:5,
+                  background:isMgr?'rgba(255,255,255,0.07)':c.bg,
+                  border:'1px solid '+(isMgr?'rgba(255,255,255,0.14)':c.br||c.bg),
+                  borderRadius:100,padding:'5px 12px 5px 8px',
+                  fontSize:13,fontWeight:600,
+                  color:isMgr?'#D0D0F0':c.tx,
                   animation:'statFadeIn .4s ease both',
                 }},
                   h('span',{style:{
-                    width:7,height:7,borderRadius:'50%',flexShrink:0,
+                    width:9,height:9,borderRadius:'50%',flexShrink:0,
                     background:c.tx,
-                    boxShadow:'0 0 5px '+c.tx+'88',
+                    boxShadow:'0 0 6px '+c.tx+'99',
                   }}),
                   w
                 );
