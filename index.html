@@ -1551,7 +1551,7 @@ function App(){
       tab==='create'  &&isMgr&&CreatePage(),
       tab==='settings'&&isMgr&&SettingsPage(),
       showPin&&h(PinModal,{onOK:()=>{setMgr(true);setPin(false);},onCancel:()=>setPin(false)}),
-      editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:handleDel,onCancel:()=>setEL(null)})
+      editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:delItem,onCancel:()=>setEL(null)})
     );
   }catch(renderErr){
     console.error('Render error:', renderErr);
