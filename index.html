@@ -749,13 +749,17 @@ function App(){
                 const merged=[...prev];
                 fetched.forEach(remote=>{
                   const idx=merged.findIndex(l=>l.id&&l.id===remote.id);
+                  const loc=idx>=0?merged[idx]:null;
                   const nl={
                     id:remote.id,date:remote.date,pgNo:remote.pgNo,category:remote.category,
                     sku:remote.sku||0,orderCount:remote.orderCount||0,scanned:remote.scanned||0,
-                    // ★ v35: 로컬 worker 우선 보존 (GAS POST CORS 실패로 remote에 없을 수 있음)
-                    worker: remote.worker || (idx>=0 ? merged[idx].worker : '') || '',
-                    pickStart:remote.pickStart||'',pickEnd:remote.pickEnd||'',
-                    scanStart:remote.scanStart||'',scanEnd:remote.scanEnd||'',
+                    // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
+                    // (GAS POST CORS no-cors → 응답 못 읽음 → remote에 반영 지연 가능)
+                    worker:    remote.worker    || loc?.worker    || '',
+                    pickStart: remote.pickStart || loc?.pickStart || '',
+                    pickEnd:   remote.pickEnd   || loc?.pickEnd   || '',
+                    scanStart: remote.scanStart || loc?.scanStart || '',
+                    scanEnd:   remote.scanEnd   || loc?.scanEnd   || '',
                     status:remote.status||'Pending',memo:remote.memo||'',
                   };
                   if(idx>=0) merged[idx]=nl; else merged.push(nl);
@@ -850,10 +854,13 @@ function App(){
             id: remote.id || ('gs_'+Date.now()+'_'+Math.random()),
             date: remote.date, pgNo: remote.pgNo, category: remote.category,
             sku: remote.sku||0, orderCount: remote.orderCount||0, scanned: remote.scanned||0,
-            // ★ v35: 로컬 worker 우선 보존
-            worker: remote.worker || (idx>=0 ? merged[idx].worker : '') || '',
-            pickStart: remote.pickStart||'', pickEnd: remote.pickEnd||'',
-            scanStart: remote.scanStart||'', scanEnd: remote.scanEnd||'',
+            // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
+            const loc2 = idx>=0 ? merged[idx] : null;
+            worker:    remote.worker    || loc2?.worker    || '',
+            pickStart: remote.pickStart || loc2?.pickStart || '',
+            pickEnd:   remote.pickEnd   || loc2?.pickEnd   || '',
+            scanStart: remote.scanStart || loc2?.scanStart || '',
+            scanEnd:   remote.scanEnd   || loc2?.scanEnd   || '',
             status: remote.status||'Pending', memo: remote.memo||'',
           };
           if (idx >= 0) merged[idx] = nl;
