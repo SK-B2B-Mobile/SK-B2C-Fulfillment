@@ -250,6 +250,12 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 }
 .ab.done {background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(34,197,94,0.3)}
 .ab.done:hover{filter:brightness(1.08);transform:scale(1.02)}
+.ab.endscan{
+  background:linear-gradient(135deg,#F59E0B,#D97706);
+  color:#fff;border-color:transparent;
+  box-shadow:0 3px 12px rgba(245,158,11,0.35);
+}
+.ab.endscan:hover{filter:brightness(1.08);transform:scale(1.02)}
 .ab.work {background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(59,130,246,0.3)}
 .ab.work:hover{filter:brightness(1.08)}
 .ab.plus{border-radius:7px;padding:6px 12px;font-size:13px;font-weight:700;border:1px solid}
@@ -496,7 +502,8 @@ const detect=b=>{
   for(const m of PREFIX_MAP) if(u.startsWith(m.p.toUpperCase())) return{cat:m.cat,store:m.store};
   return null;
 };
-const getSt=l=>{const oc=l.orderCount||0;if(oc>0&&l.scanned>=oc&&l.scanEnd)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
+// ★ v36: scanEnd 있으면 무조건 complete (강제 종료 포함)
+const getSt=l=>{const oc=l.orderCount||0;if(l.scanEnd)return'complete';if(oc>0&&l.scanned>=oc)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 async function syncData(url,action,payload){
@@ -790,8 +797,20 @@ function App(){
   const startPick=id=>{const l=lists.find(x=>x.id===id);if(l&&!l.pickStart)upd(id,{pickStart:ts()});};
   const endPick  =id=>{const l=lists.find(x=>x.id===id);if(l&&l.pickStart&&!l.pickEnd)upd(id,{pickEnd:ts()});};
   const startScan=id=>{const l=lists.find(x=>x.id===id);if(l&&!l.scanStart)upd(id,{scanStart:ts()});};
+  // ★ v36: 강제 스캔 종료 — 미완료 건이 있어도 scanEnd 기록 → Complete
+  const endScan=id=>{
+    const l=lists.find(x=>x.id===id);
+    if(!l||!l.scanStart||l.scanEnd)return;
+    const now=ts();
+    const confirmed=window.confirm(
+      '⏹ End Scan — '+l.pgNo+'\n\n'+
+      '스캔 완료: '+l.scanned+' / '+l.orderCount+'건\n'+
+      (l.scanned<(l.orderCount||0)?'⚠ '+(l.orderCount-l.scanned)+'건 미스캔 (OOS·취소 등)\n\n':'') +
+      '스캔을 종료하고 Complete 처리하시겠습니까?'
+    );
+    if(confirmed) upd(id,{scanEnd:now});
+  };
   const addN=(id,q)=>setLists(prev=>prev.map(l=>{
-    if(l.id!==id)return l;const now=ts();const oc=l.orderCount||0;const nc=Math.min(l.scanned+q,oc);
     const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd)ch.scanEnd=now;
     const u={...l,...ch};sync('upsertList',{list:u});return u;
   }));
@@ -1111,6 +1130,12 @@ function App(){
                     ...[1,5,10].map(n=>h('button',{key:n,className:'ab plus',onClick:()=>addN(l.id,n),style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},'+'+n))
                   ),
                   !isMgr&&!manual&&l.pickEnd&&!l.scanStart&&h('span',{style:{fontSize:11,color:'#AAA',fontStyle:'italic'}},'→ Scan Station'),
+                  // ★ v36: ⏹ End Scan — 스캔 진행 중 + 미완료일 때 모든 카테고리에 표시
+                  !isMgr&&st==='scanning'&&l.scanned<(l.orderCount||0)&&h('button',{
+                    className:'ab endscan',
+                    onClick:()=>endScan(l.id),
+                    title:'OOS·취소 등으로 전체 스캔 불가 시 강제 종료'
+                  },'⏹ End Scan'),
                   !isMgr&&st==='complete'&&h('button',{className:'ab done',style:{cursor:'default',opacity:0.85}},'✓ Complete'),
                   /* Manager actions — always visible in manager mode */
                   isMgr&&h('button',{className:'ab edit-btn',onClick:()=>setEL(l)},'Edit'),
