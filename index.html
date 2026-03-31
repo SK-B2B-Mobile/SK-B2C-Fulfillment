@@ -817,27 +817,7 @@ function App(){
     const u={...l,...ch};sync('upsertList',{list:u});return u;
   }));
   // ★ TikTok CBT: 숫자 직접 입력 → 한번에 처리
-  const enterScan=id=>{
-    const l=lists.find(x=>x.id===id);
-    if(!l||l.scanEnd)return;
-    const oc=l.orderCount||0;
-    const input=window.prompt(
-      '✏️ 스캔 수량 입력 — '+l.pgNo+'
-
-주문 수: '+oc+'건
-
-실제 출고 건수를 입력하세요:',
-      String(oc)
-    );
-    if(input===null)return;
-    const nc=parseInt(input,10);
-    if(isNaN(nc)||nc<0){alert('올바른 숫자를 입력하세요.');return;}
-    const now=ts();
-    const ch={scanned:nc};
-    if(!l.scanStart)ch.scanStart=now;
-    if(nc>=oc&&oc>0)ch.scanEnd=now;
-    upd(id,ch);
-  };
+  const enterScan=id=>{const l=lists.find(x=>x.id===id);if(!l||l.scanEnd)return;const oc=l.orderCount||0;const input=window.prompt('\u270F\uFE0F 스캔 수량 입력 \u2014 '+l.pgNo+'\n주문 수: '+oc+'건\n실제 출고 건수를 입력하세요:',String(oc));if(input===null)return;const nc=parseInt(input,10);if(isNaN(nc)||nc<0){alert('올바른 숫자를 입력하세요.');return;}const now=ts();const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0)ch.scanEnd=now;upd(id,ch);};
 
   /* scan barcode */
   const handleScan=e=>{
