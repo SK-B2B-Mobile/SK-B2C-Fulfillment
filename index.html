@@ -798,27 +798,21 @@ function App(){
   const endPick  =id=>{const l=lists.find(x=>x.id===id);if(l&&l.pickStart&&!l.pickEnd)upd(id,{pickEnd:ts()});};
   const startScan=id=>{const l=lists.find(x=>x.id===id);if(l&&!l.scanStart)upd(id,{scanStart:ts()});};
   // ★ v36: 강제 스캔 종료 — 미완료 건이 있어도 scanEnd 기록 → Complete
-  // ★ v37: 팝업에서 실제 스캔 건수 수정 가능
   const endScan=id=>{
     const l=lists.find(x=>x.id===id);
     if(!l||!l.scanStart||l.scanEnd)return;
     const now=ts();
-    const oc=l.orderCount||0;
-    const input=window.prompt(
+    const confirmed=window.confirm(
       '⏹ End Scan — '+l.pgNo+'\n\n'+
-      '주문 수: '+oc+'건\n'+
-      (l.scanned<oc?'⚠ '+(oc-l.scanned)+'건 미스캔 (OOS·취소 등)\n':'')+
-      '\n실제 스캔 완료 건수를 확인하고 수정하세요:',
-      String(l.scanned)
+      '스캔 완료: '+l.scanned+' / '+l.orderCount+'건\n'+
+      (l.scanned<(l.orderCount||0)?'⚠ '+(l.orderCount-l.scanned)+'건 미스캔 (OOS·취소 등)\n\n':'') +
+      '스캔을 종료하고 Complete 처리하시겠습니까?'
     );
-    if(input===null)return; // 취소
-    const newCount=parseInt(input,10);
-    if(isNaN(newCount)||newCount<0){alert('올바른 숫자를 입력하세요.');return;}
-    const ch={scanEnd:now};
-    if(newCount!==l.scanned)ch.scanned=newCount;
-    upd(id,ch);
+    if(confirmed) upd(id,{scanEnd:now});
   };
   const addN=(id,q)=>setLists(prev=>prev.map(l=>{
+    if(l.id!==id)return l;
+    const now=ts();const oc=l.orderCount||0;const nc=(l.scanned||0)+q;
     const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd)ch.scanEnd=now;
     const u={...l,...ch};sync('upsertList',{list:u});return u;
   }));
