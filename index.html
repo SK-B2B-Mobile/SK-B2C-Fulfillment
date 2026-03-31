@@ -394,6 +394,7 @@ const PREFIX_MAP=[
   {p:'HOA',   cat:'Moida & Hola',store:'Hola'},
   {p:'5773',  cat:'TikTok CBT', store:'TikTok CBT'},
   {p:'1155',  cat:'TikTok CBT', store:'TikTok CBT'},  // ★ Package ID prefix (패킹슬립 바코드)
+  {p:'1156',  cat:'TikTok CBT', store:'TikTok CBT'},  // ★ Package ID prefix 1156 추가
   {p:'MBX',   cat:'Seeding',    store:'Seeding MBX'},
   {p:'RTN',   cat:'Seeding',    store:'Returns'},
 ];
@@ -817,7 +818,7 @@ function App(){
     const u={...l,...ch};sync('upsertList',{list:u});return u;
   }));
   // ★ TikTok CBT: 숫자 직접 입력 → 한번에 처리
-  const enterScan=id=>{const l=lists.find(x=>x.id===id);if(!l||l.scanEnd)return;const oc=l.orderCount||0;const input=window.prompt('\u270F\uFE0F 스캔 수량 입력 \u2014 '+l.pgNo+'\n주문 수: '+oc+'건\n실제 출고 건수를 입력하세요:',String(oc));if(input===null)return;const nc=parseInt(input,10);if(isNaN(nc)||nc<0){alert('올바른 숫자를 입력하세요.');return;}const now=ts();const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0)ch.scanEnd=now;upd(id,ch);};
+  const enterScan=id=>{const l=lists.find(x=>x.id===id);if(!l||l.scanEnd)return;const oc=l.orderCount||0;const input=window.prompt('Enter scan count - '+l.pgNo+'\nOrders: '+oc+'\nEnter actual shipped qty:',String(oc));if(input===null)return;const nc=parseInt(input,10);if(isNaN(nc)||nc<0){alert('Please enter a valid number.');return;}const now=ts();const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0)ch.scanEnd=now;upd(id,ch);};
 
   /* scan barcode */
   const handleScan=e=>{
@@ -1133,7 +1134,7 @@ function App(){
                   !isMgr&&manual&&l.pickEnd&&l.scanStart&&st!=='complete'&&h(Fragment,null,
                     ...[1,5,10].map(n=>h('button',{key:n,className:'ab plus',onClick:()=>addN(l.id,n),style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},'+'+n))
                   ),
-                  !isMgr&&l.category==='TikTok CBT'&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab work',onClick:()=>enterScan(l.id),style:{background:'#F0E6FF',color:'#6B21A8',borderColor:'#D8B4FE'}},'✏️ 입력'),
+                  !isMgr&&l.category==='TikTok CBT'&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab work',onClick:()=>enterScan(l.id),style:{background:'#F0E6FF',color:'#6B21A8',borderColor:'#D8B4FE'}},'✏️ Enter'),
                   !isMgr&&l.category!=='TikTok CBT'&&!manual&&l.pickEnd&&!l.scanStart&&h('span',{style:{fontSize:11,color:'#AAA',fontStyle:'italic'}},'→ Scan Station'),
                   // ★ v36: ⏹ End Scan — 스캔 진행 중 + 미완료일 때 모든 카테고리에 표시
                   !isMgr&&st==='scanning'&&l.scanned<(l.orderCount||0)&&h('button',{
