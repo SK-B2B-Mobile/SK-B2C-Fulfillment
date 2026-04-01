@@ -1132,9 +1132,13 @@ function App(){
               h('td',{className:D,style:{fontWeight:600,color:isMgr?'#86EFAC':'#555',fontSize:13}},dur(l.scanStart,l.scanEnd,l.date)),
               h('td',{className:D},h('span',{className:'pill '+STC[si]},STL[si])),
               h('td',{className:D,style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',color:isMgr?'#7070A0':'#888',fontSize:11}},
-                l.memo||'—'
+                (l.skipReason
+                  ? h('span',null,
+                      l.memo?l.memo+' ':null,
+                      h('span',{style:{color:'#DC2626',fontWeight:700}},l.skipReason)
+                    )
+                  : l.memo||'—')
               ),
-              h('td',{className:D,style:{color:l.skipReason?'#DC2626':'#888',fontWeight:l.skipReason?600:'normal',fontSize:11}},l.skipReason||'—'),
               h('td',{className:D},
                 h('div',{style:{display:'flex',gap:4,alignItems:'center'}},
                   /* Worker actions */
