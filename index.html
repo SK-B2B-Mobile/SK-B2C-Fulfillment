@@ -724,6 +724,8 @@ function App(){
   const [ssMsg,setSSM]      =useState('');
   const [ssModal,setSSModal]=useState(false);
   const [ssModalData,setSSModalData]=useState([]);
+  const [endScanModal,setEndScanModal]=useState(null);
+  const [skipQtys,setSkipQtys]=useState({OOS:0,'NF':0,'EXP':0,'C.Cancel':0});
 
   const scanRef=useRef(null);
   const pickers=pksStr.split(',').map(s=>s.trim()).filter(Boolean);
@@ -802,23 +804,14 @@ function App(){
   const endScan=id=>{
     const l=lists.find(x=>x.id===id);
     if(!l||!l.scanStart||l.scanEnd)return;
-    const now=ts();
     const oc=l.orderCount||0;
     const missed=oc-l.scanned;
-    let skipReason='';
-    if(missed>0){
-      const reasons=['OOS','NF (Not Found)','EXP (Expiry Issue)','Customer Cancel'];
-      const reasonStr=reasons.map((r,i)=>(i+1)+'. '+r).join('\n');
-      const pick=window.prompt('⏹ End Scan — '+l.pgNo+'\nScanned: '+l.scanned+' / '+oc+' ('+missed+' unscanned)\n\nSelect skip reason:\n'+reasonStr+'\n\nEnter number (1-4):','1');
-      if(pick===null)return;
-      const ri=parseInt(pick,10)-1;
-      skipReason=(ri>=0&&ri<reasons.length)?reasons[ri]:'OOS';
-    } else {
+    if(missed<=0){
       if(!window.confirm('⏹ End Scan — '+l.pgNo+'\nAll '+oc+' scanned. End scan?'))return;
+      upd(id,{scanEnd:ts()});
+      return;
     }
-    const ch={scanEnd:now};
-    if(skipReason)ch.skipReason=skipReason;
-    upd(id,ch);
+    setEndScanModal({id,pgNo:l.pgNo,scanned:l.scanned,oc,missed});
   };
   const addN=(id,q)=>setLists(prev=>prev.map(l=>{
     if(l.id!==id)return l;
@@ -1723,6 +1716,48 @@ function App(){
       tab==='create'  &&isMgr&&CreatePage(),
       tab==='settings'&&isMgr&&SettingsPage(),
       showPin&&h(PinModal,{onOK:()=>{setMgr(true);setPin(false);},onCancel:()=>setPin(false)}),
+      endScanModal&&h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}},
+        h('div',{style:{background:'#fff',borderRadius:16,padding:28,minWidth:340,maxWidth:420,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
+          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:4}},'⏹ End Scan — '+endScanModal.pgNo),
+          h('div',{style:{fontSize:13,color:'#666',marginBottom:16}},'Scanned: '+endScanModal.scanned+' / '+endScanModal.oc+' — ',
+            h('span',{style:{color:'#DC2626',fontWeight:600}},endScanModal.missed+' unscanned')),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:10,fontWeight:600}},'Select reason & qty for each unscanned item:'),
+          h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:20}},
+            ['OOS','NF (Not Found)','EXP (Expiry Issue)','Customer Cancel'].map(reason=>
+              h('div',{key:reason,style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'#F8F8F8',borderRadius:8}},
+                h('span',{style:{fontSize:13,fontWeight:500}},reason),
+                h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+                  h('button',{onClick:()=>setSkipQtys(q=>({...q,[reason]:Math.max(0,(q[reason]||0)-1)})),
+                    style:{width:28,height:28,borderRadius:6,border:'1px solid #DDD',background:'#FFF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}},'−'),
+                  h('span',{style:{width:28,textAlign:'center',fontWeight:700,fontSize:15}},skipQtys[reason]||0),
+                  h('button',{onClick:()=>setSkipQtys(q=>({...q,[reason]:(q[reason]||0)+1})),
+                    style:{width:28,height:28,borderRadius:6,border:'1px solid #DDD',background:'#FFF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}},'+')
+                )
+              )
+            )
+          ),
+          h('div',{style:{fontSize:12,marginBottom:16,padding:'8px 12px',borderRadius:8,
+            background:Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?'#DCFCE7':'#FEF3C7',
+            color:Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?'#166534':'#92400E',fontWeight:600}},
+            'Total entered: '+Object.values(skipQtys).reduce((a,b)=>a+b,0)+' / '+endScanModal.missed+
+            (Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?' ✅':' (please match unscanned count)')),
+          h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
+            h('button',{onClick:()=>{setEndScanModal(null);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},
+              style:{padding:'9px 20px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
+            h('button',{onClick:()=>{
+                const now=ts();
+                const parts=Object.entries(skipQtys).filter(([,v])=>v>0).map(([k,v])=>k+(v>1?' x'+v:''));
+                const skipReason=parts.join(', ');
+                const ch={scanEnd:now};
+                if(skipReason)ch.skipReason=skipReason;
+                upd(endScanModal.id,ch);
+                setEndScanModal(null);
+                setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
+              },
+              style:{padding:'9px 20px',borderRadius:8,border:'none',background:'#16A34A',color:'#fff',cursor:'pointer',fontWeight:700}},'Confirm')
+          )
+        )
+      ),
       editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:delItem,onCancel:()=>setEL(null)})
     );
   }catch(renderErr){
