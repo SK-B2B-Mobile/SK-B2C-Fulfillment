@@ -1136,6 +1136,7 @@ function App(){
                   ),
                   !isMgr&&l.category==='TikTok CBT'&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab work',onClick:()=>enterScan(l.id),style:{background:'#F0E6FF',color:'#6B21A8',borderColor:'#D8B4FE'}},'✏️ Enter'),
                   !isMgr&&l.category!=='TikTok CBT'&&!manual&&l.pickEnd&&!l.scanStart&&h('span',{style:{fontSize:11,color:'#AAA',fontStyle:'italic'}},'→ Scan Station'),
+                  isMgr&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab work',onClick:()=>enterScan(l.id),style:{background:'#E8F5E9',color:'#2E7D32',borderColor:'#A5D6A7',fontSize:11}},'✏️ Enter'),
                   // ★ v36: ⏹ End Scan — 스캔 진행 중 + 미완료일 때 모든 카테고리에 표시
                   !isMgr&&st==='scanning'&&l.scanned<(l.orderCount||0)&&h('button',{
                     className:'ab endscan',
