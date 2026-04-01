@@ -1138,7 +1138,7 @@ function App(){
                   !isMgr&&!l.pickStart&&h('button',{className:'ab start',onClick:()=>startPick(l.id)},'▶ Start'),
                   !isMgr&&l.pickStart&&!l.pickEnd&&h('button',{className:'ab done',onClick:()=>endPick(l.id)},'✓ Done'),
                   !isMgr&&manual&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
-                  !isMgr&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab work',onClick:()=>enterScan(l.id),style:{background:'#F0E6FF',color:'#6B21A8',borderColor:'#D8B4FE'}},'✏️ Enter'),
+
                   // ★ v36: ⏹ End Scan — 스캔 진행 중 + 미완료일 때 모든 카테고리에 표시
                   !isMgr&&st==='scanning'&&l.scanned<(l.orderCount||0)&&h('button',{
                     className:'ab endscan',
@@ -1745,6 +1745,11 @@ function App(){
             h('button',{onClick:()=>{setEndScanModal(null);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},
               style:{padding:'9px 20px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
             h('button',{onClick:()=>{
+                const totalQty=Object.values(skipQtys).reduce((a,b)=>a+b,0);
+                if(totalQty!==endScanModal.missed){
+                  alert('Total entered ('+totalQty+') must match unscanned count ('+endScanModal.missed+'). Please adjust quantities.');
+                  return;
+                }
                 const now=ts();
                 const parts=Object.entries(skipQtys).filter(([,v])=>v>0).map(([k,v])=>k+(v>1?' x'+v:''));
                 const skipReason=parts.join(', ');
@@ -1754,7 +1759,9 @@ function App(){
                 setEndScanModal(null);
                 setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
               },
-              style:{padding:'9px 20px',borderRadius:8,border:'none',background:'#16A34A',color:'#fff',cursor:'pointer',fontWeight:700}},'Confirm')
+              style:{padding:'9px 20px',borderRadius:8,border:'none',
+                background:Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?'#16A34A':'#9CA3AF',
+                color:'#fff',cursor:Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?'pointer':'not-allowed',fontWeight:700}},'Confirm')
           )
         )
       ),
