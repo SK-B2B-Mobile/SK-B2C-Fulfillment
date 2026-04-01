@@ -803,13 +803,22 @@ function App(){
     const l=lists.find(x=>x.id===id);
     if(!l||!l.scanStart||l.scanEnd)return;
     const now=ts();
-    const confirmed=window.confirm(
-      '⏹ End Scan — '+l.pgNo+'\n\n'+
-      '스캔 완료: '+l.scanned+' / '+l.orderCount+'건\n'+
-      (l.scanned<(l.orderCount||0)?'⚠ '+(l.orderCount-l.scanned)+'건 미스캔 (OOS·취소 등)\n\n':'') +
-      '스캔을 종료하고 Complete 처리하시겠습니까?'
-    );
-    if(confirmed) upd(id,{scanEnd:now});
+    const oc=l.orderCount||0;
+    const missed=oc-l.scanned;
+    let skipReason='';
+    if(missed>0){
+      const reasons=['OOS','NF (Not Found)','EXP (Expiry Issue)','Customer Cancel'];
+      const reasonStr=reasons.map((r,i)=>(i+1)+'. '+r).join('\n');
+      const pick=window.prompt('⏹ End Scan — '+l.pgNo+'\nScanned: '+l.scanned+' / '+oc+' ('+missed+' unscanned)\n\nSelect skip reason:\n'+reasonStr+'\n\nEnter number (1-4):','1');
+      if(pick===null)return;
+      const ri=parseInt(pick,10)-1;
+      skipReason=(ri>=0&&ri<reasons.length)?reasons[ri]:'OOS';
+    } else {
+      if(!window.confirm('⏹ End Scan — '+l.pgNo+'\nAll '+oc+' scanned. End scan?'))return;
+    }
+    const ch={scanEnd:now};
+    if(skipReason)ch.skipReason=skipReason;
+    upd(id,ch);
   };
   const addN=(id,q)=>setLists(prev=>prev.map(l=>{
     if(l.id!==id)return l;
@@ -1125,6 +1134,7 @@ function App(){
               h('td',{className:D,style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',color:isMgr?'#7070A0':'#888',fontSize:11}},
                 l.memo||'—'
               ),
+              h('td',{className:D,style:{color:l.skipReason?'#DC2626':'#888',fontWeight:l.skipReason?600:'normal',fontSize:11}},l.skipReason||'—'),
               h('td',{className:D},
                 h('div',{style:{display:'flex',gap:4,alignItems:'center'}},
                   /* Worker actions */
