@@ -725,7 +725,8 @@ function App(){
   const [ssModal,setSSModal]=useState(false);
   const [ssModalData,setSSModalData]=useState([]);
   const [endScanModal,setEndScanModal]=useState(null);
-  const [skipQtys,setSkipQtys]=useState({OOS:0,'NF':0,'EXP':0,'C.Cancel':0});
+  const [skipQtys,setSkipQtys]=useState({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
+  const [scanInput,setScanInput]=useState(0);
   const [ttCbtCount,setTtCbtCount]=useState(()=>lsGet('tt_cbt_count',0));
 
   const scanRef=useRef(null);
@@ -815,6 +816,8 @@ function App(){
       upd(id,{scanEnd:ts()});
       return;
     }
+    setScanInput(l.scanned||0);
+    setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
     setEndScanModal({id,pgNo:l.pgNo,scanned:l.scanned,oc,missed});
   };
   const addN=(id,q)=>setLists(prev=>prev.map(l=>{
@@ -1733,10 +1736,26 @@ function App(){
       endScanModal&&h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}},
         h('div',{style:{background:'#fff',borderRadius:16,padding:28,minWidth:340,maxWidth:420,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
           h('div',{style:{fontWeight:700,fontSize:16,marginBottom:4}},'⏹ End Scan — '+endScanModal.pgNo),
-          h('div',{style:{fontSize:13,color:'#666',marginBottom:16}},'Scanned: '+endScanModal.scanned+' / '+endScanModal.oc+' — ',
-            h('span',{style:{color:'#DC2626',fontWeight:600}},endScanModal.missed+' unscanned')),
-          h('div',{style:{fontSize:12,color:'#888',marginBottom:10,fontWeight:600}},'Select reason & qty for each unscanned item:'),
-          h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:20}},
+          h('div',{style:{fontSize:13,color:'#666',marginBottom:16}},'Orders: '+endScanModal.oc+'건'),
+          // ① 실제 스캔 건수 입력
+          h('div',{style:{background:'#F0F9FF',border:'1px solid #BAE6FD',borderRadius:10,padding:'12px 16px',marginBottom:16}},
+            h('div',{style:{fontSize:12,fontWeight:700,color:'#0369A1',marginBottom:8}},'① Actual scanned (shipped) qty:'),
+            h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+              h('button',{onClick:()=>setScanInput(v=>Math.max(0,v-1)),
+                style:{width:32,height:32,borderRadius:8,border:'1px solid #BAE6FD',background:'#fff',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#0369A1'}},'−'),
+              h('input',{type:'number',min:0,max:endScanModal.oc,value:scanInput,
+                onChange:e=>{const v=Math.min(parseInt(e.target.value)||0,endScanModal.oc);setScanInput(v);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},
+                style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'4px',border:'1.5px solid #BAE6FD',borderRadius:8,color:'#0369A1',outline:'none'}}),
+              h('button',{onClick:()=>setScanInput(v=>Math.min(endScanModal.oc,v+1)),
+                style:{width:32,height:32,borderRadius:8,border:'1px solid #BAE6FD',background:'#fff',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#0369A1'}},'+'),
+              h('span',{style:{fontSize:13,color:'#666'}},'/ '+endScanModal.oc+' orders'),
+              scanInput<endScanModal.oc&&h('span',{style:{fontSize:12,color:'#DC2626',fontWeight:600,marginLeft:4}},'('+( endScanModal.oc-scanInput)+' unscanned)')
+            )
+          ),
+          // ② 미스캔 이유 (스캔 미완료 시만 표시)
+          scanInput<endScanModal.oc&&h('div',null,
+            h('div',{style:{fontSize:12,color:'#888',marginBottom:10,fontWeight:600}},'② Skip reason for '+( endScanModal.oc-scanInput)+' unscanned item(s):'),
+          h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:16}},
             ['OOS','NF (Not Found)','EXP (Expiry Issue)','Customer Cancel'].map(reason=>
               h('div',{key:reason,style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'#F8F8F8',borderRadius:8}},
                 h('span',{style:{fontSize:13,fontWeight:500}},reason),
@@ -1750,32 +1769,40 @@ function App(){
               )
             )
           ),
+          ),
+          // 전량 스캔 시 이유 섹션 닫기
+          h('div',{style:{height:scanInput>=endScanModal.oc?0:undefined}}),
           h('div',{style:{fontSize:12,marginBottom:16,padding:'8px 12px',borderRadius:8,
-            background:Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?'#DCFCE7':'#FEF3C7',
-            color:Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?'#166534':'#92400E',fontWeight:600}},
-            'Total entered: '+Object.values(skipQtys).reduce((a,b)=>a+b,0)+' / '+endScanModal.missed+
-            (Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?' ✅':' (please match unscanned count)')),
+            background:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#DCFCE7':'#FEF3C7',
+            color:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#166534':'#92400E',fontWeight:600}},
+            scanInput>=endScanModal.oc
+              ? 'All '+endScanModal.oc+' items scanned ✅'
+              : 'Skip reason total: '+Object.values(skipQtys).reduce((a,b)=>a+b,0)+' / '+(endScanModal.oc-scanInput)+
+                (Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput)?' ✅':' (please match unscanned count)')
+          ),
           h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
-            h('button',{onClick:()=>{setEndScanModal(null);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},
+            h('button',{onClick:()=>{setEndScanModal(null);setScanInput(0);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},
               style:{padding:'9px 20px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
             h('button',{onClick:()=>{
+                const missed=endScanModal.oc-scanInput;
                 const totalQty=Object.values(skipQtys).reduce((a,b)=>a+b,0);
-                if(totalQty!==endScanModal.missed){
-                  alert('Total entered ('+totalQty+') must match unscanned count ('+endScanModal.missed+'). Please adjust quantities.');
+                if(missed>0&&totalQty!==missed){
+                  alert('Skip reason total ('+totalQty+') must match unscanned count ('+missed+'). Please adjust.');
                   return;
                 }
                 const now=ts();
                 const parts=Object.entries(skipQtys).filter(([,v])=>v>0).map(([k,v])=>k+(v>1?' x'+v:''));
                 const skipReason=parts.join(', ');
-                const ch={scanEnd:now};
+                const ch={scanEnd:now,scanned:scanInput};
                 if(skipReason)ch.skipReason=skipReason;
                 upd(endScanModal.id,ch);
                 setEndScanModal(null);
+                setScanInput(0);
                 setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
               },
               style:{padding:'9px 20px',borderRadius:8,border:'none',
-                background:Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?'#16A34A':'#9CA3AF',
-                color:'#fff',cursor:Object.values(skipQtys).reduce((a,b)=>a+b,0)===endScanModal.missed?'pointer':'not-allowed',fontWeight:700}},'Confirm')
+                background:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#16A34A':'#9CA3AF',
+                color:'#fff',cursor:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'pointer':'not-allowed',fontWeight:700}},'Confirm')
           )
         )
       ),
