@@ -1148,11 +1148,11 @@ function App(){
                   !isMgr&&l.pickStart&&!l.pickEnd&&h('button',{className:'ab done',onClick:()=>endPick(l.id)},'✓ Done'),
                   !isMgr&&(manual||l.category==='TikTok CBT')&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
 
-                  // ★ v36: ⏹ End Scan — 스캔 진행 중 + 미완료일 때 모든 카테고리에 표시
-                  !isMgr&&st==='scanning'&&l.scanned<(l.orderCount||0)&&h('button',{
+                  // ★ End Scan: Pick Done 또는 Scanning 상태에서 미완료 시 모든 채널 표시
+                  !isMgr&&l.pickEnd&&!l.scanEnd&&h('button',{
                     className:'ab endscan',
                     onClick:()=>endScan(l.id),
-                    title:'OOS·취소 등으로 전체 스캔 불가 시 강제 종료'
+                    title:'스캔 완료 또는 OOS·취소 등 미스캔 처리'
                   },'⏹ End Scan'),
                   !isMgr&&st==='complete'&&h('button',{className:'ab done',style:{cursor:'default',opacity:0.85}},'✓ Complete'),
                   /* Manager actions — always visible in manager mode */
