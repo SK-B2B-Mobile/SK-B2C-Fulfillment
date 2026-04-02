@@ -887,7 +887,7 @@ function App(){
             pickEnd:   remote.pickEnd   || loc2?.pickEnd   || '',
             scanStart: remote.scanStart || loc2?.scanStart || '',
             scanEnd:   remote.scanEnd   || loc2?.scanEnd   || '',
-            status: remote.status||'Pending', memo: remote.memo||'',
+            status: remote.status||'Pending', memo: remote.memo||'', skipReason: remote.skipReason||'',
           };
           if (idx >= 0) merged[idx] = nl;
           else merged.push(nl);
@@ -959,7 +959,7 @@ function App(){
         upd(existing.id,{orderCount:s.orderCount});
       } else {
         // Create new pick list
-        const nl={id:uid(),pgNo:'PG'+Date.now().toString().slice(-8),
+        const nl={id:uid(),pgNo:'PG'+uid().slice(-8),
           category:s.category,sku:0,orderCount:s.orderCount,
           scanned:0,pickStart:null,pickEnd:null,scanStart:null,scanEnd:null,
           worker:'',date:today(),memo:'Auto from ShipStation'};
@@ -1371,10 +1371,13 @@ function App(){
   };
 
   const confirmCreateLists=()=>{
+    const createdCats=new Set(); // ★ 중복 카테고리 방지
     ssModalData.forEach(s=>{
       if(!s.orderCount)return;
+      if(createdCats.has(s.category))return; // ★ 같은 카테고리 중복 생성 방지
+      createdCats.add(s.category);
       const existing=lists.find(l=>l.category===s.category&&l.date===today());
-      const pgNo=s.pgNo||('PG'+Date.now().toString().slice(-8));
+      const pgNo=s.pgNo||('PG'+uid().slice(-8));
       if(existing){
         upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,pgNo,memo:s.memo||existing.memo||''});
       } else {
