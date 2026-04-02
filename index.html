@@ -850,7 +850,7 @@ function App(){
   const mSave=()=>{
     if(!mf.pgNo||!mf.orders)return;
     const existing=editId?lists.find(x=>x.id===editId):null;
-    const nl={id:editId||uid(),pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,
+    const nl={id:editId||(mf.pgNo+'_'+( existing?.date||today())),pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,
       scanned:existing?.scanned||0,pickStart:existing?.pickStart||null,pickEnd:existing?.pickEnd||null,
       scanStart:existing?.scanStart||null,scanEnd:existing?.scanEnd||null,worker:existing?.worker||'',
       date:existing?.date||today(),memo:mf.memo||''};
@@ -987,7 +987,8 @@ function App(){
         upd(existing.id,{orderCount:s.orderCount});
       } else {
         // Create new pick list
-        const nl={id:uid(),pgNo:'PG'+uid().slice(-8),
+        const ssDate=today();const ssPgNo='PG'+uid().slice(-8);
+        const nl={id:ssPgNo+'_'+ssDate,pgNo:ssPgNo,
           category:s.category,sku:0,orderCount:s.orderCount,
           scanned:0,pickStart:null,pickEnd:null,scanStart:null,scanEnd:null,
           worker:'',date:today(),memo:'Auto from ShipStation'};
@@ -1413,9 +1414,9 @@ function App(){
       if(existing){
         upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,pgNo,memo:s.memo||existing.memo||''});
       } else {
-        const nl={id:uid(),pgNo,category:s.category,sku:+s.sku||0,
+        const listDate=today();const nl={id:pgNo+'_'+listDate,pgNo,category:s.category,sku:+s.sku||0,
           orderCount:s.orderCount,scanned:0,pickStart:null,pickEnd:null,
-          scanStart:null,scanEnd:null,worker:'',date:today(),memo:s.memo||''};
+          scanStart:null,scanEnd:null,worker:'',date:listDate,memo:s.memo||''};
         setLists(p=>[...p,nl]);
         sync('upsertList',{list:nl});
       }
