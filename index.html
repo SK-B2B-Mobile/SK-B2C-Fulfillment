@@ -726,6 +726,7 @@ function App(){
   const [ssModalData,setSSModalData]=useState([]);
   const [endScanModal,setEndScanModal]=useState(null);
   const [skipQtys,setSkipQtys]=useState({OOS:0,'NF':0,'EXP':0,'C.Cancel':0});
+  const [ttCbtCount,setTtCbtCount]=useState(()=>lsGet('tt_cbt_count',0));
 
   const scanRef=useRef(null);
   const pickers=pksStr.split(',').map(s=>s.trim()).filter(Boolean);
@@ -1363,7 +1364,8 @@ function App(){
 
   const openSSModal=()=>{
     if(!ssResult||!ssResult.summary)return;
-    const rows=ssResult.summary.filter(s=>s.orderCount&&s.category!=='Unknown').map(s=>({
+    // ★ TikTok CBT는 수동 입력 → SS fetch 결과에서 제외
+    const rows=ssResult.summary.filter(s=>s.orderCount&&s.category!=='Unknown'&&s.category!=='TikTok CBT').map(s=>({
       category:s.category,orderCount:s.orderCount,storeList:s.storeList,pgNo:'',sku:'',memo:'',
     }));
     setSSModalData(rows);
@@ -1371,10 +1373,13 @@ function App(){
   };
 
   const confirmCreateLists=()=>{
-    const createdCats=new Set(); // ★ 중복 카테고리 방지
-    ssModalData.forEach(s=>{
+    // TikTok CBT 수동 입력값을 ssModalData에 추가/업데이트
+    const modalWithTT = [...ssModalData.filter(s=>s.category!=='TikTok CBT')];
+    if(ttCbtCount>0) modalWithTT.push({category:'TikTok CBT',orderCount:ttCbtCount,sku:0,storeList:'TikTok: '+ttCbtCount});
+    const createdCats=new Set();
+    modalWithTT.forEach(s=>{
       if(!s.orderCount)return;
-      if(createdCats.has(s.category))return; // ★ 같은 카테고리 중복 생성 방지
+      if(createdCats.has(s.category))return;
       createdCats.add(s.category);
       const existing=lists.find(l=>l.category===s.category&&l.date===today());
       const pgNo=s.pgNo||('PG'+uid().slice(-8));
@@ -1534,19 +1539,20 @@ function App(){
             })
           )
         ),
-        // ── TikTok CBT 채널 ──
+        // ── TikTok CBT 수동 입력 ──
         h('div',null,
-          h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}},
-            h('span',{style:{fontSize:11,fontWeight:700,color:'#C84A82',letterSpacing:'.05em',background:'rgba(200,74,130,0.12)',padding:'2px 10px',borderRadius:20,border:'1px solid rgba(200,74,130,0.25)'}},'🛍️ seller-us.tiktok.com')
+          h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:12}},
+            h('span',{style:{fontSize:11,fontWeight:700,color:'#C84A82',letterSpacing:'.05em',background:'rgba(200,74,130,0.12)',padding:'2px 10px',borderRadius:20,border:'1px solid rgba(200,74,130,0.25)'}},'🛍️ TikTok CBT')
           ),
-          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},
-            PREFIX_MAP.filter(m2=>m2.cat==='TikTok CBT').map((m2,i)=>{
-              const cc=CA[m2.cat]||{bg:'#222',tx:'#888',br:'#444',ac:'#666'};
-              return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'rgba(200,74,130,0.06)',borderRadius:9,border:'1px solid rgba(200,74,130,0.2)'}},
-                h('span',{className:'mono',style:{fontWeight:700,color:cc.ac,fontSize:12}},m2.p),
-                h('span',{style:{fontSize:12,color:'#F0A0C8'}},m2.store)
-              );
-            })
+          h('div',{style:{background:'rgba(200,74,130,0.06)',border:'1px solid rgba(200,74,130,0.2)',borderRadius:12,padding:'16px 20px'}},
+            h('p',{style:{fontSize:12,color:'#F0A0C8',marginBottom:12}},'Check TikTok Seller Center → Awaiting Shipment (TikTok Shipping Upgraded) and enter the count below.'),
+            h('div',{style:{display:'flex',alignItems:'center',gap:12}},
+              h('label',{style:{fontSize:13,fontWeight:600,color:'#F0A0C8',whiteSpace:'nowrap'}},'CBT Orders Today:'),
+              h('input',{type:'number',min:0,value:ttCbtCount,
+                onChange:e=>{const v=parseInt(e.target.value)||0;setTtCbtCount(v);lsSet('tt_cbt_count',v);},
+                style:{width:100,padding:'8px 12px',borderRadius:8,border:'1.5px solid rgba(200,74,130,0.4)',background:'rgba(200,74,130,0.08)',color:'#F0A0C8',fontSize:16,fontWeight:700,textAlign:'center',outline:'none'}}),
+              h('span',{style:{fontSize:12,color:'#888'}},'orders')
+            )
           )
         )
       )
