@@ -759,7 +759,9 @@ function App(){
               setLists(prev=>{
                 const merged=[...prev];
                 fetched.forEach(remote=>{
-                  const idx=merged.findIndex(l=>l.id&&l.id===remote.id);
+                  // ★ id 우선, 없으면 pgNo+date로 매칭 (GAS가 id를 새로 생성하는 경우 대비)
+                  let idx=merged.findIndex(l=>l.id&&l.id===remote.id);
+                  if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&l.date===remote.date);
                   const loc=idx>=0?merged[idx]:null;
                   const nl={
                     id:remote.id,date:remote.date,pgNo:remote.pgNo,category:remote.category,
@@ -772,6 +774,7 @@ function App(){
                     scanStart: remote.scanStart || loc?.scanStart || '',
                     scanEnd:   remote.scanEnd   || loc?.scanEnd   || '',
                     status:remote.status||'Pending',memo:remote.memo||'',
+                    skipReason:remote.skipReason||loc?.skipReason||'',
                   };
                   if(idx>=0) merged[idx]=nl; else merged.push(nl);
                 });
@@ -876,7 +879,9 @@ function App(){
       setLists(prev => {
         const merged = [...prev];
         fetched.forEach(remote => {
-          const idx = merged.findIndex(l => l.id && l.id === remote.id);
+          // ★ id 우선, 없으면 pgNo+date로 매칭
+          let idx = merged.findIndex(l => l.id && l.id === remote.id);
+          if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&l.date===remote.date);
           // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
           const loc2 = idx>=0 ? merged[idx] : null;
           const nl = {
