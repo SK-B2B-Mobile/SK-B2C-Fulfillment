@@ -850,6 +850,11 @@ function App(){
   const mSave=()=>{
     if(!mf.pgNo||!mf.orders)return;
     const existing=editId?lists.find(x=>x.id===editId):null;
+    // ★ 중복 pgNo 체크
+    if(!editId){
+      const dup=lists.find(x=>x.pgNo===mf.pgNo&&x.date===today());
+      if(dup){alert('이미 오늘 동일한 PG No가 있습니다: '+mf.pgNo+'\n수정하려면 Edit 버튼을 사용하세요.');return;}
+    }
     const nl={id:editId||(mf.pgNo+'_'+( existing?.date||today())),pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,
       scanned:existing?.scanned||0,pickStart:existing?.pickStart||null,pickEnd:existing?.pickEnd||null,
       scanStart:existing?.scanStart||null,scanEnd:existing?.scanEnd||null,worker:existing?.worker||'',
