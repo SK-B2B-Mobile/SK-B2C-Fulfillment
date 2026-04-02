@@ -725,6 +725,7 @@ function App(){
   const [ssModal,setSSModal]=useState(false);
   const [ssModalData,setSSModalData]=useState([]);
   const [endScanModal,setEndScanModal]=useState(null);
+  const deletedIds=React.useRef(new Set()); // ★ 삭제된 항목 추적 (폴링 복원 방지)
   const [skipQtys,setSkipQtys]=useState({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
   const [scanInput,setScanInput]=useState(0);
   const [ttCbtCount,setTtCbtCount]=useState(()=>lsGet('tt_cbt_count',0));
@@ -808,7 +809,7 @@ function App(){
   // ★ v36: 강제 스캔 종료 — 미완료 건이 있어도 scanEnd 기록 → Complete
   const endScan=id=>{
     const l=lists.find(x=>x.id===id);
-    if(!l||!l.scanStart||l.scanEnd)return;
+    if(!l||!l.pickEnd||l.scanEnd)return; // pickEnd 있고 scanEnd 없으면 실행 가능
     const oc=l.orderCount||0;
     const missed=oc-l.scanned;
     if(missed<=0){
@@ -871,7 +872,15 @@ function App(){
     setEL(null);
   };
   const delItem=id=>{const l=lists.find(x=>x.id===id);setLists(p=>p.filter(x=>x.id!==id));if(l)sync('deleteList',{pgNo:l.pgNo});setEL(null);};
-  const delFromTable=id=>{if(!window.confirm('Delete this pick list?'))return;const l=lists.find(x=>x.id===id);setLists(p=>p.filter(x=>x.id!==id));if(l)sync('deleteList',{pgNo:l.pgNo});};
+  const delFromTable=id=>{if(!window.confirm('Delete this pick list?'))return;
+    const l=lists.find(x=>x.id===id);
+    if(l){
+      // pgNo+date 조합으로 삭제 추적 (폴링 복원 방지)
+      deletedIds.current.add(l.pgNo+'_'+l.date);
+      sync('deleteList',{pgNo:l.pgNo,date:l.date});
+    }
+    setLists(p=>p.filter(x=>x.id!==id));
+  };
 
   /* delete today's completed lists (manager cleanup) */
   // ★ Google Sheets → 웹앱 동기화 (Pull)
@@ -884,13 +893,14 @@ function App(){
       const data = await res.json();
       if (!data.ok) { setSyncMsg('⚠ 데이터 가져오기 실패: ' + (data.error||'unknown')); return; }
 
-      const fetched = (data.lists || []).filter(l => l.status !== 'Deleted');
+      const fetched = (data.lists || []).filter(l => l.status !== 'Deleted' && !deletedIds.current.has(l.pgNo+'_'+l.date));
       if (fetched.length === 0) { setSyncMsg('⚠ Google Sheets에 데이터가 없습니다.'); return; }
 
       // localStorage 기존 데이터와 병합 (id 기준 upsert)
       setLists(prev => {
         const merged = [...prev];
-        fetched.forEach(remote => {
+        // ★ 삭제된 항목 폴링 복원 방지
+        fetched.filter(r=>!deletedIds.current.has(r.pgNo+'_'+r.date)).forEach(remote => {
           // ★ id 우선, 없으면 pgNo+date로 매칭
           let idx = merged.findIndex(l => l.id && l.id === remote.id);
           if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&l.date===remote.date);
