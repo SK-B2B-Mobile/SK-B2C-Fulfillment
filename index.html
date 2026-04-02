@@ -1143,7 +1143,7 @@ function App(){
                   /* Worker actions */
                   !isMgr&&!l.pickStart&&h('button',{className:'ab start',onClick:()=>startPick(l.id)},'▶ Start'),
                   !isMgr&&l.pickStart&&!l.pickEnd&&h('button',{className:'ab done',onClick:()=>endPick(l.id)},'✓ Done'),
-                  !isMgr&&manual&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
+                  !isMgr&&(manual||l.category==='TikTok CBT')&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
 
                   // ★ v36: ⏹ End Scan — 스캔 진행 중 + 미완료일 때 모든 카테고리에 표시
                   !isMgr&&st==='scanning'&&l.scanned<(l.orderCount||0)&&h('button',{
