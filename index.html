@@ -860,7 +860,16 @@ function App(){
   };
 
   /* edit save / delete */
-  const editSave=updated=>{setLists(p=>p.map(l=>l.id===updated.id?updated:l));sync('upsertList',{list:updated});setEL(null);};
+  const editSave=updated=>{
+    setLists(p=>p.map(l=>{
+      // id 우선, 없으면 pgNo+date 폴백
+      if(l.id===updated.id) return updated;
+      if(l.pgNo===updated.pgNo&&l.date===updated.date) return {...updated,id:l.id};
+      return l;
+    }));
+    sync('upsertList',{list:updated});
+    setEL(null);
+  };
   const delItem=id=>{const l=lists.find(x=>x.id===id);setLists(p=>p.filter(x=>x.id!==id));if(l)sync('deleteList',{pgNo:l.pgNo});setEL(null);};
   const delFromTable=id=>{if(!window.confirm('Delete this pick list?'))return;const l=lists.find(x=>x.id===id);setLists(p=>p.filter(x=>x.id!==id));if(l)sync('deleteList',{pgNo:l.pgNo});};
 
