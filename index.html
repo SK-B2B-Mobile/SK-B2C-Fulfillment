@@ -771,7 +771,9 @@ function App(){
                   const loc=idx>=0?merged[idx]:null;
                   const nl={
                     id:remote.id,date:remote.date,pgNo:remote.pgNo,category:remote.category,
-                    sku:remote.sku||0,orderCount:remote.orderCount||0,scanned:remote.scanned||0,
+                    sku:remote.sku||0,orderCount:remote.orderCount||0,
+                    // ★ scanned는 로컬과 remote 중 큰 값 유지 (GAS 실수 덮어쓰기 방지)
+                    scanned:Math.max(remote.scanned||0, loc?.scanned||0),
                     // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
                     // (GAS POST CORS no-cors → 응답 못 읽음 → remote에 반영 지연 가능)
                     worker:    remote.worker    || loc?.worker    || '',
@@ -871,10 +873,12 @@ function App(){
   const mSave=()=>{
     if(!mf.pgNo||!mf.orders)return;
     const existing=editId?lists.find(x=>x.id===editId):null;
-    // ★ 중복 pgNo 체크
+    // ★ 중복 체크 강화: pgNo 전체 날짜 + category+today, Deleted 제외
     if(!editId){
-      const dup=lists.find(x=>x.pgNo===mf.pgNo&&x.date===today());
-      if(dup){alert('이미 오늘 동일한 PG No가 있습니다: '+mf.pgNo+'\n수정하려면 Edit 버튼을 사용하세요.');return;}
+      const dupPgNo=lists.find(x=>x.pgNo===mf.pgNo&&x.status!=='Deleted');
+      if(dupPgNo){alert('이미 동일한 PG No가 있습니다: '+mf.pgNo+' ('+dupPgNo.date+', '+dupPgNo.category+')\n수정하려면 Edit 버튼을 사용하세요.');return;}
+      const dupCat=lists.find(x=>x.category===mf.cat&&(x.date||'').slice(0,10)===today()&&x.status!=='Deleted');
+      if(dupCat){alert('오늘 이미 같은 카테고리 픽리스트가 있습니다: '+mf.cat+' ('+dupCat.pgNo+')\n수정하려면 Edit 버튼을 사용하세요.');return;}
     }
     const nl={id:editId||(mf.pgNo+'_'+( existing?.date||today())),pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,
       scanned:existing?.scanned||0,pickStart:existing?.pickStart||null,pickEnd:existing?.pickEnd||null,
@@ -927,9 +931,9 @@ function App(){
         const merged = [...prev];
         // ★ 삭제된 항목 폴링 복원 방지
         fetched.filter(r=>!deletedIds.current.has(r.pgNo+'_'+r.date)).forEach(remote => {
-          // ★ id 우선, 없으면 pgNo+date, 최후 category+date 폴백 (pgNo 불일치 시 중복 방지)
+          // ★ 매칭 우선순위: id → pgNo+date → category+date 폴백 (pgNo 불일치 시 중복 방지)
           let idx = merged.findIndex(l => l.id && l.id === remote.id);
-          if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&l.date===remote.date);
+          if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&(l.date||'').slice(0,10)===remote.date.slice(0,10));
           if(idx<0&&remote.category&&remote.date) idx=merged.findIndex(l=>l.category===remote.category&&(l.date||'').slice(0,10)===remote.date.slice(0,10)&&l.status!=='Deleted');
           // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
           const loc2 = idx>=0 ? merged[idx] : null;
