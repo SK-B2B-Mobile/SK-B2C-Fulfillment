@@ -1405,10 +1405,14 @@ function App(){
 
   const openSSModal=()=>{
     if(!ssResult||!ssResult.summary)return;
-    // ★ TikTok CBT는 수동 입력 → SS fetch 결과에서 제외
+    // SS 채널 rows (TikTok CBT 제외)
     const rows=ssResult.summary.filter(s=>s.orderCount&&s.category!=='Unknown'&&s.category!=='TikTok CBT').map(s=>({
       category:s.category,orderCount:s.orderCount,storeList:s.storeList,pgNo:'',sku:'',memo:'',
     }));
+    // ★ TikTok CBT 수동 입력값 추가
+    if(ttCbtCount>0){
+      rows.push({category:'TikTok CBT',orderCount:ttCbtCount,storeList:'TikTok: '+ttCbtCount,pgNo:'',sku:'',memo:''});
+    }
     setSSModalData(rows);
     setSSModal(true);
   };
