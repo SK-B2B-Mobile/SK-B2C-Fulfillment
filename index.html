@@ -780,16 +780,8 @@ function App(){
                   };
                   if(idx>=0) merged[idx]=nl; else merged.push(nl);
                 });
-                // ★ 중복 제거
-                const _sr=s=>['pending','picking','picked','scanning','complete'].indexOf((s||'').toLowerCase());
-                const _seen={};const _dd=[];
-                merged.forEach(item=>{
-                  const k=item.pgNo+'_'+item.date;
-                  if(_seen[k]!==undefined){if(_sr(item.status)>_sr(_dd[_seen[k]].status))_dd[_seen[k]]=item;}
-                  else{_seen[k]=_dd.length;_dd.push(item);}
-                });
-                lsSet(LS.LISTS,_dd);
-                return _dd;
+                lsSet(LS.LISTS,merged);
+                return merged;
               });
               setSS('↻ '+new Date().toLocaleTimeString());
             }
@@ -938,16 +930,8 @@ function App(){
           if (idx >= 0) merged[idx] = nl;
           else merged.push(nl);
         });
-        // ★ 폴링 후 로컬 중복 제거 (같은 pgNo+date → 상태 높은 것 유지)
-        const stRank=s=>['pending','picking','picked','scanning','complete'].indexOf((s||'').toLowerCase());
-        const seen2={};const deduped=[];
-        merged.forEach(item=>{
-          const k=item.pgNo+'_'+item.date;
-          if(seen2[k]!==undefined){if(stRank(item.status)>stRank(deduped[seen2[k]].status))deduped[seen2[k]]=item;}
-          else{seen2[k]=deduped.length;deduped.push(item);}
-        });
-        lsSet(LS.LISTS, deduped);
-        return deduped;
+        lsSet(LS.LISTS, merged);
+        return merged;
       });
 
       setSyncMsg('✓ ' + fetched.length + '개 항목을 Google Sheets에서 동기화했습니다. (' + new Date().toLocaleTimeString() + ')');
