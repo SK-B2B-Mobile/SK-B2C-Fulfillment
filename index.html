@@ -1552,7 +1552,9 @@ function App(){
             ssResult.date+' — '+ssResult.totalOrders+' AWAITING SHIPMENT'
           ),
           h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
-            ssResult.summary.filter(s=>s.category!=='Unknown').map((s,i)=>{
+            [...ssResult.summary.filter(s=>s.category!=='Unknown'&&s.category!=='TikTok CBT'),
+              ...(ttCbtCount>0?[{category:'TikTok CBT',orderCount:ttCbtCount,storeList:'TikTok: '+ttCbtCount}]:[])
+            ].map((s,i)=>{
               const cc=CA[s.category]||{bg:'#222',tx:'#888',br:'#444'};
               return h('div',{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'14px 18px',background:'rgba(255,255,255,0.03)',borderRadius:12,border:'1px solid rgba(255,255,255,0.07)'}},
                 h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:12,flexShrink:0}},s.category),
