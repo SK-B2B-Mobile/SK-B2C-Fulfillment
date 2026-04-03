@@ -781,7 +781,19 @@ function App(){
                     status:remote.status||'Pending',memo:remote.memo||'',
                     skipReason:remote.skipReason||loc?.skipReason||'',
                   };
-                  if(idx>=0) merged[idx]=nl; else merged.push(nl);
+                  if(idx>=0){
+                    merged[idx]=nl;
+                  } else {
+                    // ★ category+date 중복 체크 후 추가
+                    const catDup=merged.findIndex(x=>x.category===nl.category&&(x.date||'').slice(0,10)===(rDate||'').slice(0,10));
+                    if(catDup>=0){
+                      // 같은 category+date가 있으면 status 높은 것 유지
+                      const rank=s=>['pending','picking','picked','scanning','complete'].indexOf((s||'').toLowerCase());
+                      if(rank(nl.status)>rank(merged[catDup].status)) merged[catDup]=nl;
+                    } else {
+                      merged.push(nl);
+                    }
+                  }
                 });
                 lsSet(LS.LISTS,merged);
                 return merged;
@@ -1418,26 +1430,44 @@ function App(){
   };
 
   const confirmCreateLists=()=>{
-    // TikTok CBT 수동 입력값을 ssModalData에 추가/업데이트
     const modalWithTT = [...ssModalData.filter(s=>s.category!=='TikTok CBT')];
     if(ttCbtCount>0) modalWithTT.push({category:'TikTok CBT',orderCount:ttCbtCount,sku:0,storeList:'TikTok: '+ttCbtCount});
     const createdCats=new Set();
+    const newLists=[];
     modalWithTT.forEach(s=>{
       if(!s.orderCount)return;
       if(createdCats.has(s.category))return;
       createdCats.add(s.category);
-      const existing=lists.find(l=>l.category===s.category&&l.date===today());
-      const pgNo=s.pgNo||('PG'+uid().slice(-8));
+      const listDate=today();
+      // ★ 기존 항목 체크 (category+date)
+      const existing=lists.find(l=>l.category===s.category&&(l.date||'').slice(0,10)===listDate);
+      const pgNo=s.pgNo||existing?.pgNo||('PG'+uid().slice(-8));
       if(existing){
-        upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,pgNo,memo:s.memo||existing.memo||''});
+        // 기존 있으면 orderCount만 업데이트
+        upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,memo:s.memo||existing.memo||''});
       } else {
-        const listDate=today();const nl={id:pgNo+'_'+listDate,pgNo,category:s.category,sku:+s.sku||0,
+        // ★ id는 pgNo_date로 고정 (GAS와 동일하게)
+        const id=pgNo+'_'+listDate;
+        const nl={id,pgNo,category:s.category,sku:+s.sku||0,
           orderCount:s.orderCount,scanned:0,pickStart:null,pickEnd:null,
           scanStart:null,scanEnd:null,worker:'',date:listDate,memo:s.memo||''};
-        setLists(p=>[...p,nl]);
-        sync('upsertList',{list:nl});
+        newLists.push(nl);
       }
     });
+    // ★ 새 항목 한번에 추가 (중복 방지)
+    if(newLists.length>0){
+      setLists(p=>{
+        const merged=[...p];
+        newLists.forEach(nl=>{
+          // 혹시라도 이미 있으면 추가 안 함
+          const dup=merged.findIndex(x=>x.category===nl.category&&(x.date||'').slice(0,10)===nl.date);
+          if(dup>=0) merged[dup]={...merged[dup],orderCount:nl.orderCount};
+          else merged.push(nl);
+        });
+        return merged;
+      });
+      newLists.forEach(nl=>sync('upsertList',{list:nl}));
+    }
     setSSM('✓ Pick lists created/updated!');
     setSSModal(false);
     setTab('records');
