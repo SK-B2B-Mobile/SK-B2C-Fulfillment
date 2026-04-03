@@ -780,8 +780,16 @@ function App(){
                   };
                   if(idx>=0) merged[idx]=nl; else merged.push(nl);
                 });
-                lsSet(LS.LISTS,merged);
-                return merged;
+                // ★ 중복 제거
+                const _sr=s=>['pending','picking','picked','scanning','complete'].indexOf((s||'').toLowerCase());
+                const _seen={};const _dd=[];
+                merged.forEach(item=>{
+                  const k=item.pgNo+'_'+item.date;
+                  if(_seen[k]!==undefined){if(_sr(item.status)>_sr(_dd[_seen[k]].status))_dd[_seen[k]]=item;}
+                  else{_seen[k]=_dd.length;_dd.push(item);}
+                });
+                lsSet(LS.LISTS,_dd);
+                return _dd;
               });
               setSS('↻ '+new Date().toLocaleTimeString());
             }
