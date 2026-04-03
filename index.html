@@ -430,6 +430,24 @@ const STC=['s0','s1','s2','s3','s4'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 const ts=()=>new Date().toISOString();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+
+// ★ category+date 기준 중복 제거 (status/scanned 높은 것 유지)
+// 폴링/싱크/생성 후 항상 호출 → localStorage 누적 중복 자동 정리
+const dedupeByCategory=arr=>{
+  const rankSt=s=>{const r={'pending':0,'picking':1,'pick done':2,'scanning':3,'complete':4};return r[(s||'').toLowerCase()]??-1;};
+  const out=[];
+  arr.forEach(item=>{
+    if((item.status||'').toLowerCase()==='deleted'){out.push(item);return;}
+    const d=(item.date||'').slice(0,10);
+    const idx=out.findIndex(x=>(x.status||'').toLowerCase()!=='deleted'&&x.category===item.category&&(x.date||'').slice(0,10)===d);
+    if(idx<0){out.push(item);return;}
+    const ex=out[idx];
+    const exRank=rankSt(ex.status), itRank=rankSt(item.status);
+    // 새 항목이 더 진행됐거나, 같은 rank면 scanned 많은 것 유지
+    if(itRank>exRank||(itRank===exRank&&(item.scanned||0)>=(ex.scanned||0))){out[idx]=item;}
+  });
+  return out;
+};
 const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
 const dur=(s,e,listDate)=>{
@@ -773,9 +791,7 @@ function App(){
                     id:remote.id,date:remote.date,pgNo:remote.pgNo,category:remote.category,
                     sku:remote.sku||0,orderCount:remote.orderCount||0,
                     // ★ scanned는 로컬과 remote 중 큰 값 유지 (GAS 실수 덮어쓰기 방지)
-                    scanned:Math.max(remote.scanned||0, loc?.scanned||0),
-                    // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
-                    // (GAS POST CORS no-cors → 응답 못 읽음 → remote에 반영 지연 가능)
+                    scanned:Math.max(remote.scanned||0,loc?.scanned||0),
                     worker:    remote.worker    || loc?.worker    || '',
                     pickStart: remote.pickStart || loc?.pickStart || '',
                     pickEnd:   remote.pickEnd   || loc?.pickEnd   || '',
@@ -787,19 +803,13 @@ function App(){
                   if(idx>=0){
                     merged[idx]=nl;
                   } else {
-                    // ★ category+date 중복 체크 후 추가
-                    const catDup=merged.findIndex(x=>x.category===nl.category&&(x.date||'').slice(0,10)===(rDate||'').slice(0,10));
-                    if(catDup>=0){
-                      // 같은 category+date가 있으면 status 높은 것 유지
-                      const rank=s=>['pending','picking','picked','scanning','complete'].indexOf((s||'').toLowerCase());
-                      if(rank(nl.status)>rank(merged[catDup].status)) merged[catDup]=nl;
-                    } else {
-                      merged.push(nl);
-                    }
+                    merged.push(nl);
                   }
                 });
-                lsSet(LS.LISTS,merged);
-                return merged;
+                // ★ 최종 dedup: category+date 중복 정리 (localStorage 누적 중복 제거)
+                const deduped=dedupeByCategory(merged);
+                lsSet(LS.LISTS,deduped);
+                return deduped;
               });
               setSS('↻ '+new Date().toLocaleTimeString());
             }
@@ -931,10 +941,9 @@ function App(){
         const merged = [...prev];
         // ★ 삭제된 항목 폴링 복원 방지
         fetched.filter(r=>!deletedIds.current.has(r.pgNo+'_'+r.date)).forEach(remote => {
-          // ★ 매칭 우선순위: id → pgNo+date → category+date 폴백 (pgNo 불일치 시 중복 방지)
+          // ★ id 우선, 없으면 pgNo+date로 매칭
           let idx = merged.findIndex(l => l.id && l.id === remote.id);
-          if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&(l.date||'').slice(0,10)===remote.date.slice(0,10));
-          if(idx<0&&remote.category&&remote.date) idx=merged.findIndex(l=>l.category===remote.category&&(l.date||'').slice(0,10)===remote.date.slice(0,10)&&l.status!=='Deleted');
+          if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&l.date===remote.date);
           // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
           const loc2 = idx>=0 ? merged[idx] : null;
           const nl = {
@@ -951,8 +960,10 @@ function App(){
           if (idx >= 0) merged[idx] = nl;
           else merged.push(nl);
         });
-        lsSet(LS.LISTS, merged);
-        return merged;
+        // ★ 최종 dedup: category+date 중복 정리
+        const deduped2=dedupeByCategory(merged);
+        lsSet(LS.LISTS, deduped2);
+        return deduped2;
       });
 
       setSyncMsg('✓ ' + fetched.length + '개 항목을 Google Sheets에서 동기화했습니다. (' + new Date().toLocaleTimeString() + ')');
@@ -1460,17 +1471,18 @@ function App(){
         newLists.push(nl);
       }
     });
-    // ★ 새 항목 한번에 추가 (중복 방지)
+    // ★ 새 항목 한번에 추가 (중복 방지 + 최종 dedup)
     if(newLists.length>0){
       setLists(p=>{
         const merged=[...p];
         newLists.forEach(nl=>{
-          // 혹시라도 이미 있으면 추가 안 함
-          const dup=merged.findIndex(x=>x.category===nl.category&&(x.date||'').slice(0,10)===nl.date);
+          const dup=merged.findIndex(x=>x.category===nl.category&&(x.date||'').slice(0,10)===nl.date&&x.status!=='Deleted');
           if(dup>=0) merged[dup]={...merged[dup],orderCount:nl.orderCount};
           else merged.push(nl);
         });
-        return merged;
+        const deduped3=dedupeByCategory(merged);
+        lsSet(LS.LISTS,deduped3);
+        return deduped3;
       });
       newLists.forEach(nl=>sync('upsertList',{list:nl}));
     }
