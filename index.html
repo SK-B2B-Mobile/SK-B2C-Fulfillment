@@ -764,9 +764,10 @@ function App(){
                   // ★ 날짜 정규화 함수
                   const nd=d=>{if(!d)return'';if(typeof d==='object')try{return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){}return String(d).slice(0,10);};
                   const rDate=nd(remote.date);
-                  // id 우선, 없으면 pgNo+rDate로 매칭
+                  // ★ 매칭 우선순위: id → pgNo+date → category+date
                   let idx=merged.findIndex(l=>l.id&&l.id===remote.id);
                   if(idx<0&&remote.pgNo&&rDate) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&nd(l.date)===rDate);
+                  if(idx<0&&remote.category&&rDate) idx=merged.findIndex(l=>l.category===remote.category&&nd(l.date)===rDate&&l.status!=='Deleted');
                   const loc=idx>=0?merged[idx]:null;
                   const nl={
                     id:remote.id,date:remote.date,pgNo:remote.pgNo,category:remote.category,
