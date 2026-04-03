@@ -927,9 +927,10 @@ function App(){
         const merged = [...prev];
         // ★ 삭제된 항목 폴링 복원 방지
         fetched.filter(r=>!deletedIds.current.has(r.pgNo+'_'+r.date)).forEach(remote => {
-          // ★ id 우선, 없으면 pgNo+date로 매칭
+          // ★ id 우선, 없으면 pgNo+date, 최후 category+date 폴백 (pgNo 불일치 시 중복 방지)
           let idx = merged.findIndex(l => l.id && l.id === remote.id);
           if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&l.date===remote.date);
+          if(idx<0&&remote.category&&remote.date) idx=merged.findIndex(l=>l.category===remote.category&&(l.date||'').slice(0,10)===remote.date.slice(0,10)&&l.status!=='Deleted');
           // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
           const loc2 = idx>=0 ? merged[idx] : null;
           const nl = {
@@ -1440,8 +1441,8 @@ function App(){
       if(createdCats.has(s.category))return;
       createdCats.add(s.category);
       const listDate=today();
-      // ★ 기존 항목 체크 (category+date)
-      const existing=lists.find(l=>l.category===s.category&&(l.date||'').slice(0,10)===listDate);
+      // ★ 기존 항목 체크 (category+date) — Deleted 제외
+      const existing=lists.find(l=>l.category===s.category&&(l.date||'').slice(0,10)===listDate&&l.status!=='Deleted');
       const pgNo=s.pgNo||existing?.pgNo||('PG'+uid().slice(-8));
       if(existing){
         // 기존 있으면 orderCount만 업데이트
