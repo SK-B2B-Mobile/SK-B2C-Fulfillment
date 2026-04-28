@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v18</title>
+<title>SK B2C Fulfillment v19</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -23,250 +23,140 @@ if('serviceWorker' in navigator){
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <style>
-/* ═══ RESET ═══ */
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;font-family:'DM Sans',system-ui,sans-serif;font-size:13px;background:#ECEAE5;color:#111}
 button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all .15s;user-select:none;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid}
-
-/* ═══ NAV ═══ */
-.nav{
-  height:56px;border-bottom:1.5px solid #CCC;
-  display:flex;align-items:center;padding:0 20px;gap:4px;
-  position:sticky;top:0;z-index:200;
-}
+.nav{height:56px;border-bottom:1.5px solid #CCC;display:flex;align-items:center;padding:0 20px;gap:4px;position:sticky;top:0;z-index:200;}
 .nav.light{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.07)}
-.nav.dark {background:#1A1A3E;border-color:rgba(255,255,255,0.1);box-shadow:0 2px 16px rgba(0,0,0,0.4)}
-
+.nav.dark{background:#1A1A3E;border-color:rgba(255,255,255,0.1);box-shadow:0 2px 16px rgba(0,0,0,0.4)}
 .logo-box{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .logo-box.light{background:linear-gradient(145deg,#FAEEDA,#F2C060);box-shadow:0 1px 4px rgba(0,0,0,0.15)}
-.logo-box.dark {background:linear-gradient(145deg,#5B5EF4,#8B5CF6);box-shadow:0 2px 8px rgba(91,94,244,0.5)}
-.app-title{font-size:15px;font-weight:700;letter-spacing:-.02em;margin:0 4px 0 9px}
-.app-title.light{color:#111;font-size:16px}
-.app-title.dark {color:#E8E6FF;font-size:16px}
-.app-ver{font-size:10px;font-weight:600;padding:1px 6px;border-radius:100px}
-.app-ver.light{color:#888;background:#EBEBEB;border-color:#D8D7D2;font-size:11px;padding:2px 7px}
-.app-ver.dark {color:#666;background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.1)}
-
+.logo-box.dark{background:linear-gradient(145deg,#5B5EF4,#8B5CF6);box-shadow:0 2px 8px rgba(91,94,244,0.5)}
+.app-title{font-size:16px;font-weight:700;letter-spacing:-.02em;margin:0 4px 0 9px}
+.app-title.light{color:#111}
+.app-title.dark{color:#E8E6FF}
+.app-ver{font-size:11px;font-weight:600;padding:2px 7px;border-radius:100px;border:1px solid}
+.app-ver.light{color:#888;background:#EBEBEB;border-color:#D8D7D2}
+.app-ver.dark{color:#666;background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.1)}
 .nav-sep{width:1px;height:20px;margin:0 6px}
 .nav-sep.light{background:#DDD}
-.nav-sep.dark {background:rgba(255,255,255,0.1)}
-
+.nav-sep.dark{background:rgba(255,255,255,0.1)}
 .nav-btn{font-size:13px;padding:5px 12px;border-radius:7px;font-weight:500}
-.nav-btn.light{background:transparent;border-color:transparent;color:#555;font-size:13px}
+.nav-btn.light{background:transparent;border-color:transparent;color:#555}
 .nav-btn.light:hover{background:#EBEBEB;border-color:#D8D7D2;color:#111}
 .nav-btn.light.on{background:#EBEBEB;border-color:#D8D7D2;color:#111;font-weight:600}
-.nav-btn.dark{background:transparent;border-color:transparent;color:#7070A0;font-size:13px}
+.nav-btn.dark{background:transparent;border-color:transparent;color:#7070A0}
 .nav-btn.dark:hover{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.12);color:#BBBBDD}
 .nav-btn.dark.on{background:rgba(91,94,244,0.22);border-color:rgba(91,94,244,0.5);color:#A0A8FF;font-weight:600}
-
 .mgr-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;background:rgba(91,94,244,0.25);border:1px solid rgba(91,94,244,0.5);border-radius:100px;font-size:11px;font-weight:700;color:#A0A8FF;letter-spacing:.04em;text-transform:uppercase}
 .mgr-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 16px;border-radius:100px;font-weight:600}
 .mgr-btn.unlock{background:#F0EEFF;border-color:#C4C5FF;color:#5B5EF4}
 .mgr-btn.unlock:hover{background:#E5E3FF}
 .mgr-btn.lock{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);color:#888}
 .mgr-btn.lock:hover{border-color:rgba(255,255,255,0.25);color:#CCC}
-
-/* ═══ STATS BAR — 유동적 스케일링 ═══ */
 .stats-bar{display:grid;grid-template-columns:repeat(5,1fr);align-items:stretch}
 .stats-bar.light{background:#FFFFFF;border-bottom:2px solid #E8E8F0;box-shadow:0 4px 20px rgba(0,0,0,0.08)}
-.stats-bar.dark {background:linear-gradient(135deg,#141430,#1A1A3E);border-bottom:1px solid rgba(255,255,255,0.08)}
-.stat{
-  padding: clamp(12px, 1.2vw, 22px) clamp(16px, 1.6vw, 28px);
-  display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;
-  animation:statFadeIn .5s ease both
-}
-.stat:nth-child(1){animation-delay:.05s}
-.stat:nth-child(2){animation-delay:.1s}
-.stat:nth-child(3){animation-delay:.15s}
-.stat:nth-child(4){animation-delay:.2s}
-.stat:nth-child(5){animation-delay:.25s}
+.stats-bar.dark{background:linear-gradient(135deg,#141430,#1A1A3E);border-bottom:1px solid rgba(255,255,255,0.08)}
+.stat{padding:clamp(12px,1.2vw,22px) clamp(16px,1.6vw,28px);display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;animation:statFadeIn .5s ease both}
+.stat:nth-child(1){animation-delay:.05s}.stat:nth-child(2){animation-delay:.1s}.stat:nth-child(3){animation-delay:.15s}.stat:nth-child(4){animation-delay:.2s}.stat:nth-child(5){animation-delay:.25s}
 @keyframes statFadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .stat.light{border-right:1px solid #F0F0F8}
-.stat.dark {border-right:1px solid rgba(255,255,255,0.06)}
+.stat.dark{border-right:1px solid rgba(255,255,255,0.06)}
 .stat:last-child{border-right:none}
-.stat-accent{position:absolute;top:0;left:0;right:0;height:5px;border-radius:0;
-  animation:accentGlow 2.5s ease-in-out infinite alternate}
-@keyframes accentGlow{from{opacity:.8}to{opacity:1;filter:brightness(1.3)}}
-.stat::before{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,0.04) 50%,transparent 60%);
-  background-size:200% 100%;animation:shimmer 3s linear infinite;pointer-events:none}
-@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-
-/* 유동적 글씨 크기 — clamp(최소, 뷰포트기준, 최대) */
-.stat-lbl{
-  font-size: clamp(9px, 0.62vw, 11px);
-  font-weight:700;text-transform:uppercase;letter-spacing:.12em;
-  margin-bottom: clamp(5px, 0.5vw, 9px);
-  margin-top: clamp(4px, 0.35vw, 7px)
-}
+.stat-accent{position:absolute;top:0;left:0;right:0;height:5px;border-radius:0}
+.stat-lbl{font-size:clamp(9px,0.62vw,11px);font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin-bottom:clamp(5px,0.5vw,9px);margin-top:clamp(4px,0.35vw,7px)}
 .stat-lbl.light{color:#888}
-.stat-lbl.dark {color:#7070B8}
+.stat-lbl.dark{color:#7070B8}
 .stat-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.stat-num{
-  font-size: clamp(22px, 1.8vw, 32px);
-  font-weight:800;line-height:1;letter-spacing:-0.02em;
-  animation:numPop .6s cubic-bezier(.34,1.56,.64,1) both
-}
-@keyframes numPop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+.stat-num{font-size:clamp(22px,1.8vw,32px);font-weight:800;line-height:1;letter-spacing:-0.02em}
 .stat-num.light{color:#111}
 .stat-num.dark{color:#E8E6FF}
-.stat-sub{
-  font-size: clamp(11px, 0.85vw, 14px);
-  font-weight:500
-}
+.stat-sub{font-size:clamp(11px,0.85vw,14px);font-weight:500}
 .stat-sub.light{color:#BBB}
-.stat-sub.dark {color:#5050A8}
-.stat-pct{
-  font-size: clamp(10px, 0.7vw, 12px);
-  font-weight:700;
-  padding: clamp(2px,0.16vw,3px) clamp(6px,0.55vw,10px);
-  border-radius:100px;flex-shrink:0;transition:all .3s
-}
+.stat-sub.dark{color:#5050A8}
+.stat-pct{font-size:clamp(10px,0.7vw,12px);font-weight:700;padding:clamp(2px,0.16vw,3px) clamp(6px,0.55vw,10px);border-radius:100px;flex-shrink:0}
 .stat-pct.light{background:#F0F0F8;color:#555}
 .stat-pct.dark{background:rgba(255,255,255,0.08);color:#9090C0}
-.stat-bar{
-  height: clamp(4px, 0.35vw, 6px);
-  border-radius:4px;
-  margin-top: clamp(7px, 0.6vw, 12px);
-  overflow:hidden;position:relative
-}
+.stat-bar{height:clamp(4px,0.35vw,6px);border-radius:4px;margin-top:clamp(7px,0.6vw,12px);overflow:hidden;position:relative}
 .stat-bar.light{background:#F0F0F8}
-.stat-bar.dark {background:rgba(255,255,255,0.07)}
-.stat-fill{height:100%;border-radius:4px;
-  transition:width 1.2s cubic-bezier(.4,0,.2,1);
-  position:relative;overflow:hidden}
-.stat-fill::after{content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent);
-  animation:fillShine 2.2s ease-in-out infinite}
-@keyframes fillShine{0%{left:-60%}100%{left:120%}}
-
-/* ═══ CATEGORY TABS — 유동적 ═══ */
+.stat-bar.dark{background:rgba(255,255,255,0.07)}
+.stat-fill{height:100%;border-radius:4px;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
 .cat-tabs-row{display:flex;align-items:center}
 .cat-tabs-row.light{background:#FAFAFA;border-bottom:2px solid #EEEEF8}
-.cat-tabs-row.dark {background:#141430;border-bottom:1px solid rgba(255,255,255,0.1)}
+.cat-tabs-row.dark{background:#141430;border-bottom:1px solid rgba(255,255,255,0.1)}
 .cat-tabs{display:flex;overflow-x:auto;flex:1;padding:0 clamp(12px,1.5vw,28px);gap:4px}
-.cat-tab{
-  display:inline-flex;align-items:center;gap: clamp(5px,0.5vw,10px);
-  padding: clamp(10px,0.9vw,15px) clamp(12px,1.2vw,22px);
-  font-size: clamp(12px, 0.95vw, 14px);
-  font-weight:500;cursor:pointer;border:none;background:transparent;
-  border-bottom:3px solid transparent;margin-bottom:-2px;
-  white-space:nowrap;border-radius:0;transition:all .2s;font-family:inherit
-}
+.cat-tab{display:inline-flex;align-items:center;gap:clamp(5px,0.5vw,10px);padding:clamp(10px,0.9vw,15px) clamp(12px,1.2vw,22px);font-size:clamp(12px,0.95vw,14px);font-weight:500;cursor:pointer;border:none;background:transparent;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;border-radius:0;transition:all .2s;font-family:inherit}
 .cat-tab.light{color:#999}
 .cat-tab.light:hover{color:#333;background:rgba(0,0,0,0.03)}
 .cat-tab.light.on{font-weight:700;color:#111}
 .cat-tab.dark{color:#8080C0}
 .cat-tab.dark:hover{color:#C0C0F0;background:rgba(255,255,255,0.04)}
 .cat-tab.dark.on{font-weight:700;color:#E0DEFF}
-.cat-cnt{
-  font-size: clamp(10px, 0.8vw, 13px);
-  font-weight:700;
-  padding: clamp(2px,0.2vw,4px) clamp(6px,0.6vw,10px);
-  border-radius:100px;transition:all .2s
-}
+.cat-cnt{font-size:clamp(10px,0.8vw,13px);font-weight:700;padding:clamp(2px,0.2vw,4px) clamp(6px,0.6vw,10px);border-radius:100px;transition:all .2s}
 .cat-cnt.light{background:#EBEBEB;color:#666}
-.cat-cnt.dark {background:rgba(255,255,255,0.1);color:#9090C0}
+.cat-cnt.dark{background:rgba(255,255,255,0.1);color:#9090C0}
 .cat-cnt.on-light{background:#111;color:#fff}
-.cat-cnt.on-dark {color:#0D0D1B}
+.cat-cnt.on-dark{color:#0D0D1B}
 .tab-actions{display:flex;gap:8px;padding:5px clamp(10px,1vw,20px);flex-shrink:0;align-items:center}
-
-/* ═══ CLOCK — 유동적 ═══ */
-.clock-row{display:flex;align-items:center;justify-content:flex-end;padding: clamp(3px,0.3vw,6px) clamp(14px,1.5vw,28px);gap:10px}
+.clock-row{display:flex;align-items:center;justify-content:flex-end;padding:clamp(3px,0.3vw,6px) clamp(14px,1.5vw,28px);gap:10px}
 .clock-row.light{background:#fff;border-bottom:1px solid #E8E7E3}
-.clock-row.dark {background:#1A1A3E;border-bottom:1px solid rgba(255,255,255,0.06)}
-.clock-date{font-size: clamp(11px,0.8vw,13px);font-weight:500;color:#AAA}
-.clock-time{font-family:'DM Mono',ui-monospace,Consolas,monospace;font-size: clamp(16px,1.5vw,24px);font-weight:700;letter-spacing:-0.01em;line-height:1}
+.clock-row.dark{background:#1A1A3E;border-bottom:1px solid rgba(255,255,255,0.06)}
+.clock-date{font-size:clamp(11px,0.8vw,13px);font-weight:500;color:#AAA}
+.clock-time{font-family:'DM Mono',ui-monospace,Consolas,monospace;font-size:clamp(16px,1.5vw,24px);font-weight:700;letter-spacing:-0.01em;line-height:1}
 .clock-time.light{color:#222}
-.clock-time.dark {color:#E8E6FF}
-.clock-sec{font-family:'DM Mono',ui-monospace,Consolas,monospace;font-size: clamp(11px,0.9vw,15px);font-weight:600;color:#BBB}
-.clock-ampm{font-size: clamp(10px,0.75vw,12px);font-weight:700;color:#888;margin-left:3px}
-
-/* ═══ INFO NOTE ═══ */
-.info-note{padding: clamp(5px,0.5vw,9px) clamp(16px,1.8vw,28px);font-size: clamp(11px,0.9vw,14px);font-style:italic;border-bottom:1px solid}
+.clock-time.dark{color:#E8E6FF}
+.clock-sec{font-family:'DM Mono',ui-monospace,Consolas,monospace;font-size:clamp(11px,0.9vw,15px);font-weight:600;color:#BBB}
+.clock-ampm{font-size:clamp(10px,0.75vw,12px);font-weight:700;color:#888;margin-left:3px}
+.info-note{padding:clamp(5px,0.5vw,9px) clamp(16px,1.8vw,28px);font-size:clamp(11px,0.9vw,14px);font-style:italic;border-bottom:1px solid}
 .info-note.light{background:#F8F7F4;color:#999;border-color:#E8E7E3}
-.info-note.dark {background:#1A1A3E;color:#6060A0;border-color:rgba(255,255,255,0.06)}
-
-
-/* ═══ TABLE — 유동적 ═══ */
+.info-note.dark{background:#1A1A3E;color:#6060A0;border-color:rgba(255,255,255,0.06)}
 .tbl-wrap{overflow-x:auto}
 .tbl-wrap.light{background:#fff}
-.tbl-wrap.dark {background:#0E0E1C}
+.tbl-wrap.dark{background:#0E0E1C}
 .tbl{border-collapse:collapse;width:100%;min-width:900px}
-.tbl thead th{
-  padding: clamp(8px,0.7vw,13px) clamp(10px,1.1vw,18px);
-  text-align:left;
-  font-size: clamp(10px,0.72vw,12px);
-  font-weight:700;text-transform:uppercase;letter-spacing:.05em;
-  white-space:nowrap;user-select:none;
-}
+.tbl thead th{padding:clamp(8px,0.7vw,13px) clamp(10px,1.1vw,18px);text-align:left;font-size:clamp(10px,0.72vw,12px);font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;user-select:none}
 .tbl thead th.light{color:#555;background:#EEECEA;border-top:2px solid #C8C7C2;border-bottom:2px solid #C8C7C2}
-.tbl thead th.dark {color:#C0C0E0;background:#22224A;border-top:2px solid rgba(255,255,255,0.12);border-bottom:2px solid rgba(255,255,255,0.12)}
-.tbl tbody td{
-  padding: clamp(9px,0.85vw,14px) clamp(10px,1.1vw,18px);
-  font-size: clamp(12px,0.95vw,15px);
-  border-bottom:1px solid;
-  vertical-align:middle;white-space:nowrap;
-}
+.tbl thead th.dark{color:#C0C0E0;background:#22224A;border-top:2px solid rgba(255,255,255,0.12);border-bottom:2px solid rgba(255,255,255,0.12)}
+.tbl tbody td{padding:clamp(9px,0.85vw,14px) clamp(10px,1.1vw,18px);font-size:clamp(12px,0.95vw,15px);border-bottom:1px solid;vertical-align:middle;white-space:nowrap}
 .tbl tbody td.light{background:#fff;border-color:#EEECEA}
-.tbl tbody td.dark {background:#0E0E1C;border-color:rgba(255,255,255,0.05)}
+.tbl tbody td.dark{background:#0E0E1C;border-color:rgba(255,255,255,0.05)}
 .tbl tbody tr.light:hover td.light{background:#FAFAF8}
-.tbl tbody tr.dark:hover td.dark {background:#13132B}
+.tbl tbody tr.dark:hover td.dark{background:#13132B}
 .tbl td.c{text-align:center}
 .mono{font-family:'SF Mono',ui-monospace,Consolas,monospace}
-
-/* ═══ PILLS ═══ */
 .pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:600;border:1px solid;white-space:nowrap}
 .s0{background:#F2F1EC;color:#666;border-color:#CCC}
 .s1{background:#FFF0DC;color:#7A3A00;border-color:#F5C070}
 .s2{background:#DAEEFF;color:#0A4A8A;border-color:#7ABEF5}
 .s3{background:#FFE8E0;color:#8A2800;border-color:#F5A070}
 .s4{background:#E0F5D0;color:#1A6A08;border-color:#90D870}
-
-/* ═══ PICKER DROPDOWN ═══ */
 .pk-wrap{position:relative;display:inline-block}
 .pk-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:100px;font-size:13px;border:1px solid;white-space:nowrap;font-weight:500}
 .pk-dot{width:7px;height:7px;border-radius:50%;border:2px solid;flex-shrink:0}
 .pk-menu{position:fixed;z-index:9999;border-radius:11px;padding:4px;min-width:175px;max-height:290px;overflow-y:auto}
 .pk-menu.light{background:#fff;border:1.5px solid #D8D7D2;box-shadow:0 8px 28px rgba(0,0,0,0.14)}
-.pk-menu.dark {background:#1E1E44;border:1.5px solid rgba(255,255,255,0.16);box-shadow:0 8px 28px rgba(0,0,0,0.55)}
+.pk-menu.dark{background:#1E1E44;border:1.5px solid rgba(255,255,255,0.16);box-shadow:0 8px 28px rgba(0,0,0,0.55)}
 .pk-item{padding:9px 13px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px}
 .pk-item.light{color:#333}
 .pk-item.light:hover{background:#F5F4F0}
 .pk-item.dark{color:#CCC}
 .pk-item.dark:hover{background:rgba(255,255,255,0.07)}
-
-/* ═══ ACTION BUTTONS ═══ */
 .ab{border-radius:8px;padding:7px 16px;font-size:13px;font-weight:700;border:1px solid;transition:all .2s}
-.ab.start{
-  background:linear-gradient(135deg,#FF8C00,#FF6B00);
-  color:#fff;border-color:transparent;
-  box-shadow:0 3px 12px rgba(255,107,0,0.35);
-  animation:pulse-start 1.8s ease-in-out infinite;
-}
+.ab.start{background:linear-gradient(135deg,#FF8C00,#FF6B00);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(255,107,0,0.35);animation:pulse-start 1.8s ease-in-out infinite}
 .ab.start:hover{filter:brightness(1.1);transform:scale(1.03)}
-@keyframes pulse-start{
-  0%,100%{box-shadow:0 3px 12px rgba(255,107,0,0.35),0 0 0 0 rgba(255,107,0,0.4)}
-  50%{box-shadow:0 3px 20px rgba(255,107,0,0.5),0 0 0 8px rgba(255,107,0,0)}
-}
-.ab.done {background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(34,197,94,0.3)}
+@keyframes pulse-start{0%,100%{box-shadow:0 3px 12px rgba(255,107,0,0.35),0 0 0 0 rgba(255,107,0,0.4)}50%{box-shadow:0 3px 20px rgba(255,107,0,0.5),0 0 0 8px rgba(255,107,0,0)}}
+.ab.done{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(34,197,94,0.3)}
 .ab.done:hover{filter:brightness(1.08);transform:scale(1.02)}
-.ab.endscan{
-  background:linear-gradient(135deg,#F59E0B,#D97706);
-  color:#fff;border-color:transparent;
-  box-shadow:0 3px 12px rgba(245,158,11,0.35);
-}
+.ab.endscan{background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(245,158,11,0.35)}
 .ab.endscan:hover{filter:brightness(1.08);transform:scale(1.02)}
-.ab.work {background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(59,130,246,0.3)}
+.ab.work{background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(59,130,246,0.3)}
 .ab.work:hover{filter:brightness(1.08)}
-.ab.plus{border-radius:7px;padding:6px 12px;font-size:13px;font-weight:700;border:1px solid}
 .ab.edit-btn{background:rgba(91,94,244,0.2);border-color:rgba(91,94,244,0.45);color:#A0A8FF;padding:6px 14px;font-size:13px;font-weight:600;border-radius:7px}
 .ab.edit-btn:hover{background:rgba(91,94,244,0.3)}
 .ab.del-btn{background:rgba(220,38,38,0.12);border-color:rgba(220,38,38,0.35);color:#F87171;padding:6px 12px;font-size:13px;font-weight:600;border-radius:7px}
 .ab.del-btn:hover{background:rgba(220,38,38,0.22)}
 .ab.today-del{background:#FCEBEB;border-color:#F5BBBB;color:#9B2020;padding:6px 12px;font-size:12px;font-weight:600;border-radius:7px}
 .ab.today-del:hover{background:#F9DCDC}
-
-/* ═══ GENERIC BUTTONS ═══ */
 .btn-primary{background:linear-gradient(135deg,#5B5EF4,#8B5CF6);border-color:transparent;color:#fff;font-weight:700;box-shadow:0 3px 10px rgba(91,94,244,0.3);border-radius:8px;padding:8px 20px;font-size:13px}
 .btn-primary:hover{filter:brightness(1.08)}
 .btn-secondary{border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500}
@@ -274,11 +164,9 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .btn-sec-light:hover{background:#F5F4F0}
 .btn-sec-dark{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.14);color:#CCC}
 .btn-sec-dark:hover{background:rgba(255,255,255,0.13)}
-
-/* ═══ FORM ═══ */
 .lbl{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
 .lbl.light{color:#888}
-.lbl.dark {color:#8888C0}
+.lbl.dark{color:#8888C0}
 .inp-dark{background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.16);border-radius:8px;padding:9px 12px;color:#E8E6FF;font-family:inherit;font-size:13px;outline:none;width:100%;display:block}
 .inp-dark:focus{border-color:#5B5EF4;box-shadow:0 0 0 3px rgba(91,94,244,0.18)}
 .inp-dark::placeholder{color:#4A4A7A}
@@ -287,88 +175,27 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .sel-dark option,.sel-dark optgroup{background:#1E1E44;color:#E8E6FF}
 .ta-dark{background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.16);border-radius:8px;padding:9px 12px;color:#E8E6FF;font-family:inherit;font-size:13px;outline:none;width:100%;resize:vertical;line-height:1.5}
 .ta-dark:focus{border-color:#5B5EF4}
-.card-dark{background:#1A1A3E;border:1.5px solid rgba(255,255,255,0.09);border-radius:14px;padding:1.25rem;box-shadow:0 4px 20px rgba(0,0,0,0.35)}
-
-/* ═══ MODAL ═══ */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:800;display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(4px)}
 .modal-light{background:#fff;border:1.5px solid #D8D7D2;border-radius:16px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.18)}
 .modal-dark{background:#1C1C40;border:1.5px solid rgba(255,255,255,0.12);border-radius:16px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,0.6);max-height:calc(100vh - 48px);overflow-y:auto}
 .modal-hdr{padding:1.1rem 1.4rem;border-bottom:1px solid}
 .modal-hdr.light{border-color:#E8E7E3}
-.modal-hdr.dark {border-color:rgba(255,255,255,0.08)}
+.modal-hdr.dark{border-color:rgba(255,255,255,0.08)}
 .modal-body{padding:1.25rem 1.4rem}
-
-/* ═══ PAGE AREAS ═══ */
 .page-wrap{padding:20px 24px 60px}
 .page-wrap.dark{background:#0E0E1C;min-height:calc(100vh - 52px)}
-
-/* ═══ EMPTY ═══ */
 .empty{padding:52px 20px;text-align:center;font-style:italic;font-size:13px}
 .empty.light{color:#BBB}
-.empty.dark {color:#333}
-
-/* ═══ MISC ═══ */
+.empty.dark{color:#333}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{border-radius:10px;background:rgba(128,128,128,0.2)}
-
-/* ═══ RESPONSIVE ═══ */
-/* clamp()로 대부분 자동 처리됨. 아래는 매우 작은/큰 화면만 보정 */
-
-/* 소형 태블릿/노트북 (600~899px) — 컴팩트 보정 */
-@media (max-width:899px) and (min-width:600px) {
-  .nav          { padding:0 10px; gap:2px; height:48px }
-  .app-title    { font-size:13px !important }
-  .app-ver      { display:none }
-  .nav-sep      { display:none }
-  .stats-bar    { grid-template-columns:repeat(3,1fr) }
-  .stat:nth-child(4){ border-top:1px solid rgba(255,255,255,0.06) }
-  .stat:nth-child(5){ border-top:1px solid rgba(255,255,255,0.06) }
-  .tbl          { min-width:700px }
-  .clock-date   { display:none }
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media(max-width:899px) and (min-width:600px){
+  .nav{padding:0 10px;gap:2px;height:48px}.app-title{font-size:13px !important}.app-ver{display:none}.nav-sep{display:none}
+  .stats-bar{grid-template-columns:repeat(3,1fr)}.tbl{min-width:700px}.clock-date{display:none}
 }
-/* 모바일 (< 600px) */
-@media (max-width:599px) {
-  .stats-bar    { grid-template-columns:repeat(2,1fr) }
-  .nav-sep      { display:none }
-  .app-ver      { display:none }
-  .tbl          { min-width:600px }
-}
-/* 와이드 모니터 (2560px+) — 너무 커지지 않도록 */
-@media (min-width:2560px) {
-  .stat-num  { font-size:64px }
-  .stat-sub  { font-size:22px }
-  .stat-lbl  { font-size:14px }
-  .cat-tab   { font-size:18px }
-}
-/* 수평 스크롤 항상 허용 */
-.tbl-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-}
-/* Small laptop / tablet (600~799px) */
-@media (max-width:799px) and (min-width:600px) {
-  .nav          { padding:0 10px; gap:2px; height:48px }
-  .app-title    { font-size:12px !important }
-  .app-ver      { display:none }
-  .nav-sep      { display:none }
-  .tbl          { min-width:700px }
-  .tbl thead th { font-size:9px; padding:7px 8px }
-  .tbl tbody td { font-size:11px; padding:9px 8px }
-  .stats-bar    { grid-template-columns:repeat(3,1fr) }
-  .stat:nth-child(4){ border-top:1px solid #E8E7E3 }
-  .stat:nth-child(5){ border-top:1px solid #E8E7E3 }
-  .stat         { padding:8px 12px }
-  .stat-num     { font-size:18px }
-  .stat-lbl     { font-size:9px }
-  .cat-tab      { font-size:11px; padding:7px 9px }
-  .clock-time   { font-size:18px !important }
-  .clock-date   { display:none }
-}
-/* Horizontal scroll container always on for table */
-.tbl-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+@media(max-width:599px){
+  .stats-bar{grid-template-columns:repeat(2,1fr)}.nav-sep{display:none}.app-ver{display:none}.tbl{min-width:600px}
 }
 </style>
 </head>
@@ -380,47 +207,32 @@ const LS={PIN:'b2c18_pin',LISTS:'b2c18_lists',LOG:'b2c18_log',WH:'b2c18_wh',PKS:
 const DEF_PIN='1234';
 const DEF_PKS='Kim Jisu,Park Minho,Lee Hayeon,Choi Dawon,Jung Soyeon,Helper 1,Helper 2';
 const PREFIX_MAP=[
-  {p:'US-HMS-',cat:'Official 1', store:'Heimish'},
-  {p:'GSU',   cat:'Official 1', store:'Shein'},
-  {p:'200014',cat:'Official 1', store:'Walmart'},
-  {p:'TOCOBO-',cat:'Official 1',store:'Tocobo'},
-  {p:'SKINFOOD-',cat:'Official 2',store:'Skinfood'},
-  {p:'KAJA-', cat:'Official 2', store:'Kaja'},
-  {p:'IDC-',  cat:'Official 2', store:'I Dew Care'},
-  {p:'jumiso-',cat:'Official 2',store:'Jumiso'},
-  {p:'Betheskin-',cat:'Official 2',store:'Be The Skin'},
-  {p:'Hyaah-',cat:'Official 2', store:'Hyaah'},
-  {p:'MD-',   cat:'Moida & Hola',store:'Moida US'},
-  {p:'HOA',   cat:'Moida & Hola',store:'Hola'},
-  {p:'5773',  cat:'TikTok CBT', store:'TikTok CBT'},
-  {p:'1155',  cat:'TikTok CBT', store:'TikTok CBT'},  // ★ Package ID prefix (패킹슬립 바코드)
-  {p:'1156',  cat:'TikTok CBT', store:'TikTok CBT'},  // ★ Package ID prefix 1156 추가
-  {p:'MBX',   cat:'Seeding',    store:'Seeding MBX'},
-  {p:'RTN',   cat:'Seeding',    store:'Returns'},
+  {p:'US-HMS-',cat:'Official 1',store:'Heimish'},{p:'GSU',cat:'Official 1',store:'Shein'},
+  {p:'200014',cat:'Official 1',store:'Walmart'},{p:'TOCOBO-',cat:'Official 1',store:'Tocobo'},
+  {p:'SKINFOOD-',cat:'Official 2',store:'Skinfood'},{p:'KAJA-',cat:'Official 2',store:'Kaja'},
+  {p:'IDC-',cat:'Official 2',store:'I Dew Care'},{p:'jumiso-',cat:'Official 2',store:'Jumiso'},
+  {p:'Betheskin-',cat:'Official 2',store:'Be The Skin'},{p:'Hyaah-',cat:'Official 2',store:'Hyaah'},
+  {p:'MD-',cat:'Moida & Hola',store:'Moida US'},{p:'HOA',cat:'Moida & Hola',store:'Hola'},
+  {p:'5773',cat:'TikTok CBT',store:'TikTok CBT'},{p:'1155',cat:'TikTok CBT',store:'TikTok CBT'},
+  {p:'1156',cat:'TikTok CBT',store:'TikTok CBT'},
+  {p:'MBX',cat:'Seeding',store:'Seeding MBX'},{p:'RTN',cat:'Seeding',store:'Returns'},
 ];
 const CATS=['Official 1','Official 2','Moida & Hola','TikTok CBT','Seeding','Reshipment'];
-const AUTO=['Official 1','Official 2','Moida & Hola','TikTok CBT'];
 const CA={
-  'Official 1': {bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2',ac:'#3B8FE0'},
-  'Official 2': {bg:'#EDECFE',tx:'#4038B5',br:'#B0A8F2',ac:'#7068D8'},
+  'Official 1':{bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2',ac:'#3B8FE0'},
+  'Official 2':{bg:'#EDECFE',tx:'#4038B5',br:'#B0A8F2',ac:'#7068D8'},
   'Moida & Hola':{bg:'#E0F5D0',tx:'#1A6A08',br:'#90D870',ac:'#5DA832'},
-  'TikTok CBT': {bg:'#FBE8F0',tx:'#8A1A5A',br:'#F0A0C8',ac:'#C84A82'},
-  'Seeding':    {bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070',ac:'#E89820'},
-  'Reshipment': {bg:'#EEEEED',tx:'#383836',br:'#C0C0B8',ac:'#808078'},
+  'TikTok CBT':{bg:'#FBE8F0',tx:'#8A1A5A',br:'#F0A0C8',ac:'#C84A82'},
+  'Seeding':{bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070',ac:'#E89820'},
+  'Reshipment':{bg:'#EEEEED',tx:'#383836',br:'#C0C0B8',ac:'#808078'},
 };
 const PKC_PRESETS=[
-  {bg:'#E6F1FB',tx:'#1254A0',label:'Blue'},
-  {bg:'#EDECFE',tx:'#4038B5',label:'Purple'},
-  {bg:'#E0F5D0',tx:'#1A6A08',label:'Green'},
-  {bg:'#FFF0DC',tx:'#7A3A00',label:'Orange'},
-  {bg:'#FBE8F0',tx:'#8A1A5A',label:'Pink'},
-  {bg:'#EEEEED',tx:'#484846',label:'Gray'},
-  {bg:'#E8F5D0',tx:'#2A6A0A',label:'Lime'},
-  {bg:'#FEE8CC',tx:'#7A3A00',label:'Peach'},
-  {bg:'#D0F0FF',tx:'#005A8A',label:'Sky'},
-  {bg:'#FFD6D6',tx:'#8A0000',label:'Red'},
-  {bg:'#D6FFE8',tx:'#006633',label:'Mint'},
-  {bg:'#FFF5CC',tx:'#7A6000',label:'Yellow'},
+  {bg:'#E6F1FB',tx:'#1254A0',label:'Blue'},{bg:'#EDECFE',tx:'#4038B5',label:'Purple'},
+  {bg:'#E0F5D0',tx:'#1A6A08',label:'Green'},{bg:'#FFF0DC',tx:'#7A3A00',label:'Orange'},
+  {bg:'#FBE8F0',tx:'#8A1A5A',label:'Pink'},{bg:'#EEEEED',tx:'#484846',label:'Gray'},
+  {bg:'#E8F5D0',tx:'#2A6A0A',label:'Lime'},{bg:'#FEE8CC',tx:'#7A3A00',label:'Peach'},
+  {bg:'#D0F0FF',tx:'#005A8A',label:'Sky'},{bg:'#FFD6D6',tx:'#8A0000',label:'Red'},
+  {bg:'#D6FFE8',tx:'#006633',label:'Mint'},{bg:'#FFF5CC',tx:'#7A6000',label:'Yellow'},
 ];
 const ST=['pending','picking','picked','scanning','complete'];
 const STL=['Pending','Picking','Pick Done','Scanning','Complete'];
@@ -430,108 +242,119 @@ const STC=['s0','s1','s2','s3','s4'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 const ts=()=>new Date().toISOString();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
-
-// ★ category+date 기준 중복 제거 (status/scanned 높은 것 유지)
-// 폴링/싱크/생성 후 항상 호출 → localStorage 누적 중복 자동 정리
-const dedupeByCategory=arr=>{
-  const rankSt=s=>{const r={'pending':0,'picking':1,'pick done':2,'scanning':3,'complete':4};return r[(s||'').toLowerCase()]??-1;};
-  const out=[];
-  arr.forEach(item=>{
-    if((item.status||'').toLowerCase()==='deleted'){out.push(item);return;}
-    const d=(item.date||'').slice(0,10);
-    const idx=out.findIndex(x=>(x.status||'').toLowerCase()!=='deleted'&&x.category===item.category&&(x.date||'').slice(0,10)===d);
-    if(idx<0){out.push(item);return;}
-    const ex=out[idx];
-    const exRank=rankSt(ex.status), itRank=rankSt(item.status);
-    // 새 항목이 더 진행됐거나, 같은 rank면 scanned 많은 것 유지
-    if(itRank>exRank||(itRank===exRank&&(item.scanned||0)>=(ex.scanned||0))){out[idx]=item;}
-  });
-  return out;
-};
 const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
 const dur=(s,e,listDate)=>{
   if(!s)return'—';
-
-  // ★ Google Sheets 시간값 파싱 수정
-  // Sheets가 시간을 1899-12-30 Date 객체로 저장하는 문제 처리
   const parseTime=(val,baseDate)=>{
-    if(!val)return null;
-    const str=String(val).trim();
-    // 1) HH:mm:ss 또는 H:mm:ss 형식 → 날짜 붙이기
-    if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(str)){
-      const base=baseDate||today();
-      return new Date(base+' '+str);
-    }
-    // 2) yyyy-MM-dd HH:mm:ss 전체 형식
-    if(/^\d{4}-\d{2}-\d{2}/.test(str)) return new Date(str);
-    // 3) 기타 파싱 시도
-    const d=new Date(val);
-    if(!isNaN(d)){
-      // 1899년 또는 1970년 이전이면 시간만 추출 후 오늘 날짜 붙이기
-      if(d.getFullYear()<1970){
-        const base=baseDate||today();
-        const hh=String(d.getHours()).padStart(2,'0');
-        const mm=String(d.getMinutes()).padStart(2,'0');
-        const ss=String(d.getSeconds()).padStart(2,'0');
-        return new Date(base+' '+hh+':'+mm+':'+ss);
-      }
-      return d;
-    }
-    return null;
+    if(!val)return null;const str=String(val).trim();
+    if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(str)){const base=baseDate||today();return new Date(base+' '+str);}
+    if(/^\d{4}-\d{2}-\d{2}/.test(str))return new Date(str);
+    const d=new Date(val);if(!isNaN(d)){if(d.getFullYear()<1970){const base=baseDate||today();const hh=String(d.getHours()).padStart(2,'0');const mm=String(d.getMinutes()).padStart(2,'0');const ss=String(d.getSeconds()).padStart(2,'0');return new Date(base+' '+hh+':'+mm+':'+ss);}return d;}return null;
   };
-
-  const base=listDate||today();
-  const start=parseTime(s,base);
-  const end=e?parseTime(e,base):new Date();
+  const base=listDate||today();const start=parseTime(s,base);const end=e?parseTime(e,base):new Date();
   if(!start||isNaN(start)||!end||isNaN(end)||end<=start)return'—';
-  // 근무시간 설정 (분 단위)
-  const WS=8*60+30;   // 08:30 출근
-  const LS=12*60;     // 12:00 점심시작
-  const LE=13*60;     // 13:00 점심끝
-  const WE=17*60+30;  // 17:30 퇴근
+  const WS=8*60+30,LS=12*60,LE=13*60,WE=17*60+30;
   const toM=d=>d.getHours()*60+d.getMinutes();
-  // 하루 내 근무분 계산
-  const dayWork=(sm,em)=>{
-    sm=Math.max(sm,WS);em=Math.min(em,WE);
-    if(em<=sm)return 0;
-    let m=0;
-    if(sm<LS)m+=Math.min(em,LS)-sm;       // 오전
-    if(em>LE)m+=em-Math.max(sm,LE);       // 오후
-    return Math.max(0,m);
-  };
-  let total=0;
-  let cur=new Date(start);
-  let guard=0;
-  while(cur<end&&guard++<400){
-    const y=cur.getFullYear(),mo=cur.getMonth(),d=cur.getDate();
-    const nextDay=new Date(y,mo,d+1,8,30,0);
-    const sm=toM(cur);
-    const em=cur.toDateString()===end.toDateString()?toM(end):WE;
-    total+=dayWork(sm,Math.min(em,WE));
-    cur=nextDay;if(cur>=end)break;
-  }
-  if(total<=0)return'—';
-  return total<60?total+'m':Math.floor(total/60)+'h '+(total%60)+'m';
+  const dayWork=(sm,em)=>{sm=Math.max(sm,WS);em=Math.min(em,WE);if(em<=sm)return 0;let m=0;if(sm<LS)m+=Math.min(em,LS)-sm;if(em>LE)m+=em-Math.max(sm,LE);return Math.max(0,m);};
+  let total=0,cur=new Date(start),guard=0;
+  while(cur<end&&guard++<400){const y=cur.getFullYear(),mo=cur.getMonth(),d=cur.getDate();const nextDay=new Date(y,mo,d+1,8,30,0);const sm=toM(cur);const em=cur.toDateString()===end.toDateString()?toM(end):WE;total+=dayWork(sm,Math.min(em,WE));cur=nextDay;if(cur>=end)break;}
+  if(total<=0)return'—';return total<60?total+'m':Math.floor(total/60)+'h '+(total%60)+'m';
 };
 const IGNORE_PREFIXES=['kpopglow'];
-const detect=b=>{
-  const u=b.trim().toUpperCase();
-  for(const ig of IGNORE_PREFIXES) if(u.startsWith(ig.toUpperCase())) return null;
-  for(const m of PREFIX_MAP) if(u.startsWith(m.p.toUpperCase())) return{cat:m.cat,store:m.store};
-  return null;
-};
-// ★ v36: scanEnd 있으면 무조건 complete (강제 종료 포함)
+const detect=b=>{const u=b.trim().toUpperCase();for(const ig of IGNORE_PREFIXES)if(u.startsWith(ig.toUpperCase()))return null;for(const m of PREFIX_MAP)if(u.startsWith(m.p.toUpperCase()))return{cat:m.cat,store:m.store};return null;};
 const getSt=l=>{const oc=l.orderCount||0;if(l.scanEnd)return'complete';if(oc>0&&l.scanned>=oc)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+
+/* ══════════════════════════════════════════════
+   ★ v19 CORE FIX: mergeRemoteIntoLocal
+   - 절대 로컬 pgNo/id를 덮어쓰지 않음
+   - id 매칭 → pgNo+date 매칭 순서로 찾음
+   - 매칭된 항목은 로컬 pgNo/id 유지, 데이터만 업데이트
+   - 매칭 안 된 remote 항목만 새로 추가 (단, 오늘 날짜만)
+   - dedupeByCategory 완전 제거 (이것이 Official 1 삭제 원인이었음)
+══════════════════════════════════════════════ */
+const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
+  const merged=[...prev];
+  const nd=d=>{if(!d)return'';if(d instanceof Date){try{return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){}}return String(d).slice(0,10);};
+  const rankSt=s=>{const r={'pending':0,'picking':1,'pick done':2,'scanning':3,'complete':4};return r[(s||'').toLowerCase()]??-1;};
+
+  fetchedList.forEach(remote=>{
+    // Deleted 상태는 무시
+    if((remote.status||'').toLowerCase()==='deleted') return;
+    const rDate=nd(remote.date);
+
+    // ── 매칭 탐색 (id → pgNo+date 순서) ──
+    let idx=-1;
+    // 1) id로 찾기 (remote.id가 있고 로컬에 같은 id 있으면)
+    if(remote.id){
+      idx=merged.findIndex(l=>l.id&&l.id===remote.id&&(l.status||'').toLowerCase()!=='deleted');
+    }
+    // 2) pgNo+date로 찾기
+    if(idx<0&&remote.pgNo&&rDate){
+      idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&nd(l.date)===rDate&&(l.status||'').toLowerCase()!=='deleted');
+    }
+
+    if(idx>=0){
+      // ── 기존 항목 업데이트: 로컬 pgNo/id는 절대 변경하지 않음 ──
+      const loc=merged[idx];
+      const locRank=rankSt(getSt(loc));
+      const remRank=rankSt(remote.status);
+
+      // scanned는 더 큰 값 유지
+      const newScanned=Math.max(loc.scanned||0, remote.scanned||0);
+      // worker는 로컬 우선 (로컬에 값 있으면 유지)
+      const newWorker=loc.worker||remote.worker||'';
+      // 시간값: 로컬 우선 (로컬에 값 있으면 유지)
+      const newPickStart=loc.pickStart||remote.pickStart||'';
+      const newPickEnd=loc.pickEnd||remote.pickEnd||'';
+      const newScanStart=loc.scanStart||remote.scanStart||'';
+      const newScanEnd=loc.scanEnd||remote.scanEnd||'';
+
+      merged[idx]={
+        ...loc,                    // ★ 로컬 데이터 기반 (pgNo, id 등 로컬 유지)
+        orderCount:remote.orderCount||loc.orderCount||0,
+        sku:remote.sku||loc.sku||0,
+        scanned:newScanned,
+        worker:newWorker,
+        pickStart:newPickStart,
+        pickEnd:newPickEnd,
+        scanStart:newScanStart,
+        scanEnd:newScanEnd,
+        memo:loc.memo||remote.memo||'',
+        skipReason:loc.skipReason||remote.skipReason||'',
+      };
+    } else {
+      // ── 새 항목: remote에서 추가 (오늘 날짜만, 과거 날짜 추가 안 함) ──
+      if(rDate===targetDate){
+        merged.push({
+          id:remote.id||('gs_'+remote.pgNo+'_'+rDate),
+          date:rDate,
+          pgNo:remote.pgNo,
+          category:remote.category,
+          sku:remote.sku||0,
+          orderCount:remote.orderCount||0,
+          scanned:remote.scanned||0,
+          worker:remote.worker||'',
+          pickStart:remote.pickStart||'',
+          pickEnd:remote.pickEnd||'',
+          scanStart:remote.scanStart||'',
+          scanEnd:remote.scanEnd||'',
+          status:remote.status||'Pending',
+          memo:remote.memo||'',
+          skipReason:remote.skipReason||'',
+        });
+      }
+    }
+  });
+
+  return merged;
+};
+
 async function syncData(url,action,payload){
   if(!url)return;
-  try{
-    // ★ v35: mode:'no-cors' → CORS 에러 해결 (GAS POST 정상 전송)
-    // no-cors는 response를 읽을 수 없지만 GAS는 요청을 정상 수신/처리함
-    await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});
-  }catch(e){console.warn('syncData error:',e);}
+  try{await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});}catch(e){console.warn('syncData error:',e);}
 }
 const {createElement:h,useState,useRef,useEffect,useCallback,Fragment}=React;
 
@@ -546,15 +369,10 @@ function PickerSelect({value,onChange,pickers,dark,pkC}){
     document.addEventListener('mousedown',fn);return()=>document.removeEventListener('mousedown',fn);
   },[]);
   const open2=()=>{
-    if(!open&&btnRef.current){
-      const r=btnRef.current.getBoundingClientRect();
-      const below=window.innerHeight-r.bottom;const menuH=Math.min(pickers.length*40+44,290);
-      setPos({top:below>menuH?r.bottom+4:r.top-menuH-4,left:r.left,w:Math.max(r.width,180)});
-    }
+    if(!open&&btnRef.current){const r=btnRef.current.getBoundingClientRect();const below=window.innerHeight-r.bottom;const menuH=Math.min(pickers.length*40+44,290);setPos({top:below>menuH?r.bottom+4:r.top-menuH-4,left:r.left,w:Math.max(r.width,180)});}
     setOpen(o=>!o);
   };
-  const wc=value?pkC(value):pkC(0);
-  const D=dark?'dark':'light';
+  const wc=value?pkC(value):pkC(0);const D=dark?'dark':'light';
   return h(Fragment,null,
     h('div',{ref:btnRef,className:'pk-wrap'},
       h('button',{className:'pk-btn',onClick:open2,style:{background:value?wc.bg:'transparent',color:value?wc.tx:'#888',borderColor:value?wc.bg:(dark?'rgba(255,255,255,0.15)':'#D8D7D2'),fontWeight:value?600:400}},
@@ -604,12 +422,7 @@ function PinModal({onOK,onCancel}){
 
 /* ══════ EDIT MODAL ══════ */
 function EditModal({list,pickers,onSave,onDel,onCancel}){
-  const fi=iso=>{
-    if(!iso)return'';
-    const d=new Date(iso);
-    const pad=n=>String(n).padStart(2,'0');
-    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
-  };
+  const fi=iso=>{if(!iso)return'';const d=new Date(iso);const pad=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());};
   const pi=s=>{if(!s.trim())return null;try{return new Date(s.trim()).toISOString();}catch{return null;}};
   const [F,setF]=useState({pgNo:list.pgNo,sku:String(list.sku||0),orderCount:String(list.orderCount||0),scanned:String(list.scanned||0),worker:list.worker||'',memo:list.memo||'',pickStart:fi(list.pickStart),pickEnd:fi(list.pickEnd),scanStart:fi(list.scanStart),scanEnd:fi(list.scanEnd)});
   const [del2,setDel2]=useState(false);
@@ -690,23 +503,15 @@ function Clock({dark}){
    MAIN APP
 ══════════════════════════ */
 function App(){
-  // ── Page navigation ──
-  // tab: 'records' | 'scan' | 'create' | 'settings'
-  // isMgr: manager mode ON/OFF — determines what's shown, NOT a separate page
-  const [tab,setTab]   =useState('records');
-  const [isMgr,setMgr] =useState(false);
-  const [cat,setCat]   =useState('All');
-
-  // ── Data ──
+  const [tab,setTab]=useState('records');
+  const [isMgr,setMgr]=useState(false);
+  const [cat,setCat]=useState('All');
   const [lists,setLists]=useState(()=>lsGet(LS.LISTS,[]));
-  const [log,setLog]   =useState(()=>lsGet(LS.LOG,[]));
-  const [wh,setWH]     =useState(()=>localStorage.getItem(LS.WH)||'');
+  const [log,setLog]=useState(()=>lsGet(LS.LOG,[]));
+  const [wh,setWH]=useState(()=>localStorage.getItem(LS.WH)||'');
   const [pksStr,setPKS]=useState(()=>localStorage.getItem(LS.PKS)||DEF_PKS);
   const [pkColorMap,setPkColorMap]=useState(()=>lsGet(LS.PKC_MAP,{}));
-
   useEffect(()=>lsSet(LS.PKC_MAP,pkColorMap),[pkColorMap]);
-
-  // Picker 색상 조회 — 커스텀 설정 우선, 없으면 순서대로
   const pkC=(nameOrIdx)=>{
     if(typeof nameOrIdx==='string'){
       if(pkColorMap[nameOrIdx])return pkColorMap[nameOrIdx];
@@ -716,40 +521,33 @@ function App(){
     }
     return PKC_PRESETS[nameOrIdx%PKC_PRESETS.length];
   };
-
-  // ── UI ──
   const [showPin,setPin]=useState(false);
-  const [editL,setEL]  =useState(null);
-  const [syncSt,setSS] =useState('');
-  const [showPrev,setShowPrev]=useState(false); // 미완료 이전 항목 보기
-
-  // ── Scan ──
-  const [scanIn,setSI] =useState('');
+  const [editL,setEL]=useState(null);
+  const [syncSt,setSS]=useState('');
+  const [showPrev,setShowPrev]=useState(false);
+  const [scanIn,setSI]=useState('');
   const [lastScan,setLS]=useState(null);
   const [scanErr,setSE]=useState('');
-
-  // ── Manager form ──
   const [mf,setMF]=useState({pgNo:'',cat:'Official 1',sku:'',orders:'',memo:''});
   const [editId,setEId]=useState(null);
-
-  // ── Settings ──
   const [np1,setNP1]=useState('');const [np2,setNP2]=useState('');const [pm,setPM]=useState('');
-  const [ssKey,setSSKey]    =useState(()=>localStorage.getItem('b2c18_sskey')||'');
-  const [ssSecret,setSSSec] =useState(()=>localStorage.getItem('b2c18_sssec')||'');
+  const [ssKey,setSSKey]=useState(()=>localStorage.getItem('b2c18_sskey')||'');
+  const [ssSecret,setSSSec]=useState(()=>localStorage.getItem('b2c18_sssec')||'');
   const [syncMsg,setSyncMsg]=useState('');
-  const [ssFetching,setSSF] =useState(false);
-  const [ssResult,setSSR]   =useState(null);
-  const [ssMsg,setSSM]      =useState('');
+  const [ssFetching,setSSF]=useState(false);
+  const [ssResult,setSSR]=useState(null);
+  const [ssMsg,setSSM]=useState('');
   const [ssModal,setSSModal]=useState(false);
   const [ssModalData,setSSModalData]=useState([]);
   const [endScanModal,setEndScanModal]=useState(null);
-  const deletedIds=React.useRef(new Set()); // ★ 삭제된 항목 추적 (폴링 복원 방지)
   const [skipQtys,setSkipQtys]=useState({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
   const [scanInput,setScanInput]=useState(0);
   const [ttCbtCount,setTtCbtCount]=useState(()=>lsGet('tt_cbt_count',0));
-
   const scanRef=useRef(null);
   const pickers=pksStr.split(',').map(s=>s.trim()).filter(Boolean);
+
+  /* ★ 삭제된 항목 추적 (폴링 복원 방지) — pgNo_date 형태로 저장 */
+  const deletedKeys=useRef(new Set());
 
   useEffect(()=>lsSet(LS.LISTS,lists),[lists]);
   useEffect(()=>lsSet(LS.LOG,log.slice(0,500)),[log]);
@@ -759,68 +557,50 @@ function App(){
   useEffect(()=>localStorage.setItem(LS.PKS,pksStr),[pksStr]);
   useEffect(()=>{if(tab==='scan'&&scanRef.current)scanRef.current.focus();},[tab]);
 
-  // ★ 30초마다 GAS 버전 체크 → 변경 감지 시 자동 Pull
-  const lastVerRef = useRef('');
+  /* ══════════════════════════
+     ★ v19 POLLING — 완전히 재작성
+     - ver 변경 시에만 pull
+     - mergeRemoteIntoLocal 사용 (dedup 없음)
+     - 삭제된 항목 복원 방지
+  ══════════════════════════ */
+  const lastVerRef=useRef('');
   useEffect(()=>{
-    if(!wh) return;
-    const poll = async () => {
-      try {
-        const res = await fetch(wh+'?op=ver');
-        const data = await res.json();
-        if(!data.ok) return;
-        const newVer = String(data.ver||'');
-        if(lastVerRef.current && newVer !== lastVerRef.current) {
-          // 버전 변경 감지 → 오늘 데이터 자동 Pull
-          const r2 = await fetch(wh+'?op=getLists&date='+today());
-          const d2 = await r2.json();
-          if(d2.ok && d2.lists) {
-            const fetched = d2.lists.filter(l=>l.status!=='Deleted');
-            if(fetched.length>0) {
+    if(!wh)return;
+    const poll=async()=>{
+      try{
+        const res=await fetch(wh+'?op=ver');
+        const data=await res.json();
+        if(!data.ok)return;
+        const newVer=String(data.ver||'');
+        if(lastVerRef.current&&newVer!==lastVerRef.current){
+          // 버전 변경 → 오늘 데이터 pull
+          const r2=await fetch(wh+'?op=getLists&date='+today());
+          const d2=await r2.json();
+          if(d2.ok&&d2.lists){
+            // 삭제된 항목 필터링
+            const fetched=d2.lists.filter(l=>{
+              if((l.status||'').toLowerCase()==='deleted')return false;
+              // 로컬에서 삭제 처리된 항목은 복원하지 않음
+              const dStr=String(l.date||'').slice(0,10);
+              if(deletedKeys.current.has(l.pgNo+'_'+dStr))return false;
+              return true;
+            });
+            if(fetched.length>0){
               setLists(prev=>{
-                const merged=[...prev];
-                fetched.forEach(remote=>{
-                  // ★ 날짜 정규화 함수
-                  const nd=d=>{if(!d)return'';if(typeof d==='object')try{return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){}return String(d).slice(0,10);};
-                  const rDate=nd(remote.date);
-                  // ★ 매칭 우선순위: id → pgNo+date → category+date
-                  let idx=merged.findIndex(l=>l.id&&l.id===remote.id);
-                  if(idx<0&&remote.pgNo&&rDate) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&nd(l.date)===rDate);
-                  if(idx<0&&remote.category&&rDate) idx=merged.findIndex(l=>l.category===remote.category&&nd(l.date)===rDate&&l.status!=='Deleted');
-                  const loc=idx>=0?merged[idx]:null;
-                  const nl={
-                    id:remote.id,date:remote.date,pgNo:remote.pgNo,category:remote.category,
-                    sku:remote.sku||0,orderCount:remote.orderCount||0,
-                    // ★ scanned는 로컬과 remote 중 큰 값 유지 (GAS 실수 덮어쓰기 방지)
-                    scanned:Math.max(remote.scanned||0,loc?.scanned||0),
-                    worker:    remote.worker    || loc?.worker    || '',
-                    pickStart: remote.pickStart || loc?.pickStart || '',
-                    pickEnd:   remote.pickEnd   || loc?.pickEnd   || '',
-                    scanStart: remote.scanStart || loc?.scanStart || '',
-                    scanEnd:   remote.scanEnd   || loc?.scanEnd   || '',
-                    status:remote.status||'Pending',memo:remote.memo||'',
-                    skipReason:remote.skipReason||loc?.skipReason||'',
-                  };
-                  if(idx>=0){
-                    merged[idx]=nl;
-                  } else {
-                    merged.push(nl);
-                  }
-                });
-                // ★ 최종 dedup: category+date 중복 정리 (localStorage 누적 중복 제거)
-                const deduped=dedupeByCategory(merged);
-                lsSet(LS.LISTS,deduped);
-                return deduped;
+                const merged=mergeRemoteIntoLocal(prev,fetched,today());
+                lsSet(LS.LISTS,merged);
+                return merged;
               });
               setSS('↻ '+new Date().toLocaleTimeString());
             }
           }
         }
-        lastVerRef.current = newVer;
-      } catch(e){}
+        lastVerRef.current=newVer;
+      }catch(e){console.warn('poll error',e);}
     };
-    poll(); // 최초 1회 즉시 실행
-    const id = setInterval(poll, 30000); // 30초마다
-    return ()=>clearInterval(id);
+    poll();
+    const id=setInterval(poll,30000);
+    return()=>clearInterval(id);
   },[wh]);
 
   const sync=useCallback((action,payload)=>{
@@ -832,36 +612,26 @@ function App(){
   const upd=(id,ch)=>setLists(p=>p.map(l=>{if(l.id!==id)return l;const u={...l,...ch};sync('upsertList',{list:u});return u;}));
   const setWrk=(id,n)=>upd(id,{worker:n});
   const startPick=id=>{
-    const l=lists.find(x=>x.id===id);
-    if(!l)return;
+    const l=lists.find(x=>x.id===id);if(!l)return;
     if(!l.worker){alert('Please assign a picker first before starting.');return;}
     if(!l.pickStart)upd(id,{pickStart:ts()});
   };
-  const endPick  =id=>{const l=lists.find(x=>x.id===id);if(l&&l.pickStart&&!l.pickEnd)upd(id,{pickEnd:ts()});};
+  const endPick=id=>{const l=lists.find(x=>x.id===id);if(l&&l.pickStart&&!l.pickEnd)upd(id,{pickEnd:ts()});};
   const startScan=id=>{const l=lists.find(x=>x.id===id);if(l&&!l.scanStart)upd(id,{scanStart:ts()});};
-  // ★ v36: 강제 스캔 종료 — 미완료 건이 있어도 scanEnd 기록 → Complete
   const endScan=id=>{
     const l=lists.find(x=>x.id===id);
-    if(!l||!l.pickEnd||l.scanEnd)return; // pickEnd 있고 scanEnd 없으면 실행 가능
-    const oc=l.orderCount||0;
-    const missed=oc-l.scanned;
-    if(missed<=0){
-      if(!window.confirm('⏹ End Scan — '+l.pgNo+'\nAll '+oc+' scanned. End scan?'))return;
-      upd(id,{scanEnd:ts()});
-      return;
-    }
+    if(!l||!l.pickEnd||l.scanEnd)return;
+    const oc=l.orderCount||0;const missed=oc-l.scanned;
+    if(missed<=0){if(!window.confirm('⏹ End Scan — '+l.pgNo+'\nAll '+oc+' scanned. End scan?'))return;upd(id,{scanEnd:ts()});return;}
     setScanInput(l.scanned||0);
     setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
     setEndScanModal({id,pgNo:l.pgNo,scanned:l.scanned,oc,missed});
   };
   const addN=(id,q)=>setLists(prev=>prev.map(l=>{
-    if(l.id!==id)return l;
-    const now=ts();const oc=l.orderCount||0;const nc=(l.scanned||0)+q;
+    if(l.id!==id)return l;const now=ts();const oc=l.orderCount||0;const nc=(l.scanned||0)+q;
     const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd)ch.scanEnd=now;
     const u={...l,...ch};sync('upsertList',{list:u});return u;
   }));
-  // ★ TikTok CBT: 숫자 직접 입력 → 한번에 처리
-  const enterScan=id=>{const l=lists.find(x=>x.id===id);if(!l||l.scanEnd)return;const oc=l.orderCount||0;const input=window.prompt('Enter scan count - '+l.pgNo+'\nOrders: '+oc+'\nEnter actual shipped qty:',String(oc));if(input===null)return;const nc=parseInt(input,10);if(isNaN(nc)||nc<0){alert('Please enter a valid number.');return;}const now=ts();const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0)ch.scanEnd=now;upd(id,ch);};
 
   /* scan barcode */
   const handleScan=e=>{
@@ -883,17 +653,24 @@ function App(){
   const mSave=()=>{
     if(!mf.pgNo||!mf.orders)return;
     const existing=editId?lists.find(x=>x.id===editId):null;
-    // ★ 중복 체크 강화: pgNo 전체 날짜 + category+today, Deleted 제외
     if(!editId){
-      const dupPgNo=lists.find(x=>x.pgNo===mf.pgNo&&x.status!=='Deleted');
+      // ★ 중복 체크: pgNo 전체 (Deleted 제외)
+      const dupPgNo=lists.find(x=>x.pgNo===mf.pgNo&&(x.status||'').toLowerCase()!=='deleted');
       if(dupPgNo){alert('이미 동일한 PG No가 있습니다: '+mf.pgNo+' ('+dupPgNo.date+', '+dupPgNo.category+')\n수정하려면 Edit 버튼을 사용하세요.');return;}
-      const dupCat=lists.find(x=>x.category===mf.cat&&(x.date||'').slice(0,10)===today()&&x.status!=='Deleted');
+      // ★ 같은 category+today 중복 체크 (Deleted 제외)
+      const dupCat=lists.find(x=>x.category===mf.cat&&String(x.date||'').slice(0,10)===today()&&(x.status||'').toLowerCase()!=='deleted');
       if(dupCat){alert('오늘 이미 같은 카테고리 픽리스트가 있습니다: '+mf.cat+' ('+dupCat.pgNo+')\n수정하려면 Edit 버튼을 사용하세요.');return;}
     }
-    const nl={id:editId||(mf.pgNo+'_'+( existing?.date||today())),pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,
+    // ★ id는 pgNo_date 고정 (GAS와 동일, 랜덤 uid 사용하지 않음)
+    const listDate=existing?.date||today();
+    const newId=mf.pgNo+'_'+listDate;
+    const nl={
+      id:editId?existing.id:newId,
+      pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,
       scanned:existing?.scanned||0,pickStart:existing?.pickStart||null,pickEnd:existing?.pickEnd||null,
       scanStart:existing?.scanStart||null,scanEnd:existing?.scanEnd||null,worker:existing?.worker||'',
-      date:existing?.date||today(),memo:mf.memo||''};
+      date:listDate,memo:mf.memo||''
+    };
     setLists(p=>editId?p.map(x=>x.id===editId?nl:x):[...p,nl]);
     sync('upsertList',{list:nl});
     setMF({pgNo:'',cat:cat!=='All'?cat:'Official 1',sku:'',orders:'',memo:''});
@@ -903,173 +680,151 @@ function App(){
   /* edit save / delete */
   const editSave=updated=>{
     setLists(p=>p.map(l=>{
-      // id 우선, 없으면 pgNo+date 폴백
-      if(l.id===updated.id) return updated;
-      if(l.pgNo===updated.pgNo&&l.date===updated.date) return {...updated,id:l.id};
+      if(l.id===updated.id)return updated;
+      if(l.pgNo===updated.pgNo&&l.date===updated.date)return{...updated,id:l.id};
       return l;
     }));
     sync('upsertList',{list:updated});
     setEL(null);
   };
-  const delItem=id=>{const l=lists.find(x=>x.id===id);setLists(p=>p.filter(x=>x.id!==id));if(l)sync('deleteList',{pgNo:l.pgNo});setEL(null);};
-  const delFromTable=id=>{if(!window.confirm('Delete this pick list?'))return;
+  const delItem=id=>{
     const l=lists.find(x=>x.id===id);
-    if(l){
-      // pgNo+date 조합으로 삭제 추적 (폴링 복원 방지)
-      deletedIds.current.add(l.pgNo+'_'+l.date);
-      sync('deleteList',{pgNo:l.pgNo,date:l.date});
-    }
+    if(l){deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10));sync('deleteList',{pgNo:l.pgNo,date:l.date});}
+    setLists(p=>p.filter(x=>x.id!==id));
+    setEL(null);
+  };
+  const delFromTable=id=>{
+    if(!window.confirm('Delete this pick list?'))return;
+    const l=lists.find(x=>x.id===id);
+    if(l){deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10));sync('deleteList',{pgNo:l.pgNo,date:l.date});}
     setLists(p=>p.filter(x=>x.id!==id));
   };
 
-  /* delete today's completed lists (manager cleanup) */
-  // ★ Google Sheets → 웹앱 동기화 (Pull)
-  const syncFromSheets = async () => {
-    if (!wh) { setSyncMsg('⚠ GAS URL이 설정되지 않았습니다. Settings → Google Sheets에서 먼저 설정해주세요.'); return; }
+  /* Sync from Sheets (manual pull) */
+  const syncFromSheets=async()=>{
+    if(!wh){setSyncMsg('⚠ GAS URL이 설정되지 않았습니다.');return;}
     setSyncMsg('⏳ Google Sheets에서 데이터 가져오는 중...');
-    try {
-      // 전체 날짜 데이터 가져오기
-      const res = await fetch(wh + '?op=getLists&date=', { method: 'GET' });
-      const data = await res.json();
-      if (!data.ok) { setSyncMsg('⚠ 데이터 가져오기 실패: ' + (data.error||'unknown')); return; }
-
-      const fetched = (data.lists || []).filter(l => l.status !== 'Deleted' && !deletedIds.current.has(l.pgNo+'_'+l.date));
-      if (fetched.length === 0) { setSyncMsg('⚠ Google Sheets에 데이터가 없습니다.'); return; }
-
-      // localStorage 기존 데이터와 병합 (id 기준 upsert)
-      setLists(prev => {
-        const merged = [...prev];
-        // ★ 삭제된 항목 폴링 복원 방지
-        fetched.filter(r=>!deletedIds.current.has(r.pgNo+'_'+r.date)).forEach(remote => {
-          // ★ id 우선, 없으면 pgNo+date로 매칭
-          let idx = merged.findIndex(l => l.id && l.id === remote.id);
-          if(idx<0&&remote.pgNo&&remote.date) idx=merged.findIndex(l=>l.pgNo===remote.pgNo&&l.date===remote.date);
-          // ★ v36: 로컬 worker/pickStart/pickEnd/scanStart/scanEnd 우선 보존
-          const loc2 = idx>=0 ? merged[idx] : null;
-          const nl = {
-            id: remote.id || ('gs_'+Date.now()+'_'+Math.random()),
-            date: remote.date, pgNo: remote.pgNo, category: remote.category,
-            sku: remote.sku||0, orderCount: remote.orderCount||0, scanned: remote.scanned||0,
-            worker:    remote.worker    || loc2?.worker    || '',
-            pickStart: remote.pickStart || loc2?.pickStart || '',
-            pickEnd:   remote.pickEnd   || loc2?.pickEnd   || '',
-            scanStart: remote.scanStart || loc2?.scanStart || '',
-            scanEnd:   remote.scanEnd   || loc2?.scanEnd   || '',
-            status: remote.status||'Pending', memo: remote.memo||'', skipReason: remote.skipReason||'',
-          };
-          if (idx >= 0) merged[idx] = nl;
-          else merged.push(nl);
-        });
-        // ★ 최종 dedup: category+date 중복 정리
-        const deduped2=dedupeByCategory(merged);
-        lsSet(LS.LISTS, deduped2);
-        return deduped2;
+    try{
+      const res=await fetch(wh+'?op=getLists&date=',{method:'GET'});
+      const data=await res.json();
+      if(!data.ok){setSyncMsg('⚠ 데이터 가져오기 실패: '+(data.error||'unknown'));return;}
+      const fetched=(data.lists||[]).filter(l=>{
+        if((l.status||'').toLowerCase()==='deleted')return false;
+        const dStr=String(l.date||'').slice(0,10);
+        if(deletedKeys.current.has(l.pgNo+'_'+dStr))return false;
+        return true;
       });
-
-      setSyncMsg('✓ ' + fetched.length + '개 항목을 Google Sheets에서 동기화했습니다. (' + new Date().toLocaleTimeString() + ')');
-    } catch(e) {
-      setSyncMsg('⚠ 오류: ' + e.message);
-    }
+      if(fetched.length===0){setSyncMsg('⚠ Google Sheets에 데이터가 없습니다.');return;}
+      setLists(prev=>{
+        const merged=mergeRemoteIntoLocal(prev,fetched,'');  // 전체 날짜
+        lsSet(LS.LISTS,merged);
+        return merged;
+      });
+      setSyncMsg('✓ '+fetched.length+'개 항목을 Google Sheets에서 동기화했습니다. ('+new Date().toLocaleTimeString()+')');
+    }catch(e){setSyncMsg('⚠ 오류: '+e.message);}
   };
 
   const delCompleted=()=>{
     const completed=lists.filter(l=>l.date===today()&&getSt(l)==='complete');
     if(!completed.length){alert('No completed lists today.');return;}
     if(!window.confirm('Delete '+completed.length+' completed list(s) from today?\n\nData remains in Google Sheets.'))return;
+    completed.forEach(l=>deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10)));
     setLists(p=>p.filter(l=>!(l.date===today()&&getSt(l)==='complete')));
-    completed.forEach(l=>sync('deleteList',{pgNo:l.pgNo}));
+    completed.forEach(l=>sync('deleteList',{pgNo:l.pgNo,date:l.date}));
   };
-
-  /* delete ALL today's lists */
   const delAllToday=()=>{
     const todays=lists.filter(l=>l.date===today());
     if(!todays.length){alert('No lists for today.');return;}
     if(!window.confirm('Delete ALL '+todays.length+' list(s) from today?\n\nData remains in Google Sheets.'))return;
+    todays.forEach(l=>deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10)));
     setLists(p=>p.filter(l=>l.date!==today()));
-    todays.forEach(l=>sync('deleteList',{pgNo:l.pgNo}));
+    todays.forEach(l=>sync('deleteList',{pgNo:l.pgNo,date:l.date}));
   };
 
-  /* ShipStation: fetch orders & auto-create pick lists */
+  /* ShipStation */
   const fetchSSOrders=async()=>{
     if(!wh){setSSM('⚠ Please set Google Sheets URL first');return;}
     if(!ssKey||!ssSecret){setSSM('⚠ Please enter ShipStation API Key and Secret');return;}
     setSSF(true);setSSM('');setSSR(null);
     try{
-      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({action:'fetchSSOrders',apiKey:ssKey,apiSecret:ssSecret,date:today()})});
+      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'fetchSSOrders',apiKey:ssKey,apiSecret:ssSecret,date:today()})});
       const data=await r.json();
       if(!data.ok){setSSM('⚠ '+data.error);setSSF(false);return;}
-      setSSR(data);
-      setSSM('✓ Fetched '+data.totalOrders+' orders from ShipStation');
+      setSSR(data);setSSM('✓ Fetched '+data.totalOrders+' orders from ShipStation');
     }catch(e){setSSM('⚠ '+e.message);}
     setSSF(false);
   };
-
-  /* ShipStation: test connection */
   const testSSConn=async()=>{
     if(!wh||!ssKey||!ssSecret){setSSM('⚠ Fill in URL, API Key and Secret first');return;}
     setSSF(true);setSSM('Testing…');
     try{
-      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({action:'testSSConnection',apiKey:ssKey,apiSecret:ssSecret})});
-      const data=await r.json();
-      setSSM(data.ok?'✓ Connected! '+data.storeCount+' stores found':'⚠ '+data.error);
+      const r=await fetch(wh,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'testSSConnection',apiKey:ssKey,apiSecret:ssSecret})});
+      const data=await r.json();setSSM(data.ok?'✓ Connected! '+data.storeCount+' stores found':'⚠ '+data.error);
     }catch(e){setSSM('⚠ '+e.message);}
     setSSF(false);
-  };
-
-  /* Auto-create pick lists from SS fetch result */
-  const createListsFromSS=()=>{
-    if(!ssResult||!ssResult.summary)return;
-    ssResult.summary.forEach(s=>{
-      if(!s.orderCount||s.category==='Unknown')return;
-      const existing=lists.find(l=>l.category===s.category&&l.date===today());
-      if(existing){
-        // Update order count
-        upd(existing.id,{orderCount:s.orderCount});
-      } else {
-        // Create new pick list
-        const ssDate=today();const ssPgNo='PG'+uid().slice(-8);
-        const nl={id:ssPgNo+'_'+ssDate,pgNo:ssPgNo,
-          category:s.category,sku:0,orderCount:s.orderCount,
-          scanned:0,pickStart:null,pickEnd:null,scanStart:null,scanEnd:null,
-          worker:'',date:today(),memo:'Auto from ShipStation'};
-        setLists(p=>[...p,nl]);
-        sync('upsertList',{list:nl});
-      }
-    });
-    setSSM('✓ Pick lists created/updated!');
   };
 
   const changePin=()=>{if(np1.length!==4||!/^\d{4}$/.test(np1)){setPM('Must be 4 digits');return;}if(np1!==np2){setPM('PINs do not match');return;}lsSet(LS.PIN,np1);setNP1('');setNP2('');setPM('✓ PIN changed');};
   const exportCSV=()=>{const h2=['Date','PG No','Category','SKU','Orders','Scanned','Worker','Pick Start','Pick End','Scan Start','Scan End','Pick Dur','Scan Dur','Status','Remarks'];const rows=lists.map(l=>[l.date,l.pgNo,l.category,l.sku||0,l.orderCount,l.scanned,l.worker||'',fmtT(l.pickStart),fmtT(l.pickEnd),fmtT(l.scanStart),fmtT(l.scanEnd),dur(l.pickStart,l.pickEnd,l.date),dur(l.scanStart,l.scanEnd,l.date),getSt(l),l.memo||'']);const csv=[h2,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download='B2C_'+today()+'.csv';a.click();};
 
+  /* SS Modal */
+  const openSSModal=()=>{
+    if(!ssResult||!ssResult.summary)return;
+    const rows=ssResult.summary.filter(s=>s.orderCount&&s.category!=='Unknown'&&s.category!=='TikTok CBT').map(s=>({category:s.category,orderCount:s.orderCount,storeList:s.storeList,pgNo:'',sku:'',memo:''}));
+    if(ttCbtCount>0)rows.push({category:'TikTok CBT',orderCount:ttCbtCount,storeList:'TikTok: '+ttCbtCount,pgNo:'',sku:'',memo:''});
+    setSSModalData(rows);setSSModal(true);
+  };
+  const confirmCreateLists=()=>{
+    const modalWithTT=[...ssModalData.filter(s=>s.category!=='TikTok CBT')];
+    if(ttCbtCount>0)modalWithTT.push({category:'TikTok CBT',orderCount:ttCbtCount,sku:0,storeList:'TikTok: '+ttCbtCount});
+    const createdCats=new Set();const newLists=[];
+    modalWithTT.forEach(s=>{
+      if(!s.orderCount)return;if(createdCats.has(s.category))return;createdCats.add(s.category);
+      const listDate=today();
+      const existing=lists.find(l=>l.category===s.category&&String(l.date||'').slice(0,10)===listDate&&(l.status||'').toLowerCase()!=='deleted');
+      const pgNo=s.pgNo||existing?.pgNo||('PG'+uid().slice(-8));
+      if(existing){
+        upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,memo:s.memo||existing.memo||''});
+      }else{
+        // ★ id = pgNo_date 고정
+        const id=pgNo+'_'+listDate;
+        const nl={id,pgNo,category:s.category,sku:+s.sku||0,orderCount:s.orderCount,scanned:0,pickStart:null,pickEnd:null,scanStart:null,scanEnd:null,worker:'',date:listDate,memo:s.memo||''};
+        newLists.push(nl);
+      }
+    });
+    if(newLists.length>0){
+      setLists(p=>{
+        const merged=[...p,...newLists.filter(nl=>!p.find(x=>x.id===nl.id))];
+        lsSet(LS.LISTS,merged);
+        return merged;
+      });
+      newLists.forEach(nl=>sync('upsertList',{list:nl}));
+    }
+    setSSM('✓ Pick lists created/updated!');setSSModal(false);setTab('records');
+  };
+
   /* derived */
   const todayL=lists.filter(l=>l.date===today());
-  // 이전 날짜 미완료 항목 (pending/picking/picked/scanning)
   const prevIncomplete=lists.filter(l=>l.date!==today()&&!['complete'].includes(getSt(l)));
-  // 표시할 목록 (오늘 + 미완료 이전 항목)
   const displayL=showPrev?[...prevIncomplete,...todayL]:todayL;
   const filtL=cat==='All'?displayL:displayL.filter(l=>l.category===cat);
-  const tSKU   =todayL.reduce((a,l)=>a+(l.sku||0),0);
-  const tOrd   =todayL.reduce((a,l)=>a+(l.orderCount||0),0);
-  const tScan  =todayL.reduce((a,l)=>a+l.scanned,0);
-  const tDone  =todayL.filter(l=>getSt(l)==='complete').length;
+  const tSKU=todayL.reduce((a,l)=>a+(l.sku||0),0);
+  const tOrd=todayL.reduce((a,l)=>a+(l.orderCount||0),0);
+  const tScan=todayL.reduce((a,l)=>a+l.scanned,0);
+  const tDone=todayL.filter(l=>getSt(l)==='complete').length;
   const doneSKU=todayL.filter(l=>getSt(l)==='complete').reduce((a,l)=>a+(l.sku||0),0);
-  // ★ v35: 오늘 작업한 모든 피커 표시 (complete 포함, pending+미배정 제외)
-  const actWk  =[...new Set(todayL.filter(l=>getSt(l)!=='pending'&&l.worker).map(l=>l.worker))];
-  const skuPct  =tSKU>0?Math.round((doneSKU/tSKU)*100):0;
-  const ordPct  =tOrd>0?Math.round((tScan/tOrd)*100):0;
-  const jobPct  =todayL.length>0?Math.round((tDone/todayL.length)*100):0;
+  const actWk=[...new Set(todayL.filter(l=>getSt(l)!=='pending'&&l.worker).map(l=>l.worker))];
+  const skuPct=tSKU>0?Math.round((doneSKU/tSKU)*100):0;
+  const ordPct=tOrd>0?Math.round((tScan/tOrd)*100):0;
+  const jobPct=todayL.length>0?Math.round((tDone/todayL.length)*100):0;
   const D=isMgr?'dark':'light';
 
-  /* ── Stats Bar ── */
+  /* Stats Bar */
   const SB=()=>h('div',{className:'stats-bar '+D},
-    [
-      {lbl:'Total SKU',    big:doneSKU, sub:'/'+tSKU,         pct:skuPct, showPct:true, clr:'#6366F1'},
-      {lbl:'Total Orders', big:tScan,  sub:'/'+tOrd,          pct:ordPct, showPct:true, clr:'#10B981'},
-      {lbl:'Scan Progress',big:tScan,  sub:'/'+tOrd,          pct:ordPct, showPct:true, clr:'#F59E0B'},
-      {lbl:'Jobs Complete',big:tDone,  sub:'/'+todayL.length, pct:jobPct, showPct:true, clr:'#EC4899'},
+    [{lbl:'Total SKU',big:doneSKU,sub:'/'+tSKU,pct:skuPct,clr:'#6366F1'},
+     {lbl:'Total Orders',big:tScan,sub:'/'+tOrd,pct:ordPct,clr:'#10B981'},
+     {lbl:'Scan Progress',big:tScan,sub:'/'+tOrd,pct:ordPct,clr:'#F59E0B'},
+     {lbl:'Jobs Complete',big:tDone,sub:'/'+todayL.length,pct:jobPct,clr:'#EC4899'},
     ].map((c,i)=>h('div',{key:i,className:'stat '+D},
       h('div',{className:'stat-accent',style:{background:c.clr}}),
       h('div',{className:'stat-lbl '+D},c.lbl),
@@ -1078,51 +833,29 @@ function App(){
           h('span',{className:'stat-num '+D,style:{color:isMgr?c.clr:'#111'}},c.big),
           h('span',{className:'stat-sub '+D},c.sub)
         ),
-        c.showPct&&h('span',{className:'stat-pct '+D},c.pct+'%')
+        h('span',{className:'stat-pct '+D},c.pct+'%')
       ),
-      h('div',{className:'stat-bar '+D},
-        h('div',{className:'stat-fill',style:{width:c.pct+'%',background:c.clr}})
-      )
+      h('div',{className:'stat-bar '+D},h('div',{className:'stat-fill',style:{width:c.pct+'%',background:c.clr}}))
     )).concat([
-      /* ── Active Pickers — 컬러 배지 ── */
       h('div',{key:'pickers',className:'stat '+D},
         h('div',{className:'stat-accent',style:{background:'#3B82F6'}}),
         h('div',{className:'stat-lbl '+D},'Active Pickers'),
         h('div',{className:'stat-row'},
           h('div',{style:{display:'flex',alignItems:'baseline',gap:4}},
-            // ★ stat-num 클래스 동일하게 사용 → 높이 일치
             h('span',{className:'stat-num '+D,style:{color:isMgr?'#3B82F6':'#111'}},actWk.length),
             h('span',{className:'stat-sub '+D},actWk.length?'pickers':'—')
           )
         ),
-        h('div',{style:{marginTop: 'clamp(7px,0.6vw,12px)',display:'flex',flexWrap:'wrap',gap:5}},
+        h('div',{style:{marginTop:8,display:'flex',flexWrap:'wrap',gap:5}},
           actWk.length===0
-            ? h('span',{style:{fontSize:12,color:isMgr?'#4848A0':'#CCC',fontStyle:'italic'}},'No active pickers')
-            : actWk.map(w=>{
-                const c=pkC(w);
-                return h('span',{key:w,style:{
-                  display:'inline-flex',alignItems:'center',gap:4,
-                  background:isMgr?'rgba(255,255,255,0.07)':c.bg,
-                  border:'1px solid '+(isMgr?'rgba(255,255,255,0.14)':c.br||c.bg),
-                  borderRadius:100,padding:'3px 9px 3px 7px',
-                  fontSize:11,fontWeight:600,
-                  color:isMgr?'#D0D0F0':c.tx,
-                  animation:'statFadeIn .4s ease both',
-                }},
-                  h('span',{style:{
-                    width:7,height:7,borderRadius:'50%',flexShrink:0,
-                    background:c.tx,
-                    boxShadow:'0 0 5px '+c.tx+'88',
-                  }}),
-                  w
-                );
-              })
+            ?h('span',{style:{fontSize:12,color:isMgr?'#4848A0':'#CCC',fontStyle:'italic'}},'No active pickers')
+            :actWk.map(w=>{const c=pkC(w);return h('span',{key:w,style:{display:'inline-flex',alignItems:'center',gap:4,background:isMgr?'rgba(255,255,255,0.07)':c.bg,border:'1px solid '+(isMgr?'rgba(255,255,255,0.14)':c.br||c.bg),borderRadius:100,padding:'3px 9px 3px 7px',fontSize:11,fontWeight:600,color:isMgr?'#D0D0F0':c.tx}},h('span',{style:{width:7,height:7,borderRadius:'50%',flexShrink:0,background:c.tx}}),w);})
         )
       )
     ])
   );
 
-  /* ── Category Tabs ── */
+  /* Category Tabs */
   const CTabs=({actions})=>{
     const counts=Object.fromEntries(['All',...CATS].map(c=>[c,c==='All'?todayL.length:todayL.filter(l=>l.category===c).length]));
     return h('div',{className:'cat-tabs-row '+D},
@@ -1130,23 +863,9 @@ function App(){
         ['All',...CATS].map(c=>{
           const cs=c!=='All'?CA[c]:null;const on=cat===c;
           const tabClr=cs?cs.ac:(isMgr?'#A0A8FF':'#5B5EF4');
-          // 비활성 탭도 카테고리 색상 희미하게 표시
-          const inactiveClr=isMgr
-            ?(cs?cs.ac+'AA':'#8080C0')
-            :(cs?cs.ac+'BB':'#888');
-          return h('button',{key:c,className:'cat-tab '+D+(on?' on':''),onClick:()=>setCat(c),
-            style:{
-              color:on?tabClr:inactiveClr,
-              borderBottomColor:on?tabClr:'transparent',
-              fontWeight:on?700:500,
-            }},
-            c,
-            counts[c]>0&&h('span',{className:'cat-cnt '+D+(on?' on-'+D:''),
-              style:on
-                ?{background:tabClr,color:isMgr?'#0E0E1C':'#fff'}
-                :{background:isMgr?'rgba(255,255,255,0.1)':'#EBEBEB',
-                  color:isMgr?(cs?cs.ac+'CC':'#9090C0'):(cs?cs.ac:'#777')}
-            },counts[c])
+          const inactiveClr=isMgr?(cs?cs.ac+'AA':'#8080C0'):(cs?cs.ac+'BB':'#888');
+          return h('button',{key:c,className:'cat-tab '+D+(on?' on':''),onClick:()=>setCat(c),style:{color:on?tabClr:inactiveClr,borderBottomColor:on?tabClr:'transparent',fontWeight:on?700:500}},
+            c,counts[c]>0&&h('span',{className:'cat-cnt '+D+(on?' on-'+D:''),style:on?{background:tabClr,color:isMgr?'#0E0E1C':'#fff'}:{background:isMgr?'rgba(255,255,255,0.1)':'#EBEBEB',color:isMgr?(cs?cs.ac+'CC':'#9090C0'):(cs?cs.ac:'#777')}},counts[c])
           );
         })
       ),
@@ -1154,17 +873,15 @@ function App(){
     );
   };
 
-  /* ── Records Table ── */
+  /* Records Table */
   const RT=()=>{
     const isM=c=>['Seeding','Reshipment'].includes(c);
-    if(filtL.length===0)return h('div',{className:'empty '+D},
-      isMgr?'No pick lists for today. Click "+ Create List" to add one.':'No pick lists yet — ask the manager to create them.'
-    );
+    if(filtL.length===0)return h('div',{className:'empty '+D},isMgr?'No pick lists for today. Click "+ Create List" to add one.':'No pick lists yet — ask the manager to create them.');
     return h('div',{className:'tbl-wrap '+D},
       h('table',{className:'tbl'},
         h('thead',null,
           h('tr',null,
-            ['#', ...(showPrev&&prevIncomplete.length>0?['DATE']:[]), 'PG NO','CATEGORY','SKU','ORDERS','SCANNED','PICKER','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
+            ['#',...(showPrev&&prevIncomplete.length>0?['DATE']:[]),'PG NO','CATEGORY','SKU','ORDERS','SCANNED','PICKER','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
               h('th',{key:col,className:D},col)
             )
           )
@@ -1175,10 +892,7 @@ function App(){
             const isPrev=l.date!==today();
             return h('tr',{key:l.id,className:D,style:isPrev?{background:isMgr?'rgba(245,158,11,0.06)':'rgba(245,158,11,0.04)'}:{}},
               h('td',{className:D+' c',style:{color:isMgr?'#5555AA':'#CCC',fontWeight:600,fontSize:13,width:38}},i+1),
-              ...(showPrev&&prevIncomplete.length>0?[
-                h('td',{className:D,style:{fontSize:11,fontWeight:600,color:isPrev?'#F59E0B':'#AAA',whiteSpace:'nowrap'}},
-                  isPrev?l.date:'today')
-              ]:[]),
+              ...(showPrev&&prevIncomplete.length>0?[h('td',{className:D,style:{fontSize:11,fontWeight:600,color:isPrev?'#F59E0B':'#AAA',whiteSpace:'nowrap'}},isPrev?l.date:'today')]:[]),
               h('td',{className:D},h('span',{className:'mono',style:{fontWeight:700,color:isMgr?'#C4C2FF':'#111',fontSize:14}},l.pgNo)),
               h('td',{className:D},h('span',{className:'pill',style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},l.category)),
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.sku||0),
@@ -1186,9 +900,7 @@ function App(){
               h('td',{className:D+' c',style:{fontWeight:700,fontSize:15,color:st==='complete'?(isMgr?'#86EFAC':'#1A6A08'):(isMgr?'#fff':'#111')}},l.scanned),
               h('td',{className:D},h(PickerSelect,{value:l.worker||'',onChange:n=>setWrk(l.id,n),pickers,dark:isMgr,pkC})),
               ...[['pickStart'],['pickEnd'],['scanStart'],['scanEnd']].map(([fld])=>
-                h('td',{key:fld,className:D+' mono',
-                  style:{fontSize:12,color:l[fld]?(isMgr?'#7090E0':'#555'):(isMgr?'#2A2A5A':'#CCC'),cursor:isMgr?'pointer':'default'},
-                  onClick:()=>isMgr&&setEL(l)},
+                h('td',{key:fld,className:D+' mono',style:{fontSize:12,color:l[fld]?(isMgr?'#7090E0':'#555'):(isMgr?'#2A2A5A':'#CCC'),cursor:isMgr?'pointer':'default'},onClick:()=>isMgr&&setEL(l)},
                   l[fld]?h('span',{style:{textDecoration:isMgr?'underline dotted':'none',textUnderlineOffset:'2px'}},fmtS(l[fld])):h('span',null,'—')
                 )
               ),
@@ -1196,28 +908,15 @@ function App(){
               h('td',{className:D,style:{fontWeight:600,color:isMgr?'#86EFAC':'#555',fontSize:13}},dur(l.scanStart,l.scanEnd,l.date)),
               h('td',{className:D},h('span',{className:'pill '+STC[si]},STL[si])),
               h('td',{className:D,style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',color:isMgr?'#7070A0':'#888',fontSize:11}},
-                (l.skipReason
-                  ? h('span',null,
-                      l.memo?l.memo+' ':null,
-                      h('span',{style:{color:'#DC2626',fontWeight:700}},l.skipReason)
-                    )
-                  : l.memo||'—')
+                l.skipReason?h('span',null,l.memo?l.memo+' ':null,h('span',{style:{color:'#DC2626',fontWeight:700}},l.skipReason)):l.memo||'—'
               ),
               h('td',{className:D},
                 h('div',{style:{display:'flex',gap:4,alignItems:'center'}},
-                  /* Worker actions */
                   !isMgr&&!l.pickStart&&h('button',{className:'ab start',onClick:()=>startPick(l.id)},'▶ Start'),
                   !isMgr&&l.pickStart&&!l.pickEnd&&h('button',{className:'ab done',onClick:()=>endPick(l.id)},'✓ Done'),
                   !isMgr&&(manual||l.category==='TikTok CBT')&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
-
-                  // ★ End Scan: Pick Done 또는 Scanning 상태에서 미완료 시 모든 채널 표시
-                  !isMgr&&l.pickEnd&&!l.scanEnd&&h('button',{
-                    className:'ab endscan',
-                    onClick:()=>endScan(l.id),
-                    title:'스캔 완료 또는 OOS·취소 등 미스캔 처리'
-                  },'⏹ End Scan'),
+                  !isMgr&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab endscan',onClick:()=>endScan(l.id),title:'스캔 완료 또는 OOS·취소 등 미스캔 처리'},'⏹ End Scan'),
                   !isMgr&&st==='complete'&&h('button',{className:'ab done',style:{cursor:'default',opacity:0.85}},'✓ Complete'),
-                  /* Manager actions — always visible in manager mode */
                   isMgr&&h('button',{className:'ab edit-btn',onClick:()=>setEL(l)},'Edit'),
                   isMgr&&h('button',{className:'ab del-btn',onClick:()=>delFromTable(l.id)},'Del')
                 )
@@ -1229,9 +928,7 @@ function App(){
     );
   };
 
-  /* ══════════════════════════
-     NAV
-  ══════════════════════════ */
+  /* Nav */
   const Nav=()=>h('div',{className:'nav '+D},
     h('div',{className:'logo-box '+D},
       h('svg',{width:15,height:13,viewBox:'0 0 14 14',fill:'none'},
@@ -1240,9 +937,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v18'),
-
-    /* Manager mode pill */
+    h('span',{className:'app-ver '+D},'v19'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1250,72 +945,40 @@ function App(){
         'Manager'
       )
     ),
-
     h('div',{className:'nav-sep '+D}),
-
-    /* Navigation tabs — always Records visible, manager extras only when unlocked */
-    ...[
-      ['records','Records'],
-      ['scan','Scan Station'],
-      // Manager-only tabs
-      ...(isMgr?[['create',editId?'Edit List':'Create List'],['settings','Settings']]:[] ),
-    ].map(([p,l])=>h('button',{key:p,onClick:()=>setTab(p),className:'nav-btn '+D+(tab===p?' on':'')},l)),
-
+    ...[['records','Records'],['scan','Scan Station'],...(isMgr?[['create',editId?'Edit List':'Create List'],['settings','Settings']]:[])]
+      .map(([p,l])=>h('button',{key:p,onClick:()=>setTab(p),className:'nav-btn '+D+(tab===p?' on':'')},l)),
     h('div',{style:{flex:1}}),
-
     syncSt&&h('span',{style:{fontSize:10,color:isMgr?'#86EFAC':'#1A6A08',marginRight:8,fontWeight:500}},syncSt),
-
-    /* Manager toggle button */
     isMgr
-      ? h('button',{className:'mgr-btn lock',onClick:()=>{setMgr(false);setTab('records');}},
-          '🔓 Worker Mode'
-        )
-      : h('button',{className:'mgr-btn unlock',onClick:()=>setPin(true)},
+      ?h('button',{className:'mgr-btn lock',onClick:()=>{setMgr(false);setTab('records');}},'🔓 Worker Mode')
+      :h('button',{className:'mgr-btn unlock',onClick:()=>setPin(true)},
           h('svg',{width:11,height:11,viewBox:'0 0 16 16',fill:'none'},h('rect',{x:3,y:7,width:10,height:8,rx:'1.5',stroke:'currentColor',strokeWidth:'1.4'}),h('path',{d:'M5 7V5a3 3 0 0 1 6 0v2',stroke:'currentColor',strokeWidth:'1.4',strokeLinecap:'round'})),
           'Manager'
         )
   );
 
-  /* ══════════════════════════
-     RECORDS PAGE (shared, both modes)
-  ══════════════════════════ */
+  /* Records Page */
   const RecordsPage=()=>h(Fragment,null,
     SB(),
     CTabs({actions:isMgr&&h(Fragment,null,
-      h('button',{className:'btn-primary',style:{padding:'5px 14px',fontSize:12},
-        onClick:()=>{setMF({pgNo:'',cat:cat!=='All'?cat:'Official 1',sku:'',orders:'',memo:''});setEId(null);setTab('create');}},'+ Create List'),
-      ssKey&&ssSecret&&h('button',{className:'btn-secondary btn-sec-dark',style:{padding:'5px 12px',fontSize:12,background:'rgba(16,185,129,0.15)',borderColor:'rgba(16,185,129,0.35)',color:'#10b981'},
-        onClick:()=>{setTab('settings');fetchSSOrders();}},ssFetching?'⏳ Fetching…':'📦 SS Fetch'),
+      h('button',{className:'btn-primary',style:{padding:'5px 14px',fontSize:12},onClick:()=>{setMF({pgNo:'',cat:cat!=='All'?cat:'Official 1',sku:'',orders:'',memo:''});setEId(null);setTab('create');}},'+ Create List'),
+      ssKey&&ssSecret&&h('button',{className:'btn-secondary btn-sec-dark',style:{padding:'5px 12px',fontSize:12,background:'rgba(16,185,129,0.15)',borderColor:'rgba(16,185,129,0.35)',color:'#10b981'},onClick:()=>{setTab('settings');fetchSSOrders();}},ssFetching?'⏳ Fetching…':'📦 SS Fetch'),
       h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'5px 11px',fontSize:12},onClick:exportCSV},'Export CSV'),
-      /* Cleanup buttons — manager only */
       todayL.filter(l=>getSt(l)==='complete').length>0&&h('button',{className:'ab today-del',onClick:delCompleted},'Clear Completed'),
       todayL.length>0&&h('button',{className:'ab today-del',onClick:delAllToday},'Clear All Today'),
     )}),
     h(Clock,{dark:isMgr}),
     isMgr
-      ? h('div',{className:'info-note dark'},'💡 Click any time value in the table to edit · "Clear Completed" removes done lists (data stays in Sheets)')
-      : h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 20px',
-          background:isMgr?'#1A1A3E':'#fff',borderBottom:'1px solid '+(isMgr?'rgba(255,255,255,0.06)':'#EEEDF5')}},
-          h('span',{style:{fontSize:12,color:'#AAA',fontStyle:'italic'}},
-            displayL.length+' pick list'+(displayL.length!==1?'s':'')+
-            (showPrev&&prevIncomplete.length>0?' ('+prevIncomplete.length+' from previous days)':'')
-          ),
-          prevIncomplete.length>0&&h('button',{
-            onClick:()=>setShowPrev(p=>!p),
-            style:{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,padding:'5px 12px',
-              borderRadius:100,border:'1px solid',cursor:'pointer',fontFamily:'inherit',
-              background:showPrev?'#FFF0DC':'transparent',
-              color:showPrev?'#7A3A00':'#AAA',
-              borderColor:showPrev?'#F5C070':'#DDD'}},
-            '⚠️ '+prevIncomplete.length+' Incomplete'+(showPrev?' ✕':'')
-          )
+      ?h('div',{className:'info-note dark'},'💡 Click any time value in the table to edit · "Clear Completed" removes done lists (data stays in Sheets)')
+      :h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 20px',background:'#fff',borderBottom:'1px solid #EEEDF5'}},
+          h('span',{style:{fontSize:12,color:'#AAA',fontStyle:'italic'}},displayL.length+' pick list'+(displayL.length!==1?'s':'')+(showPrev&&prevIncomplete.length>0?' ('+prevIncomplete.length+' from previous days)':'')),
+          prevIncomplete.length>0&&h('button',{onClick:()=>setShowPrev(p=>!p),style:{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,padding:'5px 12px',borderRadius:100,border:'1px solid',cursor:'pointer',fontFamily:'inherit',background:showPrev?'#FFF0DC':'transparent',color:showPrev?'#7A3A00':'#AAA',borderColor:showPrev?'#F5C070':'#DDD'}},'⚠️ '+prevIncomplete.length+' Incomplete'+(showPrev?' ✕':''))
         ),
     RT()
   );
 
-  /* ══════════════════════════
-     SCAN PAGE
-  ══════════════════════════ */
+  /* Scan Page */
   const ScanPage=()=>h('div',{style:{padding:'20px 24px 60px',maxWidth:560,background:'#ECEAE5',minHeight:'calc(100vh - 52px)'}},
     h('h2',{style:{fontSize:18,fontWeight:700,color:'#111',marginBottom:4}},'Scan Station'),
     h('p',{style:{fontSize:13,color:'#666',marginBottom:14}},'Scan packing slip barcode → auto-detect channel → update count'),
@@ -1324,9 +987,7 @@ function App(){
     ),
     h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.25rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
       h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'Barcode Input'),
-      h('input',{ref:scanRef,value:scanIn,onChange:e=>setSI(e.target.value),onKeyDown:handleScan,autoFocus:true,
-        placeholder:'Scan packing slip or type Order# then Enter…',
-        style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid '+(scanErr?'#E24B4A':'#5B5EF4'),borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}}),
+      h('input',{ref:scanRef,value:scanIn,onChange:e=>setSI(e.target.value),onKeyDown:handleScan,autoFocus:true,placeholder:'Scan packing slip or type Order# then Enter…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid '+(scanErr?'#E24B4A':'#5B5EF4'),borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}}),
       lastScan&&h('div',{style:{marginTop:12,padding:'12px 14px',borderRadius:10,background:lastScan.ok?CA[lastScan.cat].bg:'#FFF0DC',border:'1px solid '+(lastScan.ok?CA[lastScan.cat].br:'#F5C070')}},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
           h('div',null,
@@ -1343,88 +1004,52 @@ function App(){
     )
   );
 
-  /* ══════════════════════════
-     CREATE LIST PAGE (manager only)
-  ══════════════════════════ */
+  /* Create Page */
   const CreatePage=()=>{
     const cc=CA[mf.cat]||{bg:'#eee',tx:'#333',br:'#ccc',ac:'#666'};
     const inp2={background:'rgba(255,255,255,0.06)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'13px 16px',color:'#E8E6FF',fontFamily:'inherit',fontSize:14,outline:'none',width:'100%',display:'block'};
     const lbl2={display:'block',fontSize:11,fontWeight:700,color:'#6060A0',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:8};
     return h('div',{style:{background:'#0A0A1A',minHeight:'calc(100vh - 56px)',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'40px 24px'}},
       h('div',{style:{width:'100%',maxWidth:680}},
-
-        /* Header */
         h('div',{style:{display:'flex',alignItems:'center',gap:16,marginBottom:32}},
-          h('button',{style:{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',color:'#8080C0',borderRadius:10,padding:'9px 18px',fontSize:13,cursor:'pointer',fontFamily:'inherit'},
-            onClick:()=>{setTab('records');setEId(null);}},
-            '← Back'
-          ),
+          h('button',{style:{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',color:'#8080C0',borderRadius:10,padding:'9px 18px',fontSize:13,cursor:'pointer',fontFamily:'inherit'},onClick:()=>{setTab('records');setEId(null);}},'← Back'),
           h('div',null,
-            h('h2',{style:{fontSize:22,fontWeight:800,color:'#E8E6FF',letterSpacing:'-0.02em'}},
-              editId?'Edit Pick List':'Create New Pick List'),
-            h('div',{style:{fontSize:13,color:'#5050A0',marginTop:4}},
-              editId?'Editing: '+lists.find(x=>x.id===editId)?.pgNo:'Fill in the details below to create a pick list')
+            h('h2',{style:{fontSize:22,fontWeight:800,color:'#E8E6FF',letterSpacing:'-0.02em'}},editId?'Edit Pick List':'Create New Pick List'),
+            h('div',{style:{fontSize:13,color:'#5050A0',marginTop:4}},editId?'Editing: '+lists.find(x=>x.id===editId)?.pgNo:'Fill in the details below to create a pick list')
           )
         ),
-
-        /* Category indicator */
-        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:24,padding:'12px 18px',
-          background:cc.bg+'18',border:'1px solid '+cc.br+'44',borderRadius:12}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:24,padding:'12px 18px',background:cc.bg+'18',border:'1px solid '+cc.br+'44',borderRadius:12}},
           h('div',{style:{width:10,height:10,borderRadius:'50%',background:cc.ac,flexShrink:0}}),
           h('span',{style:{fontSize:13,color:'#8080C0'}},'Category'),
           h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:13,padding:'4px 14px'}},mf.cat),
           h('span',{style:{fontSize:12,color:'#4040A0'}},'← selected from tab')
         ),
-
-        /* Main form card */
         h('div',{style:{background:'#13132B',border:'1px solid rgba(255,255,255,0.07)',borderRadius:18,overflow:'hidden',boxShadow:'0 8px 40px rgba(0,0,0,0.4)'}},
-
-          /* PG No — full width prominent */
           h('div',{style:{padding:'28px 32px',borderBottom:'1px solid rgba(255,255,255,0.06)'}},
             h('label',{style:{...lbl2,fontSize:12}},'Pick List No. *'),
-            h('input',{style:{...inp2,fontSize:18,fontWeight:700,fontFamily:'monospace',letterSpacing:'0.04em'},
-              value:mf.pgNo,onChange:e=>setMF(p=>({...p,pgNo:e.target.value})),
-              placeholder:'PG00004473',autoFocus:true})
+            h('input',{style:{...inp2,fontSize:18,fontWeight:700,fontFamily:'monospace',letterSpacing:'0.04em'},value:mf.pgNo,onChange:e=>setMF(p=>({...p,pgNo:e.target.value})),placeholder:'PG00004473',autoFocus:true})
           ),
-
-          /* SKU + Orders — 2 columns */
           h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',padding:'28px 32px',gap:24,borderBottom:'1px solid rgba(255,255,255,0.06)'}},
             h('div',null,
               h('label',{style:lbl2},'SKU Count'),
-              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},
-                type:'number',min:0,value:mf.sku,
-                onChange:e=>setMF(p=>({...p,sku:e.target.value})),
-                placeholder:'0'}),
+              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},type:'number',min:0,value:mf.sku,onChange:e=>setMF(p=>({...p,sku:e.target.value})),placeholder:'0'}),
               h('div',{style:{fontSize:11,color:'#3030A0',marginTop:6,textAlign:'center'}},'Number of unique products')
             ),
             h('div',null,
               h('label',{style:lbl2},'Order Count *'),
-              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},
-                type:'number',min:1,value:mf.orders,
-                onChange:e=>setMF(p=>({...p,orders:e.target.value})),
-                placeholder:'0'}),
+              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},type:'number',min:1,value:mf.orders,onChange:e=>setMF(p=>({...p,orders:e.target.value})),placeholder:'0'}),
               h('div',{style:{fontSize:11,color:'#3030A0',marginTop:6,textAlign:'center'}},'Total orders to fulfill')
             )
           ),
-
-          /* Remarks — full width */
           h('div',{style:{padding:'28px 32px',borderBottom:'1px solid rgba(255,255,255,0.06)'}},
             h('label',{style:lbl2},'Remarks / Instructions for Workers'),
-            h('textarea',{style:{...inp2,resize:'vertical',lineHeight:1.7,minHeight:80},
-              value:mf.memo,onChange:e=>setMF(p=>({...p,memo:e.target.value})),
-              placeholder:'예: 오후 2시까지 완료 필요 · 취급주의 상품 포함 · 냉장보관 등…'})
+            h('textarea',{style:{...inp2,resize:'vertical',lineHeight:1.7,minHeight:80},value:mf.memo,onChange:e=>setMF(p=>({...p,memo:e.target.value})),placeholder:'예: 오후 2시까지 완료 필요 · 취급주의 상품 포함 · 냉장보관 등…'})
           ),
-
-          /* Footer */
           h('div',{style:{padding:'20px 32px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'rgba(255,255,255,0.02)'}},
-            h('div',{style:{fontSize:12,color:'#3030A0',lineHeight:1.6}},
-              '💡 Picker는 작업자가 직접 배정합니다.'
-            ),
+            h('div',{style:{fontSize:12,color:'#3030A0',lineHeight:1.6}},'💡 Picker는 작업자가 직접 배정합니다.'),
             h('div',{style:{display:'flex',gap:12}},
-              h('button',{style:{background:'transparent',border:'1px solid rgba(255,255,255,0.1)',color:'#6060A0',borderRadius:10,padding:'11px 24px',fontSize:14,cursor:'pointer',fontFamily:'inherit'},
-                onClick:()=>setTab('records')},'Cancel'),
-              h('button',{className:'btn-primary',style:{padding:'11px 32px',fontSize:14,fontWeight:700},
-                onClick:mSave},editId?'Save Changes':'✅ Create Pick List')
+              h('button',{style:{background:'transparent',border:'1px solid rgba(255,255,255,0.1)',color:'#6060A0',borderRadius:10,padding:'11px 24px',fontSize:14,cursor:'pointer',fontFamily:'inherit'},onClick:()=>setTab('records')},'Cancel'),
+              h('button',{className:'btn-primary',style:{padding:'11px 32px',fontSize:14,fontWeight:700},onClick:mSave},editId?'Save Changes':'✅ Create Pick List')
             )
           )
         )
@@ -1432,97 +1057,21 @@ function App(){
     );
   };
 
-  const openSSModal=()=>{
-    if(!ssResult||!ssResult.summary)return;
-    // SS 채널 rows (TikTok CBT 제외)
-    const rows=ssResult.summary.filter(s=>s.orderCount&&s.category!=='Unknown'&&s.category!=='TikTok CBT').map(s=>({
-      category:s.category,orderCount:s.orderCount,storeList:s.storeList,pgNo:'',sku:'',memo:'',
-    }));
-    // ★ TikTok CBT 수동 입력값 추가
-    if(ttCbtCount>0){
-      rows.push({category:'TikTok CBT',orderCount:ttCbtCount,storeList:'TikTok: '+ttCbtCount,pgNo:'',sku:'',memo:''});
-    }
-    setSSModalData(rows);
-    setSSModal(true);
-  };
-
-  const confirmCreateLists=()=>{
-    const modalWithTT = [...ssModalData.filter(s=>s.category!=='TikTok CBT')];
-    if(ttCbtCount>0) modalWithTT.push({category:'TikTok CBT',orderCount:ttCbtCount,sku:0,storeList:'TikTok: '+ttCbtCount});
-    const createdCats=new Set();
-    const newLists=[];
-    modalWithTT.forEach(s=>{
-      if(!s.orderCount)return;
-      if(createdCats.has(s.category))return;
-      createdCats.add(s.category);
-      const listDate=today();
-      // ★ 기존 항목 체크 (category+date) — Deleted 제외
-      const existing=lists.find(l=>l.category===s.category&&(l.date||'').slice(0,10)===listDate&&l.status!=='Deleted');
-      const pgNo=s.pgNo||existing?.pgNo||('PG'+uid().slice(-8));
-      if(existing){
-        // 기존 있으면 orderCount만 업데이트
-        upd(existing.id,{orderCount:s.orderCount,sku:+s.sku||0,memo:s.memo||existing.memo||''});
-      } else {
-        // ★ id는 pgNo_date로 고정 (GAS와 동일하게)
-        const id=pgNo+'_'+listDate;
-        const nl={id,pgNo,category:s.category,sku:+s.sku||0,
-          orderCount:s.orderCount,scanned:0,pickStart:null,pickEnd:null,
-          scanStart:null,scanEnd:null,worker:'',date:listDate,memo:s.memo||''};
-        newLists.push(nl);
-      }
-    });
-    // ★ 새 항목 한번에 추가 (중복 방지 + 최종 dedup)
-    if(newLists.length>0){
-      setLists(p=>{
-        const merged=[...p];
-        newLists.forEach(nl=>{
-          const dup=merged.findIndex(x=>x.category===nl.category&&(x.date||'').slice(0,10)===nl.date&&x.status!=='Deleted');
-          if(dup>=0) merged[dup]={...merged[dup],orderCount:nl.orderCount};
-          else merged.push(nl);
-        });
-        const deduped3=dedupeByCategory(merged);
-        lsSet(LS.LISTS,deduped3);
-        return deduped3;
-      });
-      newLists.forEach(nl=>sync('upsertList',{list:nl}));
-    }
-    setSSM('✓ Pick lists created/updated!');
-    setSSModal(false);
-    setTab('records');
-  };
-
-  /* ══════════════════════════
-     SETTINGS PAGE (manager only) — 완전 재설계
-  ══════════════════════════ */
+  /* Settings Page */
   const [settingsTab,setSettingsTab]=useState('sync');
-
   const SettingsPage=()=>{
-    const NAV=[
-      {id:'sync',  icon:'🔗', label:'Google Sheets'},
-      {id:'picker',icon:'👷', label:'Pickers'},
-      {id:'ss',    icon:'📦', label:'ShipStation'},
-      {id:'pin',   icon:'🔐', label:'Security'},
-      {id:'data',  icon:'🗑', label:'Data'},
-    ];
-
+    const NAV=[{id:'sync',icon:'🔗',label:'Google Sheets'},{id:'picker',icon:'👷',label:'Pickers'},{id:'ss',icon:'📦',label:'ShipStation'},{id:'pin',icon:'🔐',label:'Security'},{id:'data',icon:'🗑',label:'Data'}];
     const inp={background:'rgba(255,255,255,0.06)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'12px 16px',color:'#E8E6FF',fontFamily:'inherit',fontSize:14,outline:'none',width:'100%',display:'block'};
-    const inpFocus='#5B5EF4';
     const lbl={display:'block',fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:8,letterSpacing:'.02em'};
     const card={background:'#13132B',border:'1px solid rgba(255,255,255,0.07)',borderRadius:16,padding:'28px 32px'};
 
     const SyncTab=()=>h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
-      h('div',null,
-        h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Google Sheets Sync'),
-        h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Connect to Google Apps Script to auto-sync all pick list data in real-time.')
-      ),
+      h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Google Sheets Sync'),h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Connect to Google Apps Script to auto-sync all pick list data in real-time.')),
       h('div',{style:card},
         h('label',{style:lbl},'Apps Script Endpoint URL'),
-        h('input',{style:{...inp,marginBottom:16},value:wh,onChange:e=>setWH(e.target.value),
-          placeholder:'https://script.google.com/macros/s/…/exec'}),
+        h('input',{style:{...inp,marginBottom:16},value:wh,onChange:e=>setWH(e.target.value),placeholder:'https://script.google.com/macros/s/…/exec'}),
         h('div',{style:{display:'flex',gap:12,alignItems:'center'}},
-          h('button',{className:'btn-primary',style:{padding:'11px 28px',fontSize:14},
-            onClick:()=>{if(!wh)return;syncData(wh,'bulkLists',{lists}).then(()=>syncData(wh,'bulkScanLog',{entries:log})).then(()=>setSS('✓ All data synced')).catch(()=>setSS('⚠ Sync failed'));}},
-            '↑ Push All to Server'),
+          h('button',{className:'btn-primary',style:{padding:'11px 28px',fontSize:14},onClick:()=>{if(!wh)return;syncData(wh,'bulkLists',{lists}).then(()=>syncData(wh,'bulkScanLog',{entries:log})).then(()=>setSS('✓ All data synced')).catch(()=>setSS('⚠ Sync failed'));}},'↑ Push All to Server'),
           h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'11px 20px',fontSize:14},onClick:exportCSV},'↓ Export CSV'),
           syncSt&&h('span',{style:{fontSize:13,color:syncSt.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:600}},syncSt)
         )
@@ -1530,14 +1079,10 @@ function App(){
     );
 
     const PickerTab=()=>h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
-      h('div',null,
-        h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Picker Names & Colors'),
-        h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Manage your team members and assign a unique color to each picker for easy identification.')
-      ),
+      h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Picker Names & Colors'),h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Manage your team members and assign a unique color to each picker.')),
       h('div',{style:card},
         h('label',{style:lbl},'Team Members (comma-separated)'),
-        h('textarea',{style:{...inp,resize:'vertical',lineHeight:1.7,marginBottom:24,minHeight:60},
-          value:pksStr,onChange:e=>setPKS(e.target.value),placeholder:'Kim Jisu, Park Minho, Lee Hayeon…'}),
+        h('textarea',{style:{...inp,resize:'vertical',lineHeight:1.7,marginBottom:24,minHeight:60},value:pksStr,onChange:e=>setPKS(e.target.value),placeholder:'Kim Jisu, Park Minho, Lee Hayeon…'}),
         h('div',{style:{height:1,background:'rgba(255,255,255,0.06)',marginBottom:24}}),
         h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:16,letterSpacing:'.02em'}},'COLOR ASSIGNMENT'),
         h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
@@ -1547,26 +1092,8 @@ function App(){
               h('div',{style:{width:36,height:36,borderRadius:10,background:cur.bg,border:'2px solid '+cur.tx,flexShrink:0,boxShadow:'0 2px 8px rgba(0,0,0,0.3)'}}),
               h('span',{style:{width:130,fontSize:14,fontWeight:600,color:'#D0D0F0',flexShrink:0}},w),
               h('div',{style:{display:'flex',flexDirection:'column',gap:6,flex:1}},
-                h('div',{style:{display:'flex',gap:6}},
-                  PKC_PRESETS.slice(0,6).map((c,ci)=>{
-                    const sel=pkColorMap[w]?pkColorMap[w]===c:pickers.indexOf(w)%PKC_PRESETS.length===ci;
-                    return h('div',{key:ci,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),title:c.label,
-                      style:{width:28,height:28,borderRadius:8,background:c.bg,cursor:'pointer',flexShrink:0,
-                        border:sel?'3px solid '+c.tx:'2px solid rgba(255,255,255,0.08)',
-                        boxShadow:sel?'0 0 0 2px rgba(255,255,255,0.15)':'none',
-                        transition:'all .15s'}});
-                  })
-                ),
-                h('div',{style:{display:'flex',gap:6}},
-                  PKC_PRESETS.slice(6,12).map((c,ci)=>{
-                    const sel=pkColorMap[w]?pkColorMap[w]===c:pickers.indexOf(w)%PKC_PRESETS.length===(ci+6);
-                    return h('div',{key:ci+6,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),title:c.label,
-                      style:{width:28,height:28,borderRadius:8,background:c.bg,cursor:'pointer',flexShrink:0,
-                        border:sel?'3px solid '+c.tx:'2px solid rgba(255,255,255,0.08)',
-                        boxShadow:sel?'0 0 0 2px rgba(255,255,255,0.15)':'none',
-                        transition:'all .15s'}});
-                  })
-                )
+                h('div',{style:{display:'flex',gap:6}},PKC_PRESETS.slice(0,6).map((c,ci)=>{const sel=pkColorMap[w]?pkColorMap[w]===c:pickers.indexOf(w)%PKC_PRESETS.length===ci;return h('div',{key:ci,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),title:c.label,style:{width:28,height:28,borderRadius:8,background:c.bg,cursor:'pointer',flexShrink:0,border:sel?'3px solid '+c.tx:'2px solid rgba(255,255,255,0.08)',boxShadow:sel?'0 0 0 2px rgba(255,255,255,0.15)':'none',transition:'all .15s'}});})),
+                h('div',{style:{display:'flex',gap:6}},PKC_PRESETS.slice(6,12).map((c,ci)=>{const sel=pkColorMap[w]?pkColorMap[w]===c:pickers.indexOf(w)%PKC_PRESETS.length===(ci+6);return h('div',{key:ci+6,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),title:c.label,style:{width:28,height:28,borderRadius:8,background:c.bg,cursor:'pointer',flexShrink:0,border:sel?'3px solid '+c.tx:'2px solid rgba(255,255,255,0.08)',boxShadow:sel?'0 0 0 2px rgba(255,255,255,0.15)':'none',transition:'all .15s'}});}))
               )
             );
           })
@@ -1575,38 +1102,22 @@ function App(){
     );
 
     const SSTab=()=>h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
-      h('div',null,
-        h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'ShipStation Integration'),
-        h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Connect your ShipStation account to automatically fetch order counts by channel.')
-      ),
+      h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'ShipStation Integration'),h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Connect your ShipStation account to automatically fetch order counts by channel.')),
       h('div',{style:card},
         h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:20}},
-          h('div',null,
-            h('label',{style:lbl},'API Key'),
-            h('input',{style:{...inp,fontFamily:'monospace'},type:'password',value:ssKey,onChange:e=>setSSKey(e.target.value),placeholder:'Enter API Key'})
-          ),
-          h('div',null,
-            h('label',{style:lbl},'API Secret'),
-            h('input',{style:{...inp,fontFamily:'monospace'},type:'password',value:ssSecret,onChange:e=>setSSSec(e.target.value),placeholder:'Enter API Secret'})
-          )
+          h('div',null,h('label',{style:lbl},'API Key'),h('input',{style:{...inp,fontFamily:'monospace'},type:'password',value:ssKey,onChange:e=>setSSKey(e.target.value),placeholder:'Enter API Key'})),
+          h('div',null,h('label',{style:lbl},'API Secret'),h('input',{style:{...inp,fontFamily:'monospace'},type:'password',value:ssSecret,onChange:e=>setSSSec(e.target.value),placeholder:'Enter API Secret'}))
         ),
         h('div',{style:{display:'flex',gap:12,alignItems:'center',marginBottom:ssMsg?12:0,flexWrap:'wrap'}},
           h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'11px 24px',fontSize:14},onClick:testSSConn,disabled:ssFetching},'🔌 Test Connection'),
-          h('button',{className:'btn-primary',style:{padding:'11px 28px',fontSize:14},onClick:fetchSSOrders,disabled:ssFetching},
-            ssFetching?'⏳ Fetching orders…':'📦 Fetch Orders'),
-          ssResult&&ssResult.summary&&h('button',{className:'btn-primary',
-            style:{padding:'11px 28px',fontSize:14,background:'linear-gradient(135deg,#059669,#047857)',boxShadow:'0 3px 12px rgba(5,150,105,0.3)'},
-            onClick:openSSModal},'✅ Create Pick Lists')
+          h('button',{className:'btn-primary',style:{padding:'11px 28px',fontSize:14},onClick:fetchSSOrders,disabled:ssFetching},ssFetching?'⏳ Fetching orders…':'📦 Fetch Orders'),
+          ssResult&&ssResult.summary&&h('button',{className:'btn-primary',style:{padding:'11px 28px',fontSize:14,background:'linear-gradient(135deg,#059669,#047857)',boxShadow:'0 3px 12px rgba(5,150,105,0.3)'},onClick:openSSModal},'✅ Create Pick Lists')
         ),
         ssMsg&&h('div',{style:{padding:'10px 16px',borderRadius:9,background:ssMsg.startsWith('✓')?'rgba(134,239,172,0.08)':'rgba(248,113,113,0.08)',border:'1px solid '+(ssMsg.startsWith('✓')?'rgba(134,239,172,0.2)':'rgba(248,113,113,0.2)'),fontSize:13,color:ssMsg.startsWith('✓')?'#86EFAC':'#F87171',fontWeight:600}},ssMsg),
         ssResult&&ssResult.summary&&h('div',{style:{marginTop:20}},
-          h('div',{style:{fontSize:12,fontWeight:600,color:'#A0AABB',marginBottom:12,letterSpacing:'.02em'}},
-            ssResult.date+' — '+ssResult.totalOrders+' AWAITING SHIPMENT'
-          ),
+          h('div',{style:{fontSize:12,fontWeight:600,color:'#A0AABB',marginBottom:12,letterSpacing:'.02em'}},ssResult.date+' — '+ssResult.totalOrders+' AWAITING SHIPMENT'),
           h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
-            [...ssResult.summary.filter(s=>s.category!=='Unknown'&&s.category!=='TikTok CBT'),
-              ...(ttCbtCount>0?[{category:'TikTok CBT',orderCount:ttCbtCount,storeList:'TikTok: '+ttCbtCount}]:[])
-            ].map((s,i)=>{
+            [...ssResult.summary.filter(s=>s.category!=='Unknown'&&s.category!=='TikTok CBT'),...(ttCbtCount>0?[{category:'TikTok CBT',orderCount:ttCbtCount,storeList:'TikTok: '+ttCbtCount}]:[])].map((s,i)=>{
               const cc=CA[s.category]||{bg:'#222',tx:'#888',br:'#444'};
               return h('div',{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'14px 18px',background:'rgba(255,255,255,0.03)',borderRadius:12,border:'1px solid rgba(255,255,255,0.07)'}},
                 h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:12,flexShrink:0}},s.category),
@@ -1618,58 +1129,24 @@ function App(){
         )
       ),
       h('div',{style:card},
-        h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:16,letterSpacing:'.02em'}},'ORDER PREFIX DETECTION MAP'),
-        // ── ShipStation 채널 ──
-        h('div',{style:{marginBottom:12}},
-          h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}},
-            h('span',{style:{fontSize:11,fontWeight:700,color:'#5B8DEF',letterSpacing:'.05em',background:'rgba(91,141,239,0.12)',padding:'2px 10px',borderRadius:20,border:'1px solid rgba(91,141,239,0.25)'}},'📦 ShipStation')
-          ),
-          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},
-            PREFIX_MAP.filter(m2=>m2.cat!=='TikTok CBT').map((m2,i)=>{
-              const cc=CA[m2.cat]||{bg:'#222',tx:'#888',br:'#444',ac:'#666'};
-              return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'rgba(255,255,255,0.03)',borderRadius:9,border:'1px solid rgba(255,255,255,0.06)'}},
-                h('span',{className:'mono',style:{fontWeight:700,color:cc.ac,fontSize:12}},m2.p),
-                h('span',{style:{fontSize:12,color:'#A0AABB'}},m2.store)
-              );
-            })
-          )
-        ),
-        // ── TikTok CBT 수동 입력 ──
-        h('div',null,
-          h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:12}},
-            h('span',{style:{fontSize:11,fontWeight:700,color:'#C84A82',letterSpacing:'.05em',background:'rgba(200,74,130,0.12)',padding:'2px 10px',borderRadius:20,border:'1px solid rgba(200,74,130,0.25)'}},'🛍️ TikTok CBT')
-          ),
-          h('div',{style:{background:'rgba(200,74,130,0.06)',border:'1px solid rgba(200,74,130,0.2)',borderRadius:12,padding:'16px 20px'}},
-            h('p',{style:{fontSize:12,color:'#F0A0C8',marginBottom:12}},'Check TikTok Seller Center → Awaiting Shipment (TikTok Shipping Upgraded) and enter the count below.'),
-            h('div',{style:{display:'flex',alignItems:'center',gap:12}},
-              h('label',{style:{fontSize:13,fontWeight:600,color:'#F0A0C8',whiteSpace:'nowrap'}},'CBT Orders Today:'),
-              h('input',{type:'number',min:0,value:ttCbtCount,
-                onChange:e=>{const v=parseInt(e.target.value)||0;setTtCbtCount(v);lsSet('tt_cbt_count',v);},
-                style:{width:100,padding:'8px 12px',borderRadius:8,border:'1.5px solid rgba(200,74,130,0.4)',background:'rgba(200,74,130,0.08)',color:'#F0A0C8',fontSize:16,fontWeight:700,textAlign:'center',outline:'none'}}),
-              h('span',{style:{fontSize:12,color:'#888'}},'orders')
-            )
+        h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:16,letterSpacing:'.02em'}},'TikTok CBT — Manual Count'),
+        h('div',{style:{background:'rgba(200,74,130,0.06)',border:'1px solid rgba(200,74,130,0.2)',borderRadius:12,padding:'16px 20px'}},
+          h('p',{style:{fontSize:12,color:'#F0A0C8',marginBottom:12}},'TikTok Seller Center → Awaiting Shipment 건수를 직접 입력하세요.'),
+          h('div',{style:{display:'flex',alignItems:'center',gap:12}},
+            h('label',{style:{fontSize:13,fontWeight:600,color:'#F0A0C8',whiteSpace:'nowrap'}},'CBT Orders Today:'),
+            h('input',{type:'number',min:0,value:ttCbtCount,onChange:e=>{const v=parseInt(e.target.value)||0;setTtCbtCount(v);lsSet('tt_cbt_count',v);},style:{width:100,padding:'8px 12px',borderRadius:8,border:'1.5px solid rgba(200,74,130,0.4)',background:'rgba(200,74,130,0.08)',color:'#F0A0C8',fontSize:16,fontWeight:700,textAlign:'center',outline:'none'}}),
+            h('span',{style:{fontSize:12,color:'#888'}},'orders')
           )
         )
       )
     );
 
     const PinTab=()=>h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
-      h('div',null,
-        h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Security'),
-        h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Change the 4-digit PIN required to access Manager Mode.')
-      ),
+      h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Security'),h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Change the 4-digit PIN required to access Manager Mode.')),
       h('div',{style:card},
         h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:20}},
-          h('div',null,
-            h('label',{style:lbl},'New PIN'),
-            h('input',{style:{...inp,fontSize:28,letterSpacing:'.6em',textAlign:'center',height:64,fontFamily:'monospace'},
-              type:'password',maxLength:4,value:np1,onChange:e=>setNP1(e.target.value),placeholder:'••••'})
-          ),
-          h('div',null,
-            h('label',{style:lbl},'Confirm PIN'),
-            h('input',{style:{...inp,fontSize:28,letterSpacing:'.6em',textAlign:'center',height:64,fontFamily:'monospace'},
-              type:'password',maxLength:4,value:np2,onChange:e=>setNP2(e.target.value),placeholder:'••••'})
-          )
+          h('div',null,h('label',{style:lbl},'New PIN'),h('input',{style:{...inp,fontSize:28,letterSpacing:'.6em',textAlign:'center',height:64,fontFamily:'monospace'},type:'password',maxLength:4,value:np1,onChange:e=>setNP1(e.target.value),placeholder:'••••'})),
+          h('div',null,h('label',{style:lbl},'Confirm PIN'),h('input',{style:{...inp,fontSize:28,letterSpacing:'.6em',textAlign:'center',height:64,fontFamily:'monospace'},type:'password',maxLength:4,value:np2,onChange:e=>setNP2(e.target.value),placeholder:'••••'}))
         ),
         h('div',{style:{display:'flex',alignItems:'center',gap:16}},
           h('button',{className:'btn-primary',style:{padding:'12px 32px',fontSize:15},onClick:changePin},'Update PIN'),
@@ -1679,25 +1156,13 @@ function App(){
     );
 
     const DataTab=()=>h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
-      h('div',null,
-        h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Data Cleanup'),
-        h('p',{style:{fontSize:14,color:'#A0AABB',lineHeight:1.7}},'Remove records from the browser. Google Sheets data is always preserved and unaffected.')
-      ),
+      h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Data Cleanup'),h('p',{style:{fontSize:14,color:'#A0AABB',lineHeight:1.7}},'Remove records from the browser. Google Sheets data is always preserved.')),
       h('div',{style:card},
-        h('div',{style:{marginBottom:14}},
-          h('div',{style:{fontSize:12,fontWeight:700,color:'#A0AABB',letterSpacing:'.05em',marginBottom:4}},'☁️ SYNC FROM GOOGLE SHEETS'),
-          h('p',{style:{fontSize:13,color:'#7070A0',lineHeight:1.6,margin:0}},'Google Sheets 데이터를 브라우저로 가져옵니다. 기존 데이터와 병합됩니다.')
-        ),
-        h('button',{
-          style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px',background:'rgba(99,102,241,0.08)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:12,cursor:'pointer',fontFamily:'inherit',color:'#A5B4FC',fontSize:14,fontWeight:600,width:'100%'},
-          onClick:syncFromSheets
-        },
+        h('div',{style:{marginBottom:14}},h('div',{style:{fontSize:12,fontWeight:700,color:'#A0AABB',letterSpacing:'.05em',marginBottom:4}},'☁️ SYNC FROM GOOGLE SHEETS'),h('p',{style:{fontSize:13,color:'#7070A0',lineHeight:1.6,margin:0}},'Google Sheets 데이터를 브라우저로 가져옵니다. 기존 데이터와 병합됩니다.')),
+        h('button',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px',background:'rgba(99,102,241,0.08)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:12,cursor:'pointer',fontFamily:'inherit',color:'#A5B4FC',fontSize:14,fontWeight:600,width:'100%'},onClick:syncFromSheets},
           h('div',{style:{display:'flex',alignItems:'center',gap:12}},
             h('span',{style:{fontSize:20}},'☁️'),
-            h('div',{style:{textAlign:'left'}},
-              h('div',null,'Sync from Google Sheets'),
-              h('div',{style:{fontSize:12,color:'#6060A0',marginTop:2}},'Sheets → 브라우저 (수동 Pull)')
-            )
+            h('div',{style:{textAlign:'left'}},h('div',null,'Sync from Google Sheets'),h('div',{style:{fontSize:12,color:'#6060A0',marginTop:2}},'Sheets → 브라우저 (수동 Pull)'))
           ),
           h('span',{style:{background:'rgba(99,102,241,0.15)',padding:'4px 12px',borderRadius:100,fontSize:13,color:'#818CF8'}},'Pull ↓')
         ),
@@ -1706,34 +1171,15 @@ function App(){
       h('div',{style:card},
         h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
           h('button',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,cursor:'pointer',fontFamily:'inherit',color:'#E8E6FF',fontSize:14,fontWeight:500},onClick:delCompleted},
-            h('div',{style:{display:'flex',alignItems:'center',gap:12}},
-              h('span',{style:{fontSize:18}},'🧹'),
-              h('div',{style:{textAlign:'left'}},
-                h('div',null,'Clear Completed Lists'),
-                h('div',{style:{fontSize:12,color:'#5050A0',marginTop:2}},'Remove fully scanned pick lists from today')
-              )
-            ),
+            h('div',{style:{display:'flex',alignItems:'center',gap:12}},h('span',{style:{fontSize:18}},'🧹'),h('div',{style:{textAlign:'left'}},h('div',null,'Clear Completed Lists'),h('div',{style:{fontSize:12,color:'#5050A0',marginTop:2}},'Remove fully scanned pick lists from today'))),
             h('span',{style:{background:'rgba(255,255,255,0.08)',padding:'4px 12px',borderRadius:100,fontSize:13,color:'#8888AA'}},todayL.filter(l=>getSt(l)==='complete').length+' lists')
           ),
           h('button',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,cursor:'pointer',fontFamily:'inherit',color:'#E8E6FF',fontSize:14,fontWeight:500},onClick:delAllToday},
-            h('div',{style:{display:'flex',alignItems:'center',gap:12}},
-              h('span',{style:{fontSize:18}},'📅'),
-              h('div',{style:{textAlign:'left'}},
-                h('div',null,"Clear Today's Lists"),
-                h('div',{style:{fontSize:12,color:'#5050A0',marginTop:2}},'Remove all of today\'s pick lists')
-              )
-            ),
+            h('div',{style:{display:'flex',alignItems:'center',gap:12}},h('span',{style:{fontSize:18}},'📅'),h('div',{style:{textAlign:'left'}},h('div',null,"Clear Today's Lists"),h('div',{style:{fontSize:12,color:'#5050A0',marginTop:2}},"Remove all of today's pick lists"))),
             h('span',{style:{background:'rgba(255,255,255,0.08)',padding:'4px 12px',borderRadius:100,fontSize:13,color:'#8888AA'}},todayL.length+' lists')
           ),
-          h('button',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px',background:'rgba(220,38,38,0.05)',border:'1px solid rgba(220,38,38,0.15)',borderRadius:12,cursor:'pointer',fontFamily:'inherit',color:'#F87171',fontSize:14,fontWeight:500},
-            onClick:()=>{if(!window.confirm('Clear ALL records from ALL dates?\nGoogle Sheets data is NOT affected.'))return;setLists([]);}},
-            h('div',{style:{display:'flex',alignItems:'center',gap:12}},
-              h('span',{style:{fontSize:18}},'⚠️'),
-              h('div',{style:{textAlign:'left'}},
-                h('div',null,'Clear All History'),
-                h('div',{style:{fontSize:12,color:'rgba(248,113,113,0.6)',marginTop:2}},'Permanently remove all dates from browser')
-              )
-            ),
+          h('button',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px',background:'rgba(220,38,38,0.05)',border:'1px solid rgba(220,38,38,0.15)',borderRadius:12,cursor:'pointer',fontFamily:'inherit',color:'#F87171',fontSize:14,fontWeight:500},onClick:()=>{if(!window.confirm('Clear ALL records from ALL dates?\nGoogle Sheets data is NOT affected.'))return;setLists([]);}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:12}},h('span',{style:{fontSize:18}},'⚠️'),h('div',{style:{textAlign:'left'}},h('div',null,'Clear All History'),h('div',{style:{fontSize:12,color:'rgba(248,113,113,0.6)',marginTop:2}},'Permanently remove all dates from browser'))),
             h('span',{style:{background:'rgba(220,38,38,0.1)',padding:'4px 12px',borderRadius:100,fontSize:13,color:'#F87171'}},lists.length+' records')
           )
         )
@@ -1741,8 +1187,6 @@ function App(){
     );
 
     return h('div',{style:{background:'#0A0A1A',minHeight:'calc(100vh - 56px)',display:'flex'}},
-
-      /* SS Modal */
       ssModal&&h('div',{className:'overlay'},
         h('div',{style:{background:'#16163A',border:'1px solid rgba(255,255,255,0.1)',borderRadius:20,width:'100%',maxWidth:560,maxHeight:'calc(100vh - 48px)',overflowY:'auto',boxShadow:'0 32px 80px rgba(0,0,0,0.8)'}},
           h('div',{style:{padding:'24px 28px',borderBottom:'1px solid rgba(255,255,255,0.07)'}},
@@ -1754,29 +1198,14 @@ function App(){
               const cc={bg:CA[s.category]?.bg||'#eee',tx:CA[s.category]?.tx||'#333',br:CA[s.category]?.br||'#ccc'};
               return h('div',{key:i,style:{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:14,padding:'16px 20px'}},
                 h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}},
-                  h('div',{style:{display:'flex',alignItems:'center',gap:8}},
-                    h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:12}},s.category),
-                    h('span',{style:{color:'#A0AABB',fontSize:12}},s.storeList)
-                  ),
+                  h('div',{style:{display:'flex',alignItems:'center',gap:8}},h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:12}},s.category),h('span',{style:{color:'#A0AABB',fontSize:12}},s.storeList)),
                   h('span',{style:{fontWeight:800,color:'#86EFAC',fontSize:16}},s.orderCount+' orders')
                 ),
                 h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
-                  h('div',null,
-                    h('label',{style:{...lbl,fontSize:11}},'PG No.'),
-                    h('input',{style:inp,value:s.pgNo,placeholder:'PG00004473',
-                      onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],pgNo:e.target.value};setSSModalData(nd);}})
-                  ),
-                  h('div',null,
-                    h('label',{style:{...lbl,fontSize:11}},'SKU Count'),
-                    h('input',{style:inp,type:'number',min:0,value:s.sku,placeholder:'0',
-                      onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],sku:e.target.value};setSSModalData(nd);}})
-                  )
+                  h('div',null,h('label',{style:{...lbl,fontSize:11}},'PG No.'),h('input',{style:inp,value:s.pgNo,placeholder:'PG00004473',onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],pgNo:e.target.value};setSSModalData(nd);}})),
+                  h('div',null,h('label',{style:{...lbl,fontSize:11}},'SKU Count'),h('input',{style:inp,type:'number',min:0,value:s.sku,placeholder:'0',onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],sku:e.target.value};setSSModalData(nd);}}))
                 ),
-                h('div',{style:{marginTop:10}},
-                  h('label',{style:{...lbl,fontSize:11}},'Remarks'),
-                  h('input',{style:{...inp,fontSize:13},value:s.memo||'',placeholder:'작업자 전달사항 (선택)',
-                    onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],memo:e.target.value};setSSModalData(nd);}})
-                )
+                h('div',{style:{marginTop:10}},h('label',{style:{...lbl,fontSize:11}},'Remarks'),h('input',{style:{...inp,fontSize:13},value:s.memo||'',placeholder:'작업자 전달사항 (선택)',onChange:e=>{const nd=[...ssModalData];nd[i]={...nd[i],memo:e.target.value};setSSModalData(nd);}}))
               );
             })
           ),
@@ -1786,121 +1215,79 @@ function App(){
           )
         )
       ),
-
-      /* ── Sidebar ── */
       h('div',{style:{width:220,borderRight:'1px solid rgba(255,255,255,0.06)',padding:'24px 16px',flexShrink:0}},
         h('div',{style:{fontSize:11,fontWeight:700,color:'#4040A0',letterSpacing:'.1em',textTransform:'uppercase',padding:'0 12px',marginBottom:12}},'Settings'),
-        NAV.map(n=>h('button',{key:n.id,onClick:()=>setSettingsTab(n.id),
-          style:{display:'flex',alignItems:'center',gap:12,width:'100%',padding:'11px 14px',borderRadius:10,
-            background:settingsTab===n.id?'rgba(91,94,244,0.18)':'transparent',
-            border:settingsTab===n.id?'1px solid rgba(91,94,244,0.3)':'1px solid transparent',
-            color:settingsTab===n.id?'#A0A8FF':'#6868A8',fontSize:14,fontWeight:settingsTab===n.id?600:400,
-            cursor:'pointer',fontFamily:'inherit',textAlign:'left',marginBottom:4,transition:'all .15s'}},
-          h('span',{style:{fontSize:16}},n.icon),
-          n.label
-        ))
+        NAV.map(n=>h('button',{key:n.id,onClick:()=>setSettingsTab(n.id),style:{display:'flex',alignItems:'center',gap:12,width:'100%',padding:'11px 14px',borderRadius:10,background:settingsTab===n.id?'rgba(91,94,244,0.18)':'transparent',border:settingsTab===n.id?'1px solid rgba(91,94,244,0.3)':'1px solid transparent',color:settingsTab===n.id?'#A0A8FF':'#6868A8',fontSize:14,fontWeight:settingsTab===n.id?600:400,cursor:'pointer',fontFamily:'inherit',textAlign:'left',marginBottom:4,transition:'all .15s'}},h('span',{style:{fontSize:16}},n.icon),n.label))
       ),
-
-      /* ── Main Content ── */
       h('div',{style:{flex:1,padding:'32px 40px',overflowY:'auto'}},
-        settingsTab==='sync'   && SyncTab(),
-        settingsTab==='picker' && PickerTab(),
-        settingsTab==='ss'     && SSTab(),
-        settingsTab==='pin'    && PinTab(),
-        settingsTab==='data'   && DataTab(),
+        settingsTab==='sync'&&SyncTab(),
+        settingsTab==='picker'&&PickerTab(),
+        settingsTab==='ss'&&SSTab(),
+        settingsTab==='pin'&&PinTab(),
+        settingsTab==='data'&&DataTab(),
       )
     );
   };
+
   /* ═══ FINAL RENDER ═══ */
   try{
     return h(Fragment,null,
       Nav(),
-      tab==='records' &&RecordsPage(),
-      tab==='scan'    &&ScanPage(),
-      tab==='create'  &&isMgr&&CreatePage(),
+      tab==='records'&&RecordsPage(),
+      tab==='scan'&&ScanPage(),
+      tab==='create'&&isMgr&&CreatePage(),
       tab==='settings'&&isMgr&&SettingsPage(),
       showPin&&h(PinModal,{onOK:()=>{setMgr(true);setPin(false);},onCancel:()=>setPin(false)}),
       endScanModal&&h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}},
         h('div',{style:{background:'#fff',borderRadius:16,padding:28,minWidth:340,maxWidth:420,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
           h('div',{style:{fontWeight:700,fontSize:16,marginBottom:4}},'⏹ End Scan — '+endScanModal.pgNo),
           h('div',{style:{fontSize:13,color:'#666',marginBottom:16}},'Orders: '+endScanModal.oc+'건'),
-          // ① 실제 스캔 건수 입력
           h('div',{style:{background:'#F0F9FF',border:'1px solid #BAE6FD',borderRadius:10,padding:'12px 16px',marginBottom:16}},
             h('div',{style:{fontSize:12,fontWeight:700,color:'#0369A1',marginBottom:8}},'① Actual scanned (shipped) qty:'),
             h('div',{style:{display:'flex',alignItems:'center',gap:10}},
-              h('button',{onClick:()=>setScanInput(v=>Math.max(0,v-1)),
-                style:{width:32,height:32,borderRadius:8,border:'1px solid #BAE6FD',background:'#fff',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#0369A1'}},'−'),
-              h('input',{type:'number',min:0,max:endScanModal.oc,value:scanInput,
-                onChange:e=>{const v=Math.min(parseInt(e.target.value)||0,endScanModal.oc);setScanInput(v);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},
-                style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'4px',border:'1.5px solid #BAE6FD',borderRadius:8,color:'#0369A1',outline:'none'}}),
-              h('button',{onClick:()=>setScanInput(v=>Math.min(endScanModal.oc,v+1)),
-                style:{width:32,height:32,borderRadius:8,border:'1px solid #BAE6FD',background:'#fff',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#0369A1'}},'+'),
+              h('button',{onClick:()=>setScanInput(v=>Math.max(0,v-1)),style:{width:32,height:32,borderRadius:8,border:'1px solid #BAE6FD',background:'#fff',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#0369A1'}},'−'),
+              h('input',{type:'number',min:0,max:endScanModal.oc,value:scanInput,onChange:e=>{const v=Math.min(parseInt(e.target.value)||0,endScanModal.oc);setScanInput(v);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'4px',border:'1.5px solid #BAE6FD',borderRadius:8,color:'#0369A1',outline:'none'}}),
+              h('button',{onClick:()=>setScanInput(v=>Math.min(endScanModal.oc,v+1)),style:{width:32,height:32,borderRadius:8,border:'1px solid #BAE6FD',background:'#fff',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#0369A1'}},'+'),
               h('span',{style:{fontSize:13,color:'#666'}},'/ '+endScanModal.oc+' orders'),
-              scanInput<endScanModal.oc&&h('span',{style:{fontSize:12,color:'#DC2626',fontWeight:600,marginLeft:4}},'('+( endScanModal.oc-scanInput)+' unscanned)')
+              scanInput<endScanModal.oc&&h('span',{style:{fontSize:12,color:'#DC2626',fontWeight:600,marginLeft:4}},'('+(endScanModal.oc-scanInput)+' unscanned)')
             )
           ),
-          // ② 미스캔 이유 (스캔 미완료 시만 표시)
           scanInput<endScanModal.oc&&h('div',null,
-            h('div',{style:{fontSize:12,color:'#888',marginBottom:10,fontWeight:600}},'② Skip reason for '+( endScanModal.oc-scanInput)+' unscanned item(s):'),
-          h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:16}},
-            ['OOS','NF (Not Found)','EXP (Expiry Issue)','Customer Cancel'].map(reason=>
-              h('div',{key:reason,style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'#F8F8F8',borderRadius:8}},
-                h('span',{style:{fontSize:13,fontWeight:500}},reason),
-                h('div',{style:{display:'flex',alignItems:'center',gap:6}},
-                  h('button',{onClick:()=>setSkipQtys(q=>({...q,[reason]:Math.max(0,(q[reason]||0)-1)})),
-                    style:{width:28,height:28,borderRadius:6,border:'1px solid #DDD',background:'#FFF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}},'−'),
-                  h('span',{style:{width:28,textAlign:'center',fontWeight:700,fontSize:15}},skipQtys[reason]||0),
-                  h('button',{onClick:()=>setSkipQtys(q=>({...q,[reason]:(q[reason]||0)+1})),
-                    style:{width:28,height:28,borderRadius:6,border:'1px solid #DDD',background:'#FFF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}},'+')
+            h('div',{style:{fontSize:12,color:'#888',marginBottom:10,fontWeight:600}},'② Skip reason for '+(endScanModal.oc-scanInput)+' unscanned item(s):'),
+            h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:16}},
+              ['OOS','NF (Not Found)','EXP (Expiry Issue)','Customer Cancel'].map(reason=>
+                h('div',{key:reason,style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'#F8F8F8',borderRadius:8}},
+                  h('span',{style:{fontSize:13,fontWeight:500}},reason),
+                  h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+                    h('button',{onClick:()=>setSkipQtys(q=>({...q,[reason]:Math.max(0,(q[reason]||0)-1)})),style:{width:28,height:28,borderRadius:6,border:'1px solid #DDD',background:'#FFF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}},'−'),
+                    h('span',{style:{width:28,textAlign:'center',fontWeight:700,fontSize:15}},skipQtys[reason]||0),
+                    h('button',{onClick:()=>setSkipQtys(q=>({...q,[reason]:(q[reason]||0)+1})),style:{width:28,height:28,borderRadius:6,border:'1px solid #DDD',background:'#FFF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}},'+')
+                  )
                 )
               )
             )
           ),
-          ),
-          // 전량 스캔 시 이유 섹션 닫기
-          h('div',{style:{height:scanInput>=endScanModal.oc?0:undefined}}),
-          h('div',{style:{fontSize:12,marginBottom:16,padding:'8px 12px',borderRadius:8,
-            background:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#DCFCE7':'#FEF3C7',
-            color:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#166534':'#92400E',fontWeight:600}},
-            scanInput>=endScanModal.oc
-              ? 'All '+endScanModal.oc+' items scanned ✅'
-              : 'Skip reason total: '+Object.values(skipQtys).reduce((a,b)=>a+b,0)+' / '+(endScanModal.oc-scanInput)+
-                (Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput)?' ✅':' (please match unscanned count)')
+          h('div',{style:{fontSize:12,marginBottom:16,padding:'8px 12px',borderRadius:8,background:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#DCFCE7':'#FEF3C7',color:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#166534':'#92400E',fontWeight:600}},
+            scanInput>=endScanModal.oc?'All '+endScanModal.oc+' items scanned ✅':'Skip reason total: '+Object.values(skipQtys).reduce((a,b)=>a+b,0)+' / '+(endScanModal.oc-scanInput)+(Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput)?' ✅':' (please match unscanned count)')
           ),
           h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
-            h('button',{onClick:()=>{setEndScanModal(null);setScanInput(0);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},
-              style:{padding:'9px 20px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
+            h('button',{onClick:()=>{setEndScanModal(null);setScanInput(0);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});},style:{padding:'9px 20px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
             h('button',{onClick:()=>{
-                const missed=endScanModal.oc-scanInput;
-                const totalQty=Object.values(skipQtys).reduce((a,b)=>a+b,0);
-                if(missed>0&&totalQty!==missed){
-                  alert('Skip reason total ('+totalQty+') must match unscanned count ('+missed+'). Please adjust.');
-                  return;
-                }
-                const now=ts();
-                const parts=Object.entries(skipQtys).filter(([,v])=>v>0).map(([k,v])=>k+(v>1?' x'+v:''));
-                const skipReason=parts.join(', ');
-                const ch={scanEnd:now,scanned:scanInput};
-                if(skipReason)ch.skipReason=skipReason;
-                upd(endScanModal.id,ch);
-                setEndScanModal(null);
-                setScanInput(0);
-                setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
-              },
-              style:{padding:'9px 20px',borderRadius:8,border:'none',
-                background:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#16A34A':'#9CA3AF',
-                color:'#fff',cursor:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'pointer':'not-allowed',fontWeight:700}},'Confirm')
+              const missed=endScanModal.oc-scanInput;const totalQty=Object.values(skipQtys).reduce((a,b)=>a+b,0);
+              if(missed>0&&totalQty!==missed){alert('Skip reason total ('+totalQty+') must match unscanned count ('+missed+'). Please adjust.');return;}
+              const now=ts();const parts=Object.entries(skipQtys).filter(([,v])=>v>0).map(([k,v])=>k+(v>1?' x'+v:''));
+              const skipReason=parts.join(', ');const ch={scanEnd:now,scanned:scanInput};if(skipReason)ch.skipReason=skipReason;
+              upd(endScanModal.id,ch);setEndScanModal(null);setScanInput(0);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
+            },style:{padding:'9px 20px',borderRadius:8,border:'none',background:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#16A34A':'#9CA3AF',color:'#fff',cursor:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'pointer':'not-allowed',fontWeight:700}},'Confirm')
           )
         )
       ),
       editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:delItem,onCancel:()=>setEL(null)})
     );
   }catch(renderErr){
-    console.error('Render error:', renderErr);
+    console.error('Render error:',renderErr);
     return h('div',{style:{padding:'30px',fontFamily:'monospace',color:'#c00',background:'#fff'}},
-      h('h2',null,'Render Error'),
-      h('pre',null,renderErr.message),
-      h('p',null,'Please check browser console (F12) for details.'),
+      h('h2',null,'Render Error'),h('pre',null,renderErr.message),
       h('button',{onClick:()=>{setEL(null);setTab('records');},style:{marginTop:'10px',padding:'8px 16px',cursor:'pointer'}},'Reset to Records')
     );
   }
