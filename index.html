@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v22</title>
+<title>SK B2C Fulfillment v23</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -227,6 +227,10 @@ const CA={
   'Seeding':{bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070',ac:'#E89820'},
   'Reshipment':{bg:'#EEEEED',tx:'#383836',br:'#C0C0B8',ac:'#808078'},
 };
+// ★ v22 핵심 수정: Official 1/2 → Official 통합 이전에 저장된 기존 데이터(구 카테고리명) 호환.
+//   구 카테고리명이 남아있어도 화면이 죽지 않도록 여기서 정규화 + CA 조회는 항상 이 함수로.
+const normalizeCat=c=>(c==='Official 1'||c==='Official 2')?'Official':c;
+const catStyle=c=>CA[normalizeCat(c)]||{bg:'#EEE',tx:'#666',br:'#CCC',ac:'#999'};
 const PKC_PRESETS=[
   {bg:'#E6F1FB',tx:'#1254A0',label:'Blue'},{bg:'#EDECFE',tx:'#4038B5',label:'Purple'},
   {bg:'#E0F5D0',tx:'#1A6A08',label:'Green'},{bg:'#FFF0DC',tx:'#7A3A00',label:'Orange'},
@@ -334,7 +338,7 @@ const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
           id:remote.id||('gs_'+remote.pgNo+'_'+rDate),
           date:rDate,
           pgNo:remote.pgNo,
-          category:remote.category,
+          category:normalizeCat(remote.category),
           sku:remote.sku||0,
           pages:remote.pages||0,
           orderCount:remote.orderCount||0,
@@ -718,7 +722,7 @@ function App(){
   const [tab,setTab]=useState('records');
   const [isMgr,setMgr]=useState(false);
   const [cat,setCat]=useState('All');
-  const [lists,setLists]=useState(()=>lsGet(LS.LISTS,[]));
+  const [lists,setLists]=useState(()=>lsGet(LS.LISTS,[]).map(l=>({...l,category:normalizeCat(l.category)})));
   const [log,setLog]=useState(()=>lsGet(LS.LOG,[]));
   const [wh,setWH]=useState(()=>localStorage.getItem(LS.WH)||'');
   const [pksStr,setPKS]=useState(()=>localStorage.getItem(LS.PKS)||DEF_PKS);
@@ -1306,7 +1310,7 @@ function App(){
         ),
         h('tbody',null,
           filtL.map((l,i)=>{
-            const st=getSt(l);const si=ST.indexOf(st);const cs=CA[l.category];const manual=isM(l.category);
+            const st=getSt(l);const si=ST.indexOf(st);const cs=catStyle(l.category);const manual=isM(l.category);
             const isPrev=l.date!==today();
             return h('tr',{key:l.id,className:D,style:isPrev?{background:isMgr?'rgba(245,158,11,0.06)':'rgba(245,158,11,0.04)'}:{}},
               h('td',{className:D+' c',style:{color:isMgr?'#5555AA':'#CCC',fontWeight:600,fontSize:13,width:38}},i+1),
@@ -1364,7 +1368,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v22'),
+    h('span',{className:'app-ver '+D},'v23'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1504,10 +1508,10 @@ function App(){
             h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.25rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
               h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'Barcode Input'),
               h('input',{ref:scanRef,value:scanIn,onChange:e=>setSI(e.target.value),onKeyDown:handleScan,placeholder:'Scan packing slip or type Order# then Enter…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid '+(scanErr?'#E24B4A':'#5B5EF4'),borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}}),
-              lastScan&&h('div',{style:{marginTop:12,padding:'12px 14px',borderRadius:10,background:lastScan.ok?CA[lastScan.cat].bg:'#FFF0DC',border:'1px solid '+(lastScan.ok?CA[lastScan.cat].br:'#F5C070')}},
+              lastScan&&h('div',{style:{marginTop:12,padding:'12px 14px',borderRadius:10,background:lastScan.ok?catStyle(lastScan.cat).bg:'#FFF0DC',border:'1px solid '+(lastScan.ok?catStyle(lastScan.cat).br:'#F5C070')}},
                 h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
                   h('div',null,
-                    h('div',{style:{fontSize:13,fontWeight:700,color:lastScan.ok?CA[lastScan.cat].tx:'#7A3A00'}},lastScan.ok?'✓ '+lastScan.cat+' — '+lastScan.store:'⚠ '+lastScan.cat),
+                    h('div',{style:{fontSize:13,fontWeight:700,color:lastScan.ok?catStyle(lastScan.cat).tx:'#7A3A00'}},lastScan.ok?'✓ '+lastScan.cat+' — '+lastScan.store:'⚠ '+lastScan.cat),
                     h('div',{className:'mono',style:{fontSize:11,marginTop:3,color:'#666'}},lastScan.barcode)
                   ),
                   lastScan.pgNo&&h('div',{style:{textAlign:'right',marginLeft:14}},
