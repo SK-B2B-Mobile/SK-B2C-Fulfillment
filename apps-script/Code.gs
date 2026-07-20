@@ -921,6 +921,8 @@ function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 function today_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+// ★ v22 핵심 수정: Official 1/2 → Official 통합 이전에 시트에 이미 저장된 구 카테고리명 호환
+function normalizeCat_(c) { c = String(c||''); return (c==='Official 1'||c==='Official 2') ? 'Official' : c; }
 function nowLocal_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'); }
 function fmtTime_(iso) {
   if(!iso) return '';
@@ -1122,7 +1124,7 @@ function getLists_(date) {
     const rowDate=toDS(r[0]);
     return String(r[13])!=='Deleted'&&(!date||rowDate===date);
   }).map(r=>({
-      date:toDS(r[0]),pgNo:String(r[1]),category:String(r[2]),
+      date:toDS(r[0]),pgNo:String(r[1]),category:normalizeCat_(r[2]),
       sku:Number(r[3])||0,orderCount:Number(r[4])||0,scanned:Number(r[5])||0,
       worker:String(r[6]),pickStart:String(r[7]),pickEnd:String(r[8]),
       scanStart:String(r[9]),scanEnd:String(r[10]),pickDur:String(r[11]),
