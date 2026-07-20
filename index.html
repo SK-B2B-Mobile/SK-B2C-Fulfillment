@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v31</title>
+<title>SK B2C Fulfillment v33</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -199,6 +199,7 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 @media(max-width:599px){
   .stats-bar{grid-template-columns:repeat(2,1fr)}.nav-sep{display:none}.app-ver{display:none}.tbl{min-width:600px}
 }
+@keyframes ttToastBar{from{transform:scaleX(1);}to{transform:scaleX(0);}}
 </style>
 </head>
 <body>
@@ -790,6 +791,14 @@ function App(){
   const [ttWorker,setTtWorker]=useState(()=>localStorage.getItem('b2c18_ttworker')||'');
   useEffect(()=>localStorage.setItem('b2c18_ttworker',ttWorker),[ttWorker]);
   const [ttAlert,setTtAlert]=useState(null);            // {msg,type}
+  const [ttToast,setTtToast]=useState(null);             // {msg,sub} — 하단 토스트 (완료 시)
+  const ttToastTimer=useRef(null);
+  const [ttSearchQ,setTtSearchQ]=useState('');            // 완료 내역 검색
+  const [ttPageSize,setTtPageSize]=useState(10);
+  const [ttPage,setTtPage]=useState(0);
+  const [ttManualFor,setTtManualFor]=useState(null); // 수동 확인 대상 라인 {sellerSku,productName,remain}
+  const [ttManualQty,setTtManualQty]=useState(1);
+  const [ttManualReason,setTtManualReason]=useState('');
   const [ttBigAlert,setTtBigAlert]=useState(null);       // {icon,msg,sub,type}
   const ttLabelRef=useRef(null);const ttItemRef=useRef(null);const ttBigAlertTimer=useRef(null);
   const scanRef=useRef(null);
@@ -959,6 +968,11 @@ function App(){
     setTtBigAlert({icon,msg,sub,type});
     ttBigAlertTimer.current=setTimeout(()=>setTtBigAlert(null),duration||1800);
   };
+  const ttShowToast=(msg,sub,duration)=>{
+    clearTimeout(ttToastTimer.current);
+    setTtToast({msg,sub,key:Date.now()});
+    ttToastTimer.current=setTimeout(()=>setTtToast(null),duration||3800);
+  };
 
   const ttUploadLabelFiles=async(fileList)=>{
     if(!wh){setTtUploadMsg('⚠ Google Sheets URL을 먼저 설정하세요 (Settings)');return;}
@@ -1021,6 +1035,39 @@ function App(){
   };
 
   /* ── 2단계: 상품 바코드 스캔 ── */
+  /* ── 수동 확인 (바코드 불일치 등, 제품은 맞지만 등록된 바코드와 다를 때) ── */
+  const openManualVerify=line=>{
+    const remain=Math.max(0,line.required-line.scanned);
+    setTtManualFor(line);setTtManualQty(remain>0?remain:1);setTtManualReason('');
+  };
+  const submitManualVerify=()=>{
+    if(!ttManualFor||!ttManualReason.trim()||!(+ttManualQty>0)||!ttCurrentOrder)return;
+    const qty=Math.min(+ttManualQty,ttManualFor.required-ttManualFor.scanned);
+    if(qty<=0){setTtManualFor(null);return;}
+    const lineIdx=ttCurrentOrder.lines.findIndex(l=>l.sellerSku===ttManualFor.sellerSku);
+    if(lineIdx<0)return;
+    const updated={...ttCurrentOrder,lines:ttCurrentOrder.lines.map((l,i)=>i===lineIdx?{...l,scanned:l.scanned+qty,manualQty:(l.manualQty||0)+qty}:l)};
+    setTtCurrentOrder(updated);
+    ttLogManualVerify(updated.orderId,ttManualFor.sellerSku,ttManualFor.productName,qty,ttManualReason.trim());
+    const lineScanned=Object.fromEntries(updated.lines.map(l=>[l.sellerSku,l.scanned]));
+    const allDone=updated.lines.every(l=>l.scanned>=l.required);
+    ttPlayTick();
+    setTtAlert({msg:'⚠️ 수동 확인 처리됨: '+ttManualFor.productName+' × '+qty,type:'warn'});
+    if(allDone){
+      ttPlayComplete();ttShowToast('✅ 주문 #'+updated.orderId+' 검수 완료',updated.lines.length+'개 제품 스캔됨 (수동 확인 포함)',3800);
+      syncDataAwait(wh,'ttScanUpdate',{orderId:updated.orderId,lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),status:'completed',worker:ttWorker});
+      setTtProgress(p=>({...p,[updated.orderId]:{status:'completed',lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),completedBy:ttWorker,completedTime:ts()}}));
+      setTimeout(()=>{setTtCurrentOrder(null);if(ttLabelRef.current)ttLabelRef.current.focus();},900);
+    }else{
+      syncDataAwait(wh,'ttScanUpdate',{orderId:updated.orderId,lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),status:'in_progress',worker:ttWorker});
+      setTtProgress(p=>({...p,[updated.orderId]:{status:'in_progress',lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds)}}));
+    }
+    setTtManualFor(null);setTtManualReason('');
+  };
+  const ttLogManualVerify=(orderId,sellerSku,productName,qty,reason)=>{
+    syncDataAwait(wh,'ttManualVerify',{orderId,sellerSku,productName,qty,worker:ttWorker,reason});
+  };
+
   const ttHandleItemScan=e=>{
     if(e.key!=='Enter')return;const val=(ttItemIn||'').trim();setTtItemIn('');if(!val||!ttCurrentOrder)return;
     const info=ttNormalizeBarcode(val);
@@ -1037,11 +1084,11 @@ function App(){
     const lineScanned=Object.fromEntries(updated.lines.map(l=>[l.sellerSku,l.scanned]));
     const allDone=updated.lines.every(l=>l.scanned>=l.required);
     if(allDone){
-      ttPlayComplete();ttShowBigAlert('✅','ORDER COMPLETE','#'+updated.orderId,'ok',1400);
+      ttPlayComplete();ttShowToast('✅ 주문 #'+updated.orderId+' 검수 완료',updated.lines.length+'개 제품 스캔됨',3800);
       setTtAlert({msg:'✅ 주문 #'+updated.orderId+' 검수 완료!',type:'ok'});
       syncDataAwait(wh,'ttScanUpdate',{orderId:updated.orderId,lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),status:'completed',worker:ttWorker});
-      setTtProgress(p=>({...p,[updated.orderId]:{status:'completed',lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),completedBy:ttWorker,completedTime:fmtT(ts())}}));
-      setTimeout(()=>{setTtCurrentOrder(null);if(ttLabelRef.current)ttLabelRef.current.focus();},1400);
+      setTtProgress(p=>({...p,[updated.orderId]:{status:'completed',lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),completedBy:ttWorker,completedTime:ts()}}));
+      setTimeout(()=>{setTtCurrentOrder(null);if(ttLabelRef.current)ttLabelRef.current.focus();},900);
     }else{
       ttPlayTick();
       setTtAlert({msg:'✅ '+matchLine.productName+' — '+matchLine.scanned+'/'+matchLine.required,type:'ok'});
@@ -1444,7 +1491,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v31'),
+    h('span',{className:'app-ver '+D},'v33'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1540,10 +1587,11 @@ function App(){
               h('th',{style:{textAlign:'left',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'Product'),
               h('th',{style:{textAlign:'left',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'SKU'),
               h('th',{style:{textAlign:'center',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'Qty'),
-              h('th',{style:{textAlign:'center',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'Status')
+              h('th',{style:{textAlign:'center',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'Status'),
+              h('th',{style:{textAlign:'center',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'')
             )),
             h('tbody',null,ttCurrentOrder.lines.map((l,i)=>h('tr',{key:i,style:{borderBottom:'1px solid #EEE'}},
-              h('td',{style:{padding:'8px 6px',maxWidth:220}},l.productName),
+              h('td',{style:{padding:'8px 6px',maxWidth:220}},l.productName,l.manualQty>0&&h('span',{style:{marginLeft:6,fontSize:9,fontWeight:700,color:'#B45309',background:'#FFF0DC',padding:'1px 6px',borderRadius:4}},'⚠ manual×'+l.manualQty)),
               h('td',{className:'mono',style:{padding:'8px 6px',fontSize:11,color:'#555'}},l.sellerSku),
               h('td',{style:{padding:'8px 6px',textAlign:'center',fontWeight:700}},l.scanned+'/'+l.required),
               h('td',{style:{padding:'8px 6px',textAlign:'center'}},
@@ -1551,12 +1599,64 @@ function App(){
                   background:l.scanned>=l.required?'#DFF4E4':l.scanned>0?'#FFF1CC':'#EEE',
                   color:l.scanned>=l.required?'#1E6B3A':l.scanned>0?'#8A5C00':'#777'}},
                   l.scanned>=l.required?'✓ Done':l.scanned>0?'Partial':'Pending')
+              ),
+              h('td',{style:{padding:'8px 6px',textAlign:'center'}},
+                l.scanned<l.required&&h('button',{onClick:()=>openManualVerify(l),title:'바코드가 등록된 것과 다르지만 제품은 맞을 때',style:{fontSize:10,padding:'4px 8px',borderRadius:6,border:'1px solid #D97706',background:'#FFF6E8',color:'#B45309',cursor:'pointer',fontWeight:600}},'⚠ Manual')
               )
             )))
           ),
           h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'2. 상품 바코드 스캔'),
           h('input',{ref:ttItemRef,value:ttItemIn,onChange:e=>setTtItemIn(e.target.value),onKeyDown:ttHandleItemScan,autoFocus:true,placeholder:'상품 바코드 스캔…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid #D97706',borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}})
         )
+      ),
+      /* ── 완료 내역: 검색 + 페이지네이션 ── */
+      (()=>{
+        const completedList=Object.entries(ttProgress)
+          .filter(([,p])=>p.status==='completed')
+          .map(([orderId,p])=>({orderId,...p}))
+          .sort((a,b)=>String(b.completedTime||'').localeCompare(String(a.completedTime||'')));
+        const q=ttSearchQ.trim();
+        const filtered=q?completedList.filter(o=>o.orderId.includes(q)):completedList;
+        const totalPages=Math.max(1,Math.ceil(filtered.length/ttPageSize));
+        const curPage=Math.min(ttPage,totalPages-1);
+        const pageItems=filtered.slice(curPage*ttPageSize,curPage*ttPageSize+ttPageSize);
+        return h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.1rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginTop:16}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}},
+            h('div',{style:{fontSize:12,fontWeight:700,color:'#333'}},'✅ 완료 내역 ('+completedList.length+'건)'),
+            h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+              h('span',{style:{fontSize:11,color:'#888'}},'페이지당'),
+              h('select',{value:ttPageSize,onChange:e=>{setTtPageSize(+e.target.value);setTtPage(0);},style:{padding:'4px 8px',borderRadius:6,border:'1px solid #DDD',fontSize:12,fontFamily:'inherit'}},
+                [10,20,30,50].map(n=>h('option',{key:n,value:n},n+'개'))
+              )
+            )
+          ),
+          h('input',{value:ttSearchQ,onChange:e=>{setTtSearchQ(e.target.value);setTtPage(0);},placeholder:'🔍 주문번호로 검색…',style:{display:'block',width:'100%',fontSize:13,padding:'10px 12px',background:'#F6F5F1',border:'1.5px solid #D8D7D2',borderRadius:8,outline:'none',marginBottom:10,fontFamily:'inherit'}}),
+          filtered.length===0
+            ? h('div',{style:{fontSize:12,color:'#999',fontStyle:'italic',padding:'8px 0',textAlign:'center'}},q?'검색 결과 없음':'아직 완료된 주문이 없습니다')
+            : h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+                pageItems.map(o=>h('div',{key:o.orderId,style:{display:'flex',alignItems:'center',gap:10,background:'#E3F6E8',border:'1px solid #2E8B57',borderRadius:8,padding:'8px 12px',fontSize:12}},
+                  h('span',{style:{fontWeight:700,color:'#1E6B3A'}},'✅ #'+o.orderId),
+                  h('span',{style:{color:'#5c8f6f',marginLeft:'auto'}},o.completedBy||''),
+                  h('span',{className:'mono',style:{color:'#888',fontSize:11}},o.completedTime?fmtS(o.completedTime):'')
+                ))
+              ),
+          totalPages>1&&h('div',{style:{display:'flex',justifyContent:'center',alignItems:'center',gap:10,marginTop:12}},
+            h('button',{disabled:curPage===0,onClick:()=>setTtPage(p=>Math.max(0,p-1)),style:{padding:'5px 12px',borderRadius:6,border:'1px solid #DDD',background:curPage===0?'#F5F5F5':'#fff',color:curPage===0?'#CCC':'#333',cursor:curPage===0?'default':'pointer',fontSize:12}},'← Prev'),
+            h('span',{style:{fontSize:12,color:'#888'}},(curPage+1)+' / '+totalPages),
+            h('button',{disabled:curPage>=totalPages-1,onClick:()=>setTtPage(p=>Math.min(totalPages-1,p+1)),style:{padding:'5px 12px',borderRadius:6,border:'1px solid #DDD',background:curPage>=totalPages-1?'#F5F5F5':'#fff',color:curPage>=totalPages-1?'#CCC':'#333',cursor:curPage>=totalPages-1?'default':'pointer',fontSize:12}},'Next →')
+          )
+        );
+      })(),
+      /* ── 완료 토스트 (하단, 화면 안 가림) ── */
+      ttToast&&h('div',{key:ttToast.key,style:{position:'fixed',left:16,right:16,bottom:16,maxWidth:568,margin:'0 auto',background:'#fff',border:'2px solid #2E8B57',borderRadius:12,padding:'14px 16px',boxShadow:'0 6px 20px rgba(0,0,0,.18)',zIndex:500}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+          h('span',{style:{fontSize:24}},'✅'),
+          h('div',{style:{flex:1}},
+            h('div',{style:{fontSize:14,fontWeight:700,color:'#1E6B3A'}},ttToast.msg),
+            ttToast.sub&&h('div',{style:{fontSize:11,color:'#888'}},ttToast.sub)
+          )
+        ),
+        h('div',{style:{height:3,background:'#2E8B57',borderRadius:2,marginTop:10,animation:'ttToastBar 3.8s linear forwards',transformOrigin:'left'}})
       )
     );
   };
@@ -1943,6 +2043,31 @@ function App(){
         )
       ),
       editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:delItem,onCancel:()=>setEL(null)}),
+      ttManualFor&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget)setTtManualFor(null);}},
+        h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:400,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
+          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2,color:'#B45309'}},'⚠️ 수동 확인 (Manual Verify)'),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:16,lineHeight:1.5}},ttManualFor.productName,h('br',null),h('span',{className:'mono'},ttManualFor.sellerSku)),
+          h('div',{style:{padding:'10px 14px',background:'#FFF6E8',border:'1px solid #F5C070',borderRadius:8,fontSize:12,color:'#7A3A00',marginBottom:16,lineHeight:1.6}},
+            '제품은 맞지만 등록된 바코드와 다를 때만 사용하세요 (예: 제조사 바코드 불일치). 이 처리는 사유와 함께 기록되어 나중에 확인 가능합니다.'
+          ),
+          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'수동 확인할 수량'),
+          h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:16}},
+            h('button',{onClick:()=>setTtManualQty(v=>Math.max(1,(+v||1)-1)),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'−'),
+            h('input',{type:'number',min:1,max:ttManualFor.required-ttManualFor.scanned,value:ttManualQty,onChange:e=>setTtManualQty(e.target.value),style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'6px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}}),
+            h('button',{onClick:()=>setTtManualQty(v=>Math.min(ttManualFor.required-ttManualFor.scanned,(+v||0)+1)),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'+'),
+            h('span',{style:{fontSize:12,color:'#888'}},'/ '+(ttManualFor.required-ttManualFor.scanned)+'개 남음')
+          ),
+          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'사유 (필수)'),
+          h('div',{style:{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}},
+            ['제조사 바코드 불일치','라벨 훼손/인쇄 흐림','기타'].map(r=>h('button',{key:r,onClick:()=>setTtManualReason(r),style:{padding:'5px 10px',borderRadius:100,border:'1px solid #DDD',background:ttManualReason===r?'#FFF0DC':'#fff',color:'#7A3A00',fontSize:11,cursor:'pointer'}},r))
+          ),
+          h('textarea',{value:ttManualReason,onChange:e=>setTtManualReason(e.target.value),placeholder:'구체적인 사유를 입력하세요…',style:{width:'100%',minHeight:60,padding:10,border:'1.5px solid #DDD',borderRadius:8,fontSize:13,fontFamily:'inherit',resize:'vertical',marginBottom:20,outline:'none'}}),
+          h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
+            h('button',{onClick:()=>setTtManualFor(null),style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
+            h('button',{onClick:submitManualVerify,disabled:!ttManualReason.trim()||!(+ttManualQty>0),style:{padding:'9px 22px',borderRadius:8,border:'none',background:(ttManualReason.trim()&&+ttManualQty>0)?'#D97706':'#CCC',color:'#fff',cursor:(ttManualReason.trim()&&+ttManualQty>0)?'pointer':'not-allowed',fontWeight:700}},'⚠️ 수동 확인 처리')
+          )
+        )
+      ),
       (addPickerFor||editAssign)&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget){setAddPickerFor(null);setEditAssign(null);}}},
         h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:380,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
           h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2}},editAssign?'✎ Edit Picker':'👷 Add Picker'),
