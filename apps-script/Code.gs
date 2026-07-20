@@ -1,5 +1,11 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v41
+ * SK B2C Fulfillment — Google Apps Script v42
+ * v42 핵심 수정:
+ *   - getOrCreateSheet_ 동시성 버그 수정: 여러 요청이 동시에 몰릴 때
+ *     같은 시트를 중복 생성해서 "이름_conflict12345" 같은 시트가
+ *     생기던 문제 → LockService로 직렬화 + double-checked locking
+ *   - PickAssign 시트에 PageStart/PageEnd 컬럼 추가 (페이지 구간 자동 배정)
+ *   - 기존 PickAssign 시트도 자동 마이그레이션(컬럼 없으면 추가)
  * v41 핵심 수정:
  *   - ShipStation Webhook(SHIP_NOTIFY) 자동 등록 기능 추가
  *     → Settings에서 버튼 클릭 한 번으로 이 웹앱 URL을 ShipStation에
@@ -356,6 +362,12 @@ function subscribeSSWebhook_(apiKey, apiSecret) {
   const secret = apiSecret || PROP.getProperty('SS_API_SECRET') || '';
   if (!key || !secret) return { ok:false, error:'No API credentials. Please save them first.' };
 
+  // ★ 버그 수정: 웹훅이 실제로 ShipStation에서 날아올 때 handleSSWebhook_가
+  //   PROP(서버 저장소)에서 키를 읽어서 인증하는데, 지금까지는 프런트가 매 요청마다
+  //   키를 같이 보내기만 하고 서버에 "저장"은 안 하고 있었음 → 웹훅이 와도
+  //   "No SS credentials" 에러로 조용히 실패하는 상태였음. 여기서 등록과 동시에 저장.
+  saveSSCredentials_(key, secret);
+
   const targetUrl = ScriptApp.getService().getUrl();
   if (!targetUrl) return { ok:false, error:'웹앱 URL을 확인할 수 없습니다. 배포(Deploy) 상태를 확인하세요.' };
 
@@ -409,6 +421,7 @@ function testSSConnection_(apiKey, apiSecret) {
     const code = resp.getResponseCode();
     if (code !== 200) return { ok:false, error:'HTTP '+code+': '+resp.getContentText().slice(0,200) };
     const stores = JSON.parse(resp.getContentText());
+    saveSSCredentials_(key, secret); // ★ 연결 성공 = 유효한 키 → 웹훅 인증용으로도 저장
     return { ok:true, storeCount: stores.length, stores: stores.map(s=>({id:s.storeId, name:s.storeName})) };
   } catch(e) {
     return { ok:false, error: e.message };
@@ -631,7 +644,15 @@ function logSSFetch_(date, summary) {
 ════════════════════════════════════════ */
 const SHEET_PICK_ASSIGN = 'PickAssign';
 function pickAssignSheet_(){
-  return getOrCreateSheet_(SHEET_PICK_ASSIGN, ['ID','PgNo','Date','Category','Worker','Pages','PickStart','PickEnd','Duration','CreatedAt','UpdatedAt']);
+  const sh = getOrCreateSheet_(SHEET_PICK_ASSIGN, ['ID','PgNo','Date','Category','Worker','Pages','PickStart','PickEnd','Duration','CreatedAt','UpdatedAt','PageStart','PageEnd']);
+  // ★ v42: 이미 만들어진(구버전) PickAssign 시트에 PageStart/PageEnd 컬럼이 없으면 자동 추가
+  const lastCol = sh.getLastColumn();
+  if (lastCol < 13) {
+    const headers = sh.getRange(1,1,1,lastCol).getValues()[0];
+    if (!headers.includes('PageStart')) sh.getRange(1, lastCol+1).setValue('PageStart');
+    if (!headers.includes('PageEnd'))   sh.getRange(1, lastCol+2).setValue('PageEnd');
+  }
+  return sh;
 }
 
 function upsertPickAssign_(a){
@@ -652,7 +673,8 @@ function upsertPickAssign_(a){
       id, String(a.pgNo), a.date||today_(), String(a.category||''),
       String(a.worker), Number(a.pages)||0,
       fmtTime_(a.pickStart), fmtTime_(a.pickEnd),
-      dur_(a.pickStart,a.pickEnd,a.date), createdAt, now
+      dur_(a.pickStart,a.pickEnd,a.date), createdAt, now,
+      Number(a.pageStart)||0, Number(a.pageEnd)||0
     ];
     if(targetRow) sh.getRange(targetRow,1,1,row.length).setValues([row]);
     else sh.appendRow(row);
@@ -665,12 +687,14 @@ function upsertPickAssign_(a){
 function getPickAssigns_(date){
   const sh=pickAssignSheet_(); const lastRow=sh.getLastRow();
   if(lastRow<2) return { ok:true, assigns:[] };
-  const data=sh.getRange(2,1,lastRow-1,11).getValues();
+  const lastCol=Math.max(sh.getLastColumn(),13);
+  const data=sh.getRange(2,1,lastRow-1,lastCol).getValues();
   const toDS=v=>{ if(!v) return ''; try{ const d=new Date(v); if(!isNaN(d.getTime())) return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd'); }catch(e){} return String(v).slice(0,10); };
   const assigns=data.filter(r=>!date||toDS(r[2])===date).map(r=>({
     id:String(r[0]), pgNo:String(r[1]), date:toDS(r[2]), category:String(r[3]),
     worker:String(r[4]), pages:Number(r[5])||0,
-    pickStart:String(r[6]||''), pickEnd:String(r[7]||''), duration:String(r[8]||'')
+    pickStart:String(r[6]||''), pickEnd:String(r[7]||''), duration:String(r[8]||''),
+    pageStart:Number(r[11])||0, pageEnd:Number(r[12])||0
   }));
   return { ok:true, assigns, ver:getVersion_() };
 }
@@ -859,13 +883,24 @@ function ss_() { return SpreadsheetApp.openById(SS_ID); }
 function getOrCreateSheet_(name, headers) {
   const ss = ss_();
   let sh = ss.getSheetByName(name);
-  if (!sh) {
-    sh = ss.insertSheet(name);
-    sh.appendRow(headers);
-    sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#1a1a3e').setFontColor('#E8E6FF');
-    sh.setFrozenRows(1);
+  if (sh) return sh;
+  // ★ v42 버그 수정: 동시에 여러 요청이 몰리면(폴링 여러 개가 동시 실행) 시트가 없는 걸
+  //   각자 확인하고 동시에 insertSheet를 호출해서 "이름_conflict12345" 같은 중복 시트가
+  //   생기는 문제가 있었음. 락으로 직렬화 + 락 안에서 한 번 더 확인(double-checked locking).
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      sh.appendRow(headers);
+      sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#1a1a3e').setFontColor('#E8E6FF');
+      sh.setFrozenRows(1);
+    }
+    return sh;
+  } finally {
+    lock.releaseLock();
   }
-  return sh;
 }
 
 function listsSheet_() {
