@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v26</title>
+<title>SK B2C Fulfillment v27</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -232,12 +232,13 @@ const CA={
 const normalizeCat=c=>(c==='Official 1'||c==='Official 2')?'Official':c;
 const catStyle=c=>CA[normalizeCat(c)]||{bg:'#EEE',tx:'#666',br:'#CCC',ac:'#999'};
 const PKC_PRESETS=[
-  {bg:'#E6F1FB',tx:'#1254A0',label:'Blue'},{bg:'#EDECFE',tx:'#4038B5',label:'Purple'},
-  {bg:'#E0F5D0',tx:'#1A6A08',label:'Green'},{bg:'#FFF0DC',tx:'#7A3A00',label:'Orange'},
-  {bg:'#FBE8F0',tx:'#8A1A5A',label:'Pink'},{bg:'#EEEEED',tx:'#484846',label:'Gray'},
-  {bg:'#E8F5D0',tx:'#2A6A0A',label:'Lime'},{bg:'#FEE8CC',tx:'#7A3A00',label:'Peach'},
-  {bg:'#D0F0FF',tx:'#005A8A',label:'Sky'},{bg:'#FFD6D6',tx:'#8A0000',label:'Red'},
-  {bg:'#D6FFE8',tx:'#006633',label:'Mint'},{bg:'#FFF5CC',tx:'#7A6000',label:'Yellow'},
+  {bg:'#DCEAFE',tx:'#1D4ED8',label:'Blue'},   {bg:'#FFDADA',tx:'#B91C1C',label:'Red'},
+  {bg:'#DCF7DC',tx:'#15803D',label:'Green'},  {bg:'#EDE0FF',tx:'#6D28D9',label:'Purple'},
+  {bg:'#FFE8CC',tx:'#B45309',label:'Orange'}, {bg:'#D0F5F0',tx:'#0F766E',label:'Teal'},
+  {bg:'#FCE0EF',tx:'#BE185D',label:'Pink'},   {bg:'#FEF3C0',tx:'#A16207',label:'Yellow'},
+  {bg:'#E0E4FF',tx:'#4338CA',label:'Indigo'}, {bg:'#CFF4FF',tx:'#0369A1',label:'Cyan'},
+  {bg:'#EFE0D0',tx:'#78350F',label:'Brown'},  {bg:'#FBE0FF',tx:'#A21CAF',label:'Magenta'},
+  {bg:'#ECF9C8',tx:'#4D7C0F',label:'Lime'},   {bg:'#E5E7EB',tx:'#374151',label:'Gray'},
 ];
 const ST=['pending','picking','picked','scanning','complete'];
 const STL=['Pending','Picking','Pick Done','Scanning','Complete'];
@@ -249,6 +250,7 @@ const ts=()=>new Date().toISOString();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+const fmtDurMin=ms=>{if(!ms||ms<0)return'0m';const mins=Math.round(ms/60000);if(mins<60)return mins+'m';return Math.floor(mins/60)+'h '+(mins%60)+'m';};
 const dur=(s,e,listDate)=>{
   if(!s)return'—';
   const parseTime=(val,baseDate)=>{
@@ -1366,14 +1368,26 @@ function App(){
                 h('div',{style:{display:'flex',flexWrap:'wrap',gap:4,alignItems:'center'}},
                   assignsFor(l.pgNo).map(a=>{
                     const wc=pkC(a.worker);const done=!!a.pickEnd;
-                    const rangeStr=(a.pageStart&&a.pageEnd)?(a.pageStart+'~'+a.pageEnd+'p (총'+a.pages+'p)'):(a.pages+'p');
+                    const rangeStr=(a.pageStart&&a.pageEnd)?(a.pageStart+'~'+a.pageEnd+'p'):(a.pages+'p');
                     const timeStr=a.pickStart?(fmtS(a.pickStart)+(a.pickEnd?'~'+fmtS(a.pickEnd):'~ongoing')):'';
+                    const durMs=a.pickStart?((a.pickEnd?new Date(a.pickEnd):new Date())-new Date(a.pickStart)):0;
+                    const durStr=a.pickStart?fmtDurMin(durMs):'';
                     return h('div',{key:a.id,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:1}},
-                      h('div',{onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApPages(String(a.pages||1));}else if(!done){endPickAssignFn(a);}},title:timeStr,style:{display:'inline-flex',alignItems:'center',gap:4,padding:'3px 9px',borderRadius:100,fontSize:11,fontWeight:600,background:wc.bg,color:wc.tx,border:'1px solid '+wc.tx,cursor:'pointer',opacity:done?0.75:1}},
-                        a.worker,h('span',{style:{opacity:.8}},rangeStr),done?'✓':'▶',
-                        isMgr&&h('span',{onClick:e=>{e.stopPropagation();deleteAssignFn(a);},style:{marginLeft:2,opacity:.6,fontSize:10}},'✕')
+                      h('div',{
+                        onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApPages(String(a.pages||1));}else if(!done){endPickAssignFn(a);}},
+                        title:timeStr+(durStr?' · '+durStr:''),
+                        style:{display:'inline-flex',alignItems:'center',gap:4,padding:done?'4px 10px':'3px 9px',borderRadius:100,fontSize:11,fontWeight:700,
+                          background:done?wc.tx:wc.bg,color:done?'#fff':wc.tx,
+                          border:'2px solid '+wc.tx,cursor:'pointer',
+                          boxShadow:done?'0 1px 3px rgba(0,0,0,0.25)':'none'}
+                      },
+                        done&&h('span',{style:{fontSize:13}},'✅'),
+                        a.worker,h('span',{style:{opacity:.85}},rangeStr),
+                        !done&&h('span',{style:{color:wc.tx}},'▶'),
+                        isMgr&&h('span',{onClick:e=>{e.stopPropagation();deleteAssignFn(a);},style:{marginLeft:2,opacity:.7,fontSize:10}},'✕')
                       ),
-                      h('div',{style:{fontSize:9,color:isMgr?'#7070A0':'#999',fontFamily:'monospace'}},timeStr)
+                      h('div',{style:{fontSize:9,color:isMgr?'#7070A0':'#999',fontFamily:'monospace'}},timeStr),
+                      durStr&&h('div',{style:{fontSize:10,fontWeight:700,color:done?'#1A6A08':'#B45309'}},'⏱ '+durStr)
                     );
                   }),
                   !isMgr&&h('button',{onClick:()=>openAddPicker(l),style:{padding:'3px 10px',borderRadius:100,fontSize:11,fontWeight:600,border:'1px dashed #AAA',background:'transparent',color:'#888',cursor:'pointer'}},'+ Add')
@@ -1415,7 +1429,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v26'),
+    h('span',{className:'app-ver '+D},'v27'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
