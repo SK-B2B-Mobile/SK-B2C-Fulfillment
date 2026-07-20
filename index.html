@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v25</title>
+<title>SK B2C Fulfillment v26</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -868,12 +868,23 @@ function App(){
   },[wh]);
 
   /* ── 페이지 기준 작업자 배정 폴링 ── */
+  const deletedAssignIds=useRef(new Set());
   useEffect(()=>{
     if(!wh)return;
     const pollPA=async()=>{
       try{
         const r=await fetch(wh+'?op=pickAssigns&date='+today()).then(r=>r.json());
-        if(r&&r.ok)setPickAssigns(r.assigns||[]);
+        if(r&&r.ok){
+          const remote=(r.assigns||[]).filter(a=>!deletedAssignIds.current.has(a.id));
+          setPickAssigns(prev=>{
+            // ★ 버그 수정: 방금 로컬에서 추가한 배정이 서버에 아직 반영되기 전에
+            //   폴링이 통째로 덮어써서 "이름이 잠깐 사라졌다 다시 나타나는" 현상 발생.
+            //   → remote에 아직 없는 로컬 항목(반영 중)은 지우지 않고 그대로 유지.
+            const remoteIds=new Set(remote.map(a=>a.id));
+            const pendingLocal=prev.filter(a=>!remoteIds.has(a.id)&&!deletedAssignIds.current.has(a.id));
+            return [...remote,...pendingLocal];
+          });
+        }
       }catch(e){console.warn('pickAssigns poll error',e);}
     };
     pollPA();
@@ -1087,6 +1098,7 @@ function App(){
     setEditAssign(null);setApWorker('');setApPages('');
   };
   const deleteAssignFn=a=>{
+    deletedAssignIds.current.add(a.id);
     setPickAssigns(prev=>{const next=prev.filter(x=>x.id!==a.id);syncListWorkerSummary(a.pgNo,next);return next;});
     sync('deletePickAssign',{id:a.id});
   };
@@ -1355,7 +1367,7 @@ function App(){
                   assignsFor(l.pgNo).map(a=>{
                     const wc=pkC(a.worker);const done=!!a.pickEnd;
                     const rangeStr=(a.pageStart&&a.pageEnd)?(a.pageStart+'~'+a.pageEnd+'p (총'+a.pages+'p)'):(a.pages+'p');
-                    const timeStr=a.pickStart?(fmtS(a.pickStart)+(a.pickEnd?'~'+fmtS(a.pickEnd):'~진행중')):'';
+                    const timeStr=a.pickStart?(fmtS(a.pickStart)+(a.pickEnd?'~'+fmtS(a.pickEnd):'~ongoing')):'';
                     return h('div',{key:a.id,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:1}},
                       h('div',{onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApPages(String(a.pages||1));}else if(!done){endPickAssignFn(a);}},title:timeStr,style:{display:'inline-flex',alignItems:'center',gap:4,padding:'3px 9px',borderRadius:100,fontSize:11,fontWeight:600,background:wc.bg,color:wc.tx,border:'1px solid '+wc.tx,cursor:'pointer',opacity:done?0.75:1}},
                         a.worker,h('span',{style:{opacity:.8}},rangeStr),done?'✓':'▶',
@@ -1403,7 +1415,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v25'),
+    h('span',{className:'app-ver '+D},'v26'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
