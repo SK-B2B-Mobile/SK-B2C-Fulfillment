@@ -1,5 +1,15 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v39
+ * SK B2C Fulfillment — Google Apps Script v41
+ * v41 핵심 수정:
+ *   - ShipStation Webhook(SHIP_NOTIFY) 자동 등록 기능 추가
+ *     → Settings에서 버튼 클릭 한 번으로 이 웹앱 URL을 ShipStation에
+ *       webhook target으로 등록 → 배송 라벨 생성 시 자동 스캔 카운트 반영
+ *     → 이전에는 handleSSWebhook_ 수신 로직만 있고 등록 절차가 없어서
+ *       실제로는 작동하지 않고 있었음 (이번에 등록 기능 추가로 해결)
+ * v40 핵심 수정:
+ *   - PickAssign 시트 추가: 페이지 수 기준 다중 작업자 배정
+ *     (PG 1개 = 총 페이지 수, 여러 작업자가 나눠서 Start/End)
+ *   - PickLists 시트에 Pages 컬럼 추가
  * v39 핵심 수정:
  *   - TikTok CBT 서버 동기화 추가 (TT_Orders/TT_Progress/TT_SkuSingle/TT_SkuSet 시트)
  *     → 매니저가 매일 아침 레이블 PDF를 업로드하면 주문/트래킹/제품 정보가
@@ -54,16 +64,16 @@ const SS_API_BASE = 'https://ssapi.shipstation.com';
 
 // 채널 prefix → category 매핑 (B2C 앱과 동일)
 const PREFIX_MAP = [
-  {p:'US-HMS-',    cat:'Official 1',   store:'Heimish'},
-  {p:'GSU',        cat:'Official 1',   store:'Shein'},
-  {p:'200014',     cat:'Official 1',   store:'Walmart'},
-  {p:'TOCOBO-',    cat:'Official 1',   store:'Tocobo'},
-  {p:'SKINFOOD-',  cat:'Official 2',   store:'Skinfood'},
-  {p:'KAJA-',      cat:'Official 2',   store:'Kaja'},
-  {p:'IDC-',       cat:'Official 2',   store:'I Dew Care'},
-  {p:'jumiso-',    cat:'Official 2',   store:'Jumiso'},
-  {p:'Betheskin-', cat:'Official 2',   store:'Be The Skin'},
-  {p:'Hyaah-',     cat:'Official 2',   store:'Hyaah'},
+  {p:'US-HMS-',    cat:'Official',   store:'Heimish'},
+  {p:'GSU',        cat:'Official',   store:'Shein'},
+  {p:'200014',     cat:'Official',   store:'Walmart'},
+  {p:'TOCOBO-',    cat:'Official',   store:'Tocobo'},
+  {p:'SKINFOOD-',  cat:'Official',   store:'Skinfood'},
+  {p:'KAJA-',      cat:'Official',   store:'Kaja'},
+  {p:'IDC-',       cat:'Official',   store:'I Dew Care'},
+  {p:'jumiso-',    cat:'Official',   store:'Jumiso'},
+  {p:'Betheskin-', cat:'Official',   store:'Be The Skin'},
+  {p:'Hyaah-',     cat:'Official',   store:'Hyaah'},
   {p:'MD-',        cat:'Moida & Hola', store:'Moida US'},
   {p:'HOA',        cat:'Moida & Hola', store:'Hola'},
   {p:'5773',       cat:'TikTok CBT',   store:'TikTok'},  // ★ v32: 5773=TikTok CBT(seller-us.tiktok.com)
@@ -101,6 +111,9 @@ function doGet(e) {
   if (op === 'ttOrders')       return json_(ttGetOrders_((e.parameter||{}).date||''));
   if (op === 'ttSkuMaster')    return json_(ttGetSkuMaster_());
   if (op === 'ttProgress')     return json_(ttGetProgress_());
+
+  // ★ Pick Assignments — 페이지 기준 다중 작업자 배정 (v40 추가)
+  if (op === 'pickAssigns')    return json_(getPickAssigns_((e.parameter||{}).date||''));
 
   return json_({ ok:false, error:'unknown op: '+op });
 }
@@ -290,6 +303,8 @@ function doPost(e) {
     case 'verifySSOrder':     return json_(verifySSOrder_(data.apiKey, data.apiSecret, data.orderNumber));
     case 'saveSSCredentials': return json_(saveSSCredentials_(data.apiKey, data.apiSecret));
     case 'testSSConnection':  return json_(testSSConnection_(data.apiKey, data.apiSecret));
+    case 'subscribeSSWebhook':return json_(subscribeSSWebhook_(data.apiKey, data.apiSecret));
+    case 'listSSWebhooks':    return json_(listSSWebhooks_(data.apiKey, data.apiSecret));
 
     // ★ ShipStation Webhook
     case 'ssWebhook':         return json_(handleSSWebhook_(data));
@@ -299,6 +314,10 @@ function doPost(e) {
     case 'ttUploadSkuMaster': return json_(ttUploadSkuMaster_(data.single||[], data.sets||[]));
     case 'ttScanUpdate':      return json_(ttScanUpdate_(data.orderId, data.lineScanned, data.scannedTrackingIds, data.status, data.worker));
 
+    // ★ Pick Assignments — 페이지 기준 다중 작업자 배정 (v40 추가)
+    case 'upsertPickAssign':  return json_(upsertPickAssign_(data.assign));
+    case 'deletePickAssign':  return json_(deletePickAssign_(data.id));
+
     default: return json_({ ok:false, error:'unknown action: '+action });
   }
 }
@@ -306,6 +325,68 @@ function doPost(e) {
 /* ════════════════════════════════════════
    SHIPSTATION API 연동
 ════════════════════════════════════════ */
+
+/* ════════════════════════════════════════
+   ShipStation Webhook 자동 등록 (v41 추가)
+   ────────────────────────────────────────
+   "On Orders Shipped (SHIP_NOTIFY)" 웹훅을 이 웹앱 URL로 등록한다.
+   등록되면, ShipStation에서 배송 라벨이 생성될 때마다(=발송 처리)
+   ShipStation이 자동으로 이 웹앱의 doPost를 호출 → handleSSWebhook_ →
+   해당 오더의 채널을 감지해서 스캔 카운트를 자동으로 올려준다.
+   ("Mark as Shipped"로 수동 처리한 주문은 이 웹훅이 발생하지 않음 — ShipStation 자체 제약)
+════════════════════════════════════════ */
+function listSSWebhooks_(apiKey, apiSecret) {
+  const key    = apiKey    || PROP.getProperty('SS_API_KEY')    || '';
+  const secret = apiSecret || PROP.getProperty('SS_API_SECRET') || '';
+  if (!key || !secret) return { ok:false, error:'No API credentials. Please save them first.' };
+  try {
+    const resp = UrlFetchApp.fetch(SS_API_BASE + '/webhooks', {
+      method: 'GET',
+      headers: { 'Authorization': 'Basic ' + Utilities.base64Encode(key + ':' + secret) },
+      muteHttpExceptions: true,
+    });
+    if (resp.getResponseCode() !== 200) return { ok:false, error:'HTTP '+resp.getResponseCode()+': '+resp.getContentText().slice(0,200) };
+    const data = JSON.parse(resp.getContentText());
+    return { ok:true, webhooks: data.webhooks || [] };
+  } catch(e) { return { ok:false, error: e.message }; }
+}
+
+function subscribeSSWebhook_(apiKey, apiSecret) {
+  const key    = apiKey    || PROP.getProperty('SS_API_KEY')    || '';
+  const secret = apiSecret || PROP.getProperty('SS_API_SECRET') || '';
+  if (!key || !secret) return { ok:false, error:'No API credentials. Please save them first.' };
+
+  const targetUrl = ScriptApp.getService().getUrl();
+  if (!targetUrl) return { ok:false, error:'웹앱 URL을 확인할 수 없습니다. 배포(Deploy) 상태를 확인하세요.' };
+
+  // ★ 이미 같은 target_url로 SHIP_NOTIFY가 등록되어 있으면 중복 등록하지 않음
+  const existing = listSSWebhooks_(key, secret);
+  if (existing.ok) {
+    const dup = (existing.webhooks || []).find(w =>
+      String(w.event || '').toUpperCase() === 'SHIP_NOTIFY' &&
+      String(w.target_url || '') === targetUrl
+    );
+    if (dup) return { ok:true, alreadyRegistered:true, message:'이미 등록되어 있습니다 (webhook id: '+(dup.webhook_id||dup.id)+')' };
+  }
+
+  try {
+    const resp = UrlFetchApp.fetch(SS_API_BASE + '/webhooks/subscribe', {
+      method: 'POST',
+      contentType: 'application/json',
+      headers: { 'Authorization': 'Basic ' + Utilities.base64Encode(key + ':' + secret) },
+      payload: JSON.stringify({
+        target_url: targetUrl,
+        event: 'SHIP_NOTIFY',
+        store_id: null,
+        friendly_name: 'SK B2C Fulfillment — Auto Scan'
+      }),
+      muteHttpExceptions: true,
+    });
+    const code = resp.getResponseCode();
+    if (code !== 200 && code !== 201) return { ok:false, error:'HTTP '+code+': '+resp.getContentText().slice(0,300) };
+    return { ok:true, targetUrl, message:'SHIP_NOTIFY 웹훅이 등록되었습니다. 이제부터 ShipStation에서 배송 라벨을 만들면 자동으로 스캔 카운트가 올라갑니다.' };
+  } catch(e) { return { ok:false, error: e.message }; }
+}
 
 function saveSSCredentials_(apiKey, apiSecret) {
   if (!apiKey || !apiSecret) return { ok:false, error:'apiKey and apiSecret required' };
@@ -542,6 +623,71 @@ function logSSFetch_(date, summary) {
    SHEET HELPERS
 ════════════════════════════════════════ */
 /* ════════════════════════════════════════
+   PICK ASSIGNMENTS — 페이지 기준 다중 작업자 배정 (v40 추가)
+   ────────────────────────────────────────
+   PG(픽리스트) 하나에 총 페이지 수(pages)가 있고, 여러 작업자가
+   나눠서(예: 6장 → 3명이 2장씩) 각자 Start/End를 눌러 작업한다.
+   SKU를 일일이 세지 않고 "몇 장 픽킹했는지"로 속도/작업량을 측정한다.
+════════════════════════════════════════ */
+const SHEET_PICK_ASSIGN = 'PickAssign';
+function pickAssignSheet_(){
+  return getOrCreateSheet_(SHEET_PICK_ASSIGN, ['ID','PgNo','Date','Category','Worker','Pages','PickStart','PickEnd','Duration','CreatedAt','UpdatedAt']);
+}
+
+function upsertPickAssign_(a){
+  if(!a||!a.pgNo||!a.worker) return { ok:false, error:'pgNo and worker required' };
+  const lock=LockService.getDocumentLock(); lock.waitLock(15000);
+  try{
+    const sh=pickAssignSheet_(); const lastRow=sh.getLastRow();
+    const id=a.id || (a.pgNo+'_'+a.worker+'_'+(a.date||today_()));
+    let targetRow=0;
+    if(lastRow>=2){
+      const ids=sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0]));
+      const idx=ids.indexOf(id);
+      if(idx>=0) targetRow=idx+2;
+    }
+    const now=nowLocal_();
+    const createdAt=targetRow ? sh.getRange(targetRow,10).getValue() : now;
+    const row=[
+      id, String(a.pgNo), a.date||today_(), String(a.category||''),
+      String(a.worker), Number(a.pages)||0,
+      fmtTime_(a.pickStart), fmtTime_(a.pickEnd),
+      dur_(a.pickStart,a.pickEnd,a.date), createdAt, now
+    ];
+    if(targetRow) sh.getRange(targetRow,1,1,row.length).setValues([row]);
+    else sh.appendRow(row);
+    bumpVersion_();
+    return { ok:true, id };
+  }catch(e){ return { ok:false, error:e.message }; }
+  finally{ lock.releaseLock(); }
+}
+
+function getPickAssigns_(date){
+  const sh=pickAssignSheet_(); const lastRow=sh.getLastRow();
+  if(lastRow<2) return { ok:true, assigns:[] };
+  const data=sh.getRange(2,1,lastRow-1,11).getValues();
+  const toDS=v=>{ if(!v) return ''; try{ const d=new Date(v); if(!isNaN(d.getTime())) return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd'); }catch(e){} return String(v).slice(0,10); };
+  const assigns=data.filter(r=>!date||toDS(r[2])===date).map(r=>({
+    id:String(r[0]), pgNo:String(r[1]), date:toDS(r[2]), category:String(r[3]),
+    worker:String(r[4]), pages:Number(r[5])||0,
+    pickStart:String(r[6]||''), pickEnd:String(r[7]||''), duration:String(r[8]||'')
+  }));
+  return { ok:true, assigns, ver:getVersion_() };
+}
+
+function deletePickAssign_(id){
+  if(!id) return { ok:false, error:'id required' };
+  const sh=pickAssignSheet_(); const lastRow=sh.getLastRow();
+  if(lastRow<2) return { ok:false, error:'not found' };
+  const ids=sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0]));
+  const idx=ids.indexOf(String(id));
+  if(idx<0) return { ok:false, error:'not found' };
+  sh.deleteRow(idx+2);
+  bumpVersion_();
+  return { ok:true };
+}
+
+/* ════════════════════════════════════════
    TIKTOK CBT — 레이블/SKU 서버 동기화 (v39 추가)
    ────────────────────────────────────────
    TikTok CBT는 ShipStation에 주문이 잡히지 않아 매일 아침
@@ -726,8 +872,21 @@ function listsSheet_() {
   return getOrCreateSheet_(SHEET_LISTS, [
     'Date','PG No','Category','SKU','Order Count','Scanned',
     'Worker','Pick Start','Pick End','Scan Start','Scan End',
-    'Pick Duration','Scan Duration','Status','Remarks','Skip Reason','Created At','Updated At','ID'
+    'Pick Duration','Scan Duration','Status','Remarks','Skip Reason','Created At','Updated At','ID','Pages'
   ]);
+}
+
+/**
+ * ★ PickLists 시트에 Pages(총 페이지 수) 컬럼이 없으면 맨 끝에 자동 추가 (v40)
+ */
+function ensurePagesColumn_() {
+  const sh = listsSheet_();
+  const lastCol = sh.getLastColumn();
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const hasPages = headers.some(h => String(h).trim() === 'Pages');
+  if (!hasPages) {
+    sh.getRange(1, lastCol + 1).setValue('Pages');
+  }
 }
 
 /**
@@ -849,6 +1008,7 @@ function upsertList_(list, skipSummary) {
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
+    ensurePagesColumn_();
     const sh = listsSheet_();
     const lastRow = sh.getLastRow();
     const date = list.date || today_();
@@ -873,6 +1033,7 @@ function upsertList_(list, skipSummary) {
     let finalScanned = Number(list.scanned)||0;
     let finalPickStart = list.pickStart, finalPickEnd = list.pickEnd;
     let finalScanStart = list.scanStart, finalScanEnd = list.scanEnd;
+    let finalPages = Number(list.pages)||0;
     if (targetRow) {
       const existingRow = sh.getRange(targetRow, 1, 1, 11).getValues()[0];
       const existingScanned = Number(existingRow[5])||0;
@@ -881,6 +1042,7 @@ function upsertList_(list, skipSummary) {
       if (!finalPickEnd    && existingRow[8])  finalPickEnd    = existingRow[8];
       if (!finalScanStart  && existingRow[9])  finalScanStart  = existingRow[9];
       if (!finalScanEnd    && existingRow[10]) finalScanEnd    = existingRow[10];
+      if (!finalPages) { const existingPages = Number(sh.getRange(targetRow,20).getValue())||0; if (existingPages) finalPages = existingPages; }
     }
 
     const rowData = [
@@ -891,7 +1053,7 @@ function upsertList_(list, skipSummary) {
       fmtTime_(finalScanStart), fmtTime_(finalScanEnd),
       dur_(finalPickStart,finalPickEnd,date), dur_(finalScanStart,finalScanEnd,date),
       getSt_({...list,scanned:finalScanned,pickStart:finalPickStart,pickEnd:finalPickEnd,scanStart:finalScanStart,scanEnd:finalScanEnd}),
-      String(list.memo||''), String(list.skipReason||''), createdAt, now, String(list.id||'')
+      String(list.memo||''), String(list.skipReason||''), createdAt, now, String(list.id||''), finalPages
     ];
     // ★ id가 없으면 pgNo_date로 생성
     if (!rowData[18]) rowData[18] = String(list.pgNo||'') + '_' + String(date);
@@ -953,7 +1115,8 @@ function deleteList_(pgNo, date) {
 function getLists_(date) {
   const sh=listsSheet_(); const lastRow=sh.getLastRow();
   if (lastRow<2) return { ok:true, lists:[] };
-  const data=sh.getRange(2,1,lastRow-1,18).getValues();
+  const lastCol=Math.max(sh.getLastColumn(),20);
+  const data=sh.getRange(2,1,lastRow-1,lastCol).getValues();
   const toDS=val=>{if(!val&&val!==0)return'';try{const d=new Date(val);if(!isNaN(d.getTime()))return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd');}catch(e){}return String(val).slice(0,10);};
   const lists=data.filter(r=>{
     const rowDate=toDS(r[0]);
@@ -965,6 +1128,7 @@ function getLists_(date) {
       scanStart:String(r[9]),scanEnd:String(r[10]),pickDur:String(r[11]),
       scanDur:String(r[12]),status:String(r[13]),memo:String(r[14]),
       skipReason:String(r[15]),createdAt:String(r[16]),updatedAt:String(r[17]),id:String(r[18]),
+      pages:Number(r[19])||0,
     }));
   return { ok:true, lists, ver:getVersion_() };
 }
@@ -1003,7 +1167,7 @@ function updateDailySummary_(date) {
     if (!listsData.ok) return;
     const lists=listsData.lists.filter(l=>l.status!=='Deleted');
     const sh=summarySheet_();
-    const cats=['Official 1','Official 2','Moida & Hola','TikTok CBT','Seeding','Reshipment'];
+    const cats=['TikTok CBT','Official','Moida & Hola','Seeding','Reshipment'];
 
     const cleanTime=v=>{
       if(!v||v==='')return'';
@@ -1143,7 +1307,7 @@ function debugSummary() {
   const lists = (result.lists || []).filter(l => l.status !== 'Deleted');
   Logger.log('Non-deleted lists: ' + lists.length);
 
-  const cats = ['Official 1','Official 2','Moida & Hola','TikTok CBT','Seeding','Reshipment'];
+  const cats = ['TikTok CBT','Official','Moida & Hola','Seeding','Reshipment'];
   cats.forEach(cat => {
     const cl = lists.filter(l => l.category === cat);
     if (cl.length > 0) Logger.log('Category ['+cat+']: ' + cl.length + ' lists');
