@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v28</title>
+<title>SK B2C Fulfillment v30</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -332,6 +332,7 @@ const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
         scanEnd:newScanEnd,
         memo:loc.memo||remote.memo||'',
         skipReason:loc.skipReason||remote.skipReason||'',
+        workerDurations:loc.workerDurations||remote.workerDurations||'',
       };
     } else {
       // ── 새 항목: remote에서 추가 (오늘 날짜만, 과거 날짜 추가 안 함) ──
@@ -353,6 +354,7 @@ const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
           status:remote.status||'Pending',
           memo:remote.memo||'',
           skipReason:remote.skipReason||'',
+          workerDurations:remote.workerDurations||'',
         });
       }
     }
@@ -1057,8 +1059,15 @@ function App(){
   const syncListWorkerSummary=(pgNo,assignsSnapshot)=>{
     const l=lists.find(x=>x.pgNo===pgNo&&x.date===today());
     if(!l)return;
-    const names=[...new Set((assignsSnapshot||pickAssigns).filter(a=>a.pgNo===pgNo&&a.date===today()).map(a=>a.worker))];
-    upd(l.id,{worker:names.join(', ')});
+    const relevant=(assignsSnapshot||pickAssigns).filter(a=>a.pgNo===pgNo&&a.date===today());
+    const names=[...new Set(relevant.map(a=>a.worker))];
+    // ★ 작업자별 소요시간 요약 (구글시트 메인 PickList 탭에도 바로 보이도록) — 예: "Kim Jisu(21m), Helper 1(28m)"
+    const durTxt=relevant.map(a=>{
+      const durMs=a.pickStart?((a.pickEnd?new Date(a.pickEnd):new Date())-new Date(a.pickStart)):0;
+      const m=fmtDurMin(durMs);
+      return a.worker+(m?'('+m+(a.pickEnd?'':'~ing')+')':'');
+    }).join(', ');
+    upd(l.id,{worker:names.join(', '),workerDurations:durTxt});
   };
   const openAddPicker=l=>{
     const used=assignsFor(l.pgNo).reduce((s,a)=>s+(a.pages||0),0);
@@ -1086,6 +1095,7 @@ function App(){
         const doneSum=next.filter(x=>x.pgNo===a.pgNo&&x.date===a.date&&x.pickEnd).reduce((s,x)=>s+(x.pages||0),0);
         if(doneSum>=l.pages)upd(l.id,{pickEnd:ts()});
       }
+      syncListWorkerSummary(a.pgNo,next); // ★ 완료 시점의 최종 소요시간을 구글시트에 반영
       return next;
     });
     sync('upsertPickAssign',{assign:u});
@@ -1429,7 +1439,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v28'),
+    h('span',{className:'app-ver '+D},'v30'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1676,7 +1686,10 @@ function App(){
         h('label',{style:lbl},'Team Members (comma-separated)'),
         h('textarea',{style:{...inp,resize:'vertical',lineHeight:1.7,marginBottom:24,minHeight:60},value:pksStr,onChange:e=>setPKS(e.target.value),placeholder:'Kim Jisu, Park Minho, Lee Hayeon…'}),
         h('div',{style:{height:1,background:'rgba(255,255,255,0.06)',marginBottom:24}}),
-        h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:16,letterSpacing:'.02em'}},'COLOR ASSIGNMENT'),
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}},
+          h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',letterSpacing:'.02em'}},'COLOR ASSIGNMENT'),
+          h('button',{onClick:()=>{if(confirm('모든 작업자 색상을 새 팔레트 기본값으로 초기화할까요? (직접 고른 색상도 포함해 전부 초기화됩니다)'))setPkColorMap({});},style:{padding:'6px 14px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.04)',color:'#8888C0',fontSize:12,fontWeight:600,cursor:'pointer'}},'🔄 Reset to New Palette')
+        ),
         h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
           pickers.map(w=>{
             const cur=pkC(w);
@@ -1684,8 +1697,8 @@ function App(){
               h('div',{style:{width:36,height:36,borderRadius:10,background:cur.bg,border:'2px solid '+cur.tx,flexShrink:0,boxShadow:'0 2px 8px rgba(0,0,0,0.3)'}}),
               h('span',{style:{width:130,fontSize:14,fontWeight:600,color:'#D0D0F0',flexShrink:0}},w),
               h('div',{style:{display:'flex',flexDirection:'column',gap:6,flex:1}},
-                h('div',{style:{display:'flex',gap:6}},PKC_PRESETS.slice(0,6).map((c,ci)=>{const sel=pkColorMap[w]?pkColorMap[w]===c:pickers.indexOf(w)%PKC_PRESETS.length===ci;return h('div',{key:ci,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),title:c.label,style:{width:28,height:28,borderRadius:8,background:c.bg,cursor:'pointer',flexShrink:0,border:sel?'3px solid '+c.tx:'2px solid rgba(255,255,255,0.08)',boxShadow:sel?'0 0 0 2px rgba(255,255,255,0.15)':'none',transition:'all .15s'}});})),
-                h('div',{style:{display:'flex',gap:6}},PKC_PRESETS.slice(6,12).map((c,ci)=>{const sel=pkColorMap[w]?pkColorMap[w]===c:pickers.indexOf(w)%PKC_PRESETS.length===(ci+6);return h('div',{key:ci+6,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),title:c.label,style:{width:28,height:28,borderRadius:8,background:c.bg,cursor:'pointer',flexShrink:0,border:sel?'3px solid '+c.tx:'2px solid rgba(255,255,255,0.08)',boxShadow:sel?'0 0 0 2px rgba(255,255,255,0.15)':'none',transition:'all .15s'}});}))
+                h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',maxWidth:260}},PKC_PRESETS.slice(0,7).map((c,ci)=>{const sel=pkColorMap[w]?pkColorMap[w]===c:pickers.indexOf(w)%PKC_PRESETS.length===ci;return h('div',{key:ci,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),title:c.label,style:{width:28,height:28,borderRadius:8,background:c.bg,cursor:'pointer',flexShrink:0,border:sel?'3px solid '+c.tx:'2px solid rgba(255,255,255,0.08)',boxShadow:sel?'0 0 0 2px rgba(255,255,255,0.15)':'none',transition:'all .15s'}});})),
+                h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',maxWidth:260}},PKC_PRESETS.slice(7,14).map((c,ci)=>{const sel=pkColorMap[w]?pkColorMap[w]===c:pickers.indexOf(w)%PKC_PRESETS.length===(ci+7);return h('div',{key:ci+7,onClick:()=>setPkColorMap(p=>({...p,[w]:c})),title:c.label,style:{width:28,height:28,borderRadius:8,background:c.bg,cursor:'pointer',flexShrink:0,border:sel?'3px solid '+c.tx:'2px solid rgba(255,255,255,0.08)',boxShadow:sel?'0 0 0 2px rgba(255,255,255,0.15)':'none',transition:'all .15s'}});}))
               )
             );
           })
