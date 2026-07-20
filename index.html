@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v24</title>
+<title>SK B2C Fulfillment v25</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1099,9 +1099,8 @@ function App(){
       // ★ 중복 체크: pgNo 전체 (Deleted 제외)
       const dupPgNo=lists.find(x=>x.pgNo===mf.pgNo&&(x.status||'').toLowerCase()!=='deleted');
       if(dupPgNo){alert('이미 동일한 PG No가 있습니다: '+mf.pgNo+' ('+dupPgNo.date+', '+dupPgNo.category+')\n수정하려면 Edit 버튼을 사용하세요.');return;}
-      // ★ 같은 category+today 중복 체크 (Deleted 제외)
-      const dupCat=lists.find(x=>x.category===mf.cat&&String(x.date||'').slice(0,10)===today()&&(x.status||'').toLowerCase()!=='deleted');
-      if(dupCat){alert('오늘 이미 같은 카테고리 픽리스트가 있습니다: '+mf.cat+' ('+dupCat.pgNo+')\n수정하려면 Edit 버튼을 사용하세요.');return;}
+      // ★ pgNo만 유일하면 됨. 같은 카테고리라도 하루에 PG가 여러 개(2~3개) 생기는 게
+      //   정상적인 업무 흐름이라 카테고리 중복 체크는 제거함 (v43)
     }
     // ★ id는 pgNo_date 고정 (GAS와 동일, 랜덤 uid 사용하지 않음)
     const listDate=existing?.date||today();
@@ -1355,7 +1354,7 @@ function App(){
                 h('div',{style:{display:'flex',flexWrap:'wrap',gap:4,alignItems:'center'}},
                   assignsFor(l.pgNo).map(a=>{
                     const wc=pkC(a.worker);const done=!!a.pickEnd;
-                    const rangeStr=(a.pageStart&&a.pageEnd)?(a.pageStart+'~'+a.pageEnd+'p'):(a.pages+'p');
+                    const rangeStr=(a.pageStart&&a.pageEnd)?(a.pageStart+'~'+a.pageEnd+'p (총'+a.pages+'p)'):(a.pages+'p');
                     const timeStr=a.pickStart?(fmtS(a.pickStart)+(a.pickEnd?'~'+fmtS(a.pickEnd):'~진행중')):'';
                     return h('div',{key:a.id,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:1}},
                       h('div',{onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApPages(String(a.pages||1));}else if(!done){endPickAssignFn(a);}},title:timeStr,style:{display:'inline-flex',alignItems:'center',gap:4,padding:'3px 9px',borderRadius:100,fontSize:11,fontWeight:600,background:wc.bg,color:wc.tx,border:'1px solid '+wc.tx,cursor:'pointer',opacity:done?0.75:1}},
@@ -1404,7 +1403,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v24'),
+    h('span',{className:'app-ver '+D},'v25'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1924,7 +1923,7 @@ function App(){
             h('button',{onClick:()=>setApPages(v=>String((+v||0)+1)),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'+'),
             h('span',{style:{fontSize:12,color:'#888'}},'페이지')
           ),
-          h('div',{style:{fontSize:13,fontWeight:700,color:'#5B5EF4',marginBottom:20}},'→ '+apStart+'~'+((+apStart||1)+(+apPages||1)-1)+' 페이지 배정'),
+          h('div',{style:{fontSize:13,fontWeight:700,color:'#5B5EF4',marginBottom:20}},'→ '+apStart+'~'+((+apStart||1)+(+apPages||1)-1)+' 페이지 배정 (총 '+(+apPages||0)+'페이지)'),
           h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
             h('button',{onClick:()=>{setAddPickerFor(null);setEditAssign(null);},style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
             h('button',{onClick:editAssign?submitEditAssign:submitAddPicker,disabled:!apWorker||!(+apPages>0),style:{padding:'9px 22px',borderRadius:8,border:'none',background:(apWorker&&+apPages>0)?'#5B5EF4':'#CCC',color:'#fff',cursor:(apWorker&&+apPages>0)?'pointer':'not-allowed',fontWeight:700}},editAssign?'저장':'▶ Start Picking')
