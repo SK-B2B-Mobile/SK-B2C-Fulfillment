@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v19</title>
+<title>SK B2C Fulfillment v20</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -22,6 +22,8 @@ if('serviceWorker' in navigator){
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;font-family:'DM Sans',system-ui,sans-serif;font-size:13px;background:#ECEAE5;color:#111}
@@ -217,7 +219,7 @@ const PREFIX_MAP=[
   {p:'1156',cat:'TikTok CBT',store:'TikTok CBT'},
   {p:'MBX',cat:'Seeding',store:'Seeding MBX'},{p:'RTN',cat:'Seeding',store:'Returns'},
 ];
-const CATS=['Official 1','Official 2','Moida & Hola','TikTok CBT','Seeding','Reshipment'];
+const CATS=['TikTok CBT','Official 1','Official 2','Moida & Hola','Seeding','Reshipment'];
 const CA={
   'Official 1':{bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2',ac:'#3B8FE0'},
   'Official 2':{bg:'#EDECFE',tx:'#4038B5',br:'#B0A8F2',ac:'#7068D8'},
@@ -356,7 +358,215 @@ async function syncData(url,action,payload){
   if(!url)return;
   try{await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});}catch(e){console.warn('syncData error:',e);}
 }
+async function syncDataAwait(url,action,payload){
+  // syncData는 no-cors라 응답을 못 읽음. TT 저장처럼 결과가 필요한 곳에서 사용.
+  if(!url)return{ok:false,error:'no url'};
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});
+    return await r.json();
+  }catch(e){return{ok:false,error:e.message};}
+}
 const {createElement:h,useState,useRef,useEffect,useCallback,Fragment}=React;
+
+/* ══════════════════════════════════════════════
+   TIKTOK CBT — 라벨 PDF / SKU 마스터 파싱 + 바코드 매칭
+   (기존에 검증된 독립형 CBT 스캔 도구에서 그대로 이식.
+   서버 저장이 필요한 부분만 localStorage → GAS 백엔드로 교체됨)
+══════════════════════════════════════════════ */
+function stripImpbPrefix(digits){
+  if(/^420\d{5}/.test(digits))return digits.slice(8);
+  return digits;
+}
+const TTCarrierNormalizers={
+  USPS(raw){const digits=raw.replace(/\D/g,'');return stripImpbPrefix(digits);},
+  UPS(raw){const m=raw.toUpperCase().match(/1Z[0-9A-Z]{16}/);return m?m[0]:raw.trim();},
+  FEDEX(raw){return raw.replace(/\D/g,'');},
+  FEDEX_SMARTPOST(raw){const digits=stripImpbPrefix(raw.replace(/\D/g,''));return digits.length>=12?digits.slice(-12):digits;},
+  DEFAULT(raw){return raw.trim();}
+};
+function ttDetectCarrier(raw){
+  const trimmed=raw.trim();
+  if(/^1Z/i.test(trimmed)||/1Z[0-9A-Z]{16}/i.test(trimmed.toUpperCase()))return'UPS';
+  const digits=trimmed.replace(/\D/g,'');
+  const allDigits=digits.length===trimmed.replace(/\s/g,'').length;
+  if(!allDigits)return'DEFAULT';
+  if(/^420\d{5}/.test(digits))return'USPS';
+  if(digits.length>=30&&digits.length<=36&&/^9/.test(digits))return'FEDEX_SMARTPOST';
+  if(digits.length>=18||/^9/.test(digits))return'USPS';
+  if([12,15].includes(digits.length))return'FEDEX';
+  return'DEFAULT';
+}
+function ttNormalizeBarcode(raw){
+  const trimmed=(raw||'').toString().trim();
+  const carrier=ttDetectCarrier(trimmed);
+  const fn=TTCarrierNormalizers[carrier]||TTCarrierNormalizers.DEFAULT;
+  const normalized=fn(trimmed);
+  const candidates=[];
+  const add=v=>{if(v&&!candidates.includes(v))candidates.push(v);};
+  add(trimmed);add(normalized);
+  const digitsOnly=trimmed.replace(/\D/g,'');
+  add(digitsOnly);
+  if(digitsOnly.length>12)add(digitsOnly.slice(-12));
+  if(digitsOnly.length>15)add(digitsOnly.slice(-15));
+  if(digitsOnly.length>22)add(digitsOnly.slice(-22));
+  return{raw:trimmed,carrier,normalized,candidates};
+}
+
+const TT_NOISE_RE=[
+  /^Packing Slip$/i,/^Created Time:/i,/^In transit by:/i,
+  /^Product Name\b/i,/^SKU Seller SKU/i,/^SKU Price/i,/^\(Unit\)\s*Qty/i,
+  /^Qty Total:/i,/^Buyer ID:/i,/^Buyer Nickname:/i,/TikTok Shop/i,
+  /^Order ID:/i,/^Tracking number:/i
+];
+const TT_RE_DATAROW=/^(.*?)\b([A-Z][A-Za-z0-9]{1,14}\s?-\s?[A-Za-z0-9]{1,14})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
+
+async function ttGetPageLines(page){
+  const content=await page.getTextContent();
+  const rows={};
+  content.items.forEach(item=>{
+    const y=Math.round(item.transform[5]/3)*3;
+    if(!rows[y])rows[y]=[];
+    rows[y].push({x:item.transform[4],str:item.str});
+  });
+  const ys=Object.keys(rows).map(Number).sort((a,b)=>b-a);
+  return ys.map(y=>rows[y].sort((a,b)=>a.x-b.x).map(t=>t.str).join(' ').replace(/\s+/g,' ').trim()).filter(Boolean);
+}
+
+/* PDF 1개를 파싱해서 {orders:{orderId:{orderId,trackingIds,buyer,items}}, newOrderCount, skippedPages, totalPages} 반환.
+   기존 orders 객체를 넘기면 같은 파일 안에서 여러 페이지에 걸친 같은 주문을 이어 붙인다. */
+async function ttParsePdfFile(file, ordersAcc){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const orders=ordersAcc||{};
+  let curId=null,curTrackingSet=new Set(),curBuyer='',curItems=[];
+  let pendingName='',insideCombineParent=false,pendingIsComponent=false;
+  let newOrderCount=0,skippedPages=0;
+
+  function flush(){
+    if(!curId)return;
+    if(!orders[curId]){orders[curId]={orderId:curId,trackingIds:[],buyer:'',items:[]};newOrderCount++;}
+    curTrackingSet.forEach(t=>{if(t&&!orders[curId].trackingIds.includes(t))orders[curId].trackingIds.push(t);});
+    if(!orders[curId].buyer&&curBuyer)orders[curId].buyer=curBuyer;
+    orders[curId].items.push(...curItems);
+    curItems=[];
+  }
+
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const lines=await ttGetPageLines(page);
+    const pageText=lines.join('\n');
+    const idMatch=pageText.match(/Order ID:\s*(\d{6,20})/);
+    if(!idMatch){skippedPages++;continue;}
+    const newId=idMatch[1];
+    if(newId!==curId){
+      flush();
+      curId=newId;curTrackingSet=new Set();curBuyer='';pendingName='';insideCombineParent=false;pendingIsComponent=false;
+    }
+    const trackMatch=pageText.match(/Tracking number:\s*([\s\S]*?)(?:\n(?:Product Name|Order ID:|Buyer ID:)|$)/);
+    if(trackMatch){const t=trackMatch[1].replace(/\s+/g,'');if(t)curTrackingSet.add(t);}
+    const buyerMatch=pageText.match(/Buyer Nickname:\s*(.+)/);
+    if(buyerMatch&&!curBuyer)curBuyer=buyerMatch[1].trim();
+
+    for(const line of lines){
+      if(TT_NOISE_RE.some(re=>re.test(line)))continue;
+      if(/Combine listing/i.test(line)){insideCombineParent=true;pendingName='';pendingIsComponent=false;continue;}
+      if(/^•/.test(line)){insideCombineParent=false;pendingIsComponent=true;}
+      const m=line.match(TT_RE_DATAROW);
+      if(m){
+        const namePart=m[1].trim();
+        const sku=m[2].replace(/\s+/g,'');
+        const qty=parseInt(m[4],10)||1;
+        const fullName=(pendingName+' '+namePart).trim()||sku;
+        const isComponent=pendingIsComponent;
+        pendingName='';pendingIsComponent=false;
+        if(insideCombineParent)continue;
+        const existing=curItems.find(it=>it.sellerSku===sku);
+        if(existing){existing.qty+=qty;if(isComponent)existing.isSetComponent=true;}
+        else curItems.push({sellerSku:sku,productName:fullName,qty,isSetComponent:isComponent});
+      }else{
+        pendingName=(pendingName+' '+line).trim();
+      }
+    }
+  }
+  flush();
+  return{orders,newOrderCount,skippedPages,totalPages:pdf.numPages};
+}
+
+/* SKU Master xlsx 파일을 파싱해서 {single:[{sku,barcode}], sets:[{setSku,componentSku,qty,productName,status}]} 반환 */
+function ttParseSkuXlsx(arrayBuffer){
+  const wb=XLSX.read(new Uint8Array(arrayBuffer),{type:'array'});
+  const clean=v=>(v||'').toString().trim();
+  const single=[];
+  const singleSheet=wb.Sheets[wb.SheetNames.find(n=>n.includes('Single'))];
+  if(singleSheet){
+    XLSX.utils.sheet_to_json(singleSheet,{defval:''}).forEach(r=>{
+      const sku=clean(r['Seller SKU']),barcode=clean(r['Barcode']);
+      if(sku&&barcode)single.push({sku,barcode});
+    });
+  }
+  const sets=[];
+  const setSheet=wb.Sheets[wb.SheetNames.find(n=>n.includes('Set'))];
+  if(setSheet){
+    XLSX.utils.sheet_to_json(setSheet,{defval:''}).forEach(r=>{
+      const setSku=clean(r['Set SKU']),compSku=clean(r['Component Seller SKU']);
+      const compQty=parseInt(r['Component Qty'])||1;
+      const productName=clean(r['Set Product Name']);
+      const status=clean(r['Status']);
+      if(setSku&&compSku)sets.push({setSku,componentSku:compSku,qty:compQty,productName,status});
+    });
+  }
+  return{single,sets};
+}
+
+/* 주문의 required 라인(단품은 그대로, 세트는 구성품으로 전개) 계산 */
+function ttComputeRequiredLines(order,skuSingleMap,skuSetMap){
+  const lines=[];
+  (order.items||[]).forEach(item=>{
+    if(item.isSetComponent){
+      lines.push({sellerSku:item.sellerSku,productName:item.productName,required:item.qty,scanned:0,barcode:skuSingleMap[item.sellerSku]||''});
+      return;
+    }
+    const comps=skuSetMap[item.sellerSku];
+    if(comps&&comps.length>0){
+      comps.forEach(c=>{
+        lines.push({sellerSku:c.componentSku,productName:c.productName||item.productName,required:c.qty*item.qty,scanned:0,barcode:skuSingleMap[c.componentSku]||''});
+      });
+    }else{
+      lines.push({sellerSku:item.sellerSku,productName:item.productName,required:item.qty,scanned:0,barcode:skuSingleMap[item.sellerSku]||''});
+    }
+  });
+  return lines;
+}
+
+function ttFindOrderByTracking(rawVal,orders){
+  const info=ttNormalizeBarcode(rawVal);
+  for(const cand of info.candidates){
+    const exact=orders.find(o=>(o.trackingIds||[]).includes(cand));
+    if(exact)return{order:exact,info};
+  }
+  for(const cand of info.candidates){
+    const partial=orders.find(o=>(o.trackingIds||[]).some(t=>t&&(t.includes(cand)||cand.includes(t))));
+    if(partial)return{order:partial,info};
+  }
+  return{order:null,info};
+}
+
+/* TT 사운드 피드백 (창고 소음 환경 대비) */
+let ttAudioCtx=null;
+function ttGetAudioCtx(){if(!ttAudioCtx)ttAudioCtx=new(window.AudioContext||window.webkitAudioContext)();if(ttAudioCtx.state==='suspended')ttAudioCtx.resume();return ttAudioCtx;}
+['keydown','pointerdown','touchstart'].forEach(evt=>document.addEventListener(evt,()=>{try{ttGetAudioCtx();}catch(e){}},{once:true,capture:true}));
+function ttBeep(freq,duration,type,volume,delay){
+  try{const ctx=ttGetAudioCtx();const start=ctx.currentTime+(delay||0);const osc=ctx.createOscillator();const gain=ctx.createGain();
+    osc.type=type||'sine';osc.frequency.value=freq;gain.gain.setValueAtTime(0.0001,start);
+    gain.gain.exponentialRampToValueAtTime(volume!=null?volume:0.3,start+0.01);gain.gain.exponentialRampToValueAtTime(0.0001,start+duration);
+    osc.connect(gain);gain.connect(ctx.destination);osc.start(start);osc.stop(start+duration+0.02);
+  }catch(e){}
+}
+function ttPlayTick(){ttBeep(1000,0.05,'sine',0.22,0);}
+function ttPlayError(){ttBeep(190,0.1,'sawtooth',0.4,0);ttBeep(150,0.1,'sawtooth',0.4,0.13);ttBeep(190,0.1,'sawtooth',0.4,0.26);}
+function ttPlayBlocked(){ttBeep(520,0.16,'triangle',0.35,0);ttBeep(520,0.16,'triangle',0.35,0.24);}
+function ttPlayWarn(){ttBeep(350,0.22,'triangle',0.3,0);}
+function ttPlayComplete(){[660,880,1100,1320].forEach((f,i)=>ttBeep(f,0.14,'sine',0.32,i*0.1));}
 
 /* ══════ PICKER SELECT ══════ */
 function PickerSelect({value,onChange,pickers,dark,pkC}){
@@ -543,6 +753,22 @@ function App(){
   const [skipQtys,setSkipQtys]=useState({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
   const [scanInput,setScanInput]=useState(0);
   const [ttCbtCount,setTtCbtCount]=useState(()=>lsGet('tt_cbt_count',0));
+  /* ── TikTok CBT: 서버 동기화 상태 (레이블/SKU마스터/스캔진행) ── */
+  const [ttOrders,setTtOrders]=useState([]);           // 서버에 저장된 오늘자 주문 목록
+  const [ttSkuSingle,setTtSkuSingle]=useState({});      // sellerSku -> barcode
+  const [ttSkuSet,setTtSkuSet]=useState({});            // setSku -> [{componentSku,qty,productName,status}]
+  const [ttProgress,setTtProgress]=useState({});        // orderId -> {status,lineScanned,scannedTrackingIds,...}
+  const [ttUploading,setTtUploading]=useState(false);
+  const [ttUploadMsg,setTtUploadMsg]=useState('');
+  const [ttCurrentOrder,setTtCurrentOrder]=useState(null); // 현재 검수 중인 주문 (라벨 스캔 후)
+  const [ttLabelIn,setTtLabelIn]=useState('');
+  const [ttItemIn,setTtItemIn]=useState('');
+  const [scanMode,setScanMode]=useState('tt'); // 'tt' | 'std' — Scan Station 화면 모드 (TikTok CBT 우선)
+  const [ttWorker,setTtWorker]=useState(()=>localStorage.getItem('b2c18_ttworker')||'');
+  useEffect(()=>localStorage.setItem('b2c18_ttworker',ttWorker),[ttWorker]);
+  const [ttAlert,setTtAlert]=useState(null);            // {msg,type}
+  const [ttBigAlert,setTtBigAlert]=useState(null);       // {icon,msg,sub,type}
+  const ttLabelRef=useRef(null);const ttItemRef=useRef(null);const ttBigAlertTimer=useRef(null);
   const scanRef=useRef(null);
   const pickers=pksStr.split(',').map(s=>s.trim()).filter(Boolean);
 
@@ -603,6 +829,30 @@ function App(){
     return()=>clearInterval(id);
   },[wh]);
 
+  /* ── TikTok CBT 데이터 폴링 (주문/SKU마스터/스캔진행) — 다른 작업자의 스캔이 실시간 반영되도록 ── */
+  useEffect(()=>{
+    if(!wh)return;
+    const pollTT=async()=>{
+      try{
+        const [ro,rs,rp]=await Promise.all([
+          fetch(wh+'?op=ttOrders&date='+today()).then(r=>r.json()),
+          fetch(wh+'?op=ttSkuMaster').then(r=>r.json()),
+          fetch(wh+'?op=ttProgress').then(r=>r.json()),
+        ]);
+        if(ro&&ro.ok)setTtOrders(ro.orders||[]);
+        if(rs&&rs.ok){
+          const singleMap={};(rs.single||[]).forEach(s=>{singleMap[s.sku]=s.barcode;});
+          const setMap={};(rs.sets||[]).forEach(s=>{if(!setMap[s.setSku])setMap[s.setSku]=[];setMap[s.setSku].push(s);});
+          setTtSkuSingle(singleMap);setTtSkuSet(setMap);
+        }
+        if(rp&&rp.ok)setTtProgress(rp.progress||{});
+      }catch(e){console.warn('TT poll error',e);}
+    };
+    pollTT();
+    const id=setInterval(pollTT,15000);
+    return()=>clearInterval(id);
+  },[wh]);
+
   const sync=useCallback((action,payload)=>{
     if(!wh)return;
     syncData(wh,action,payload).then(()=>setSS('✓ '+new Date().toLocaleTimeString())).catch(()=>setSS('⚠'));
@@ -647,6 +897,105 @@ function App(){
     }));
     const entry={barcode:b,cat:d.cat,store:d.store,time:fmtT(now),pgNo:tgt.pgNo,worker:tgt.worker||''};
     setLS({...entry,ok:true});setLog(prev=>[entry,...prev.slice(0,499)]);sync('addScanLog',{entry});
+  };
+
+  /* ══════════════════════════════════════════
+     TikTok CBT — 레이블 PDF / SKU 마스터 업로드 (매니저, 매일 아침 1회)
+  ══════════════════════════════════════════ */
+  const ttShowBigAlert=(icon,msg,sub,type,duration)=>{
+    clearTimeout(ttBigAlertTimer.current);
+    setTtBigAlert({icon,msg,sub,type});
+    ttBigAlertTimer.current=setTimeout(()=>setTtBigAlert(null),duration||1800);
+  };
+
+  const ttUploadLabelFiles=async(fileList)=>{
+    if(!wh){setTtUploadMsg('⚠ Google Sheets URL을 먼저 설정하세요 (Settings)');return;}
+    const files=Array.from(fileList||[]);if(!files.length)return;
+    setTtUploading(true);setTtUploadMsg('분석 중… ('+files.length+'개 파일)');
+    let ordersAcc={};
+    for(const file of files){
+      try{ const r=await ttParsePdfFile(file,ordersAcc); ordersAcc=r.orders; }
+      catch(err){ setTtUploadMsg('⚠ '+file.name+' 파싱 실패: '+err.message); }
+    }
+    const orderList=Object.values(ordersAcc);
+    if(orderList.length===0){setTtUploading(false);setTtUploadMsg('⚠ 인식된 주문이 없습니다. 패킹슬립이 포함된 PDF인지 확인하세요.');return;}
+    const res=await syncDataAwait(wh,'ttUploadOrders',{orders:orderList,date:today()});
+    setTtUploading(false);
+    if(res&&res.ok){
+      setTtUploadMsg('✓ 주문 '+orderList.length+'건 업로드 완료 (신규 '+res.added+', 병합 '+res.merged+')');
+      setTtCbtCount(orderList.length);lsSet('tt_cbt_count',orderList.length);
+      // 즉시 화면 반영을 위해 로컬 상태도 업데이트 (다음 폴링에서 서버값으로 재확인됨)
+      setTtOrders(prev=>{
+        const map={};prev.forEach(o=>map[o.orderId]=o);
+        orderList.forEach(o=>map[o.orderId]=o);
+        return Object.values(map);
+      });
+    }else{
+      setTtUploadMsg('⚠ 서버 저장 실패: '+((res&&res.error)||'unknown'));
+    }
+  };
+
+  const ttUploadSkuFile=async(file)=>{
+    if(!file)return;
+    if(!wh){setTtUploadMsg('⚠ Google Sheets URL을 먼저 설정하세요 (Settings)');return;}
+    setTtUploading(true);setTtUploadMsg('SKU Master 분석 중…');
+    try{
+      const buf=await file.arrayBuffer();
+      const{single,sets}=ttParseSkuXlsx(buf);
+      const res=await syncDataAwait(wh,'ttUploadSkuMaster',{single,sets});
+      setTtUploading(false);
+      if(res&&res.ok){
+        setTtUploadMsg('✓ SKU Master 업로드 완료 — 단품 '+res.addedSingle+'개, 세트 '+res.addedSet+'개 신규 추가 (기존 데이터 유지)');
+      }else{
+        setTtUploadMsg('⚠ 서버 저장 실패: '+((res&&res.error)||'unknown'));
+      }
+    }catch(err){setTtUploading(false);setTtUploadMsg('⚠ 파싱 실패: '+err.message);}
+  };
+
+  /* ── 1단계: 라벨(Tracking) 스캔 ── */
+  const ttHandleLabelScan=e=>{
+    if(e.key!=='Enter')return;const val=(ttLabelIn||'').trim();setTtLabelIn('');if(!val)return;
+    const{order,info}=ttFindOrderByTracking(val,ttOrders);
+    if(!order){ttPlayError();ttShowBigAlert('❌','NOT FOUND',val,'err');setTtAlert({msg:'❌ 매칭되는 주문을 찾을 수 없습니다: '+val,type:'err'});return;}
+    const prog=ttProgress[order.orderId];
+    if(prog&&prog.status==='completed'){ttPlayBlocked();ttShowBigAlert('⛔','이미 완료됨','주문 #'+order.orderId,'warn');setTtAlert({msg:'⛔ 이미 완료 처리된 주문입니다 — 재검수 차단 (#'+order.orderId+')',type:'err'});return;}
+    const lines=ttComputeRequiredLines(order,ttSkuSingle,ttSkuSet);
+    if(prog&&prog.lineScanned){lines.forEach(l=>{if(prog.lineScanned[l.sellerSku]!=null)l.scanned=Math.min(prog.lineScanned[l.sellerSku],l.required);});}
+    const scannedTrackingIds=new Set(prog?prog.scannedTrackingIds||[]:[]);
+    scannedTrackingIds.add(info.normalized||val);
+    setTtCurrentOrder({orderId:order.orderId,trackingIds:order.trackingIds||[],scannedTrackingIds,buyer:order.buyer,lines});
+    setTtAlert(null);
+    if(ttItemRef.current)setTimeout(()=>ttItemRef.current.focus(),50);
+  };
+
+  /* ── 2단계: 상품 바코드 스캔 ── */
+  const ttHandleItemScan=e=>{
+    if(e.key!=='Enter')return;const val=(ttItemIn||'').trim();setTtItemIn('');if(!val||!ttCurrentOrder)return;
+    const info=ttNormalizeBarcode(val);
+    let matchLine=null;
+    for(const cand of info.candidates){
+      matchLine=ttCurrentOrder.lines.find(l=>l.barcode&&l.barcode===cand);
+      if(matchLine)break;
+    }
+    if(!matchLine){ttPlayError();ttShowBigAlert('❓','UNKNOWN','바코드: '+val,'err');setTtAlert({msg:'❓ 등록되지 않은 바코드입니다: '+val,type:'err'});return;}
+    if(matchLine.scanned>=matchLine.required){ttPlayWarn();ttShowBigAlert('⚠️','초과 스캔',matchLine.productName,'warn');setTtAlert({msg:'⚠️ 이미 필요 수량만큼 스캔되었습니다: '+matchLine.productName,type:'warn'});return;}
+    matchLine.scanned+=1;
+    const updated={...ttCurrentOrder,lines:[...ttCurrentOrder.lines]};
+    setTtCurrentOrder(updated);
+    const lineScanned=Object.fromEntries(updated.lines.map(l=>[l.sellerSku,l.scanned]));
+    const allDone=updated.lines.every(l=>l.scanned>=l.required);
+    if(allDone){
+      ttPlayComplete();ttShowBigAlert('✅','ORDER COMPLETE','#'+updated.orderId,'ok',1400);
+      setTtAlert({msg:'✅ 주문 #'+updated.orderId+' 검수 완료!',type:'ok'});
+      syncDataAwait(wh,'ttScanUpdate',{orderId:updated.orderId,lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),status:'completed',worker:ttWorker});
+      setTtProgress(p=>({...p,[updated.orderId]:{status:'completed',lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),completedBy:ttWorker,completedTime:fmtT(ts())}}));
+      setTimeout(()=>{setTtCurrentOrder(null);if(ttLabelRef.current)ttLabelRef.current.focus();},1400);
+    }else{
+      ttPlayTick();
+      setTtAlert({msg:'✅ '+matchLine.productName+' — '+matchLine.scanned+'/'+matchLine.required,type:'ok'});
+      syncDataAwait(wh,'ttScanUpdate',{orderId:updated.orderId,lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds),status:'in_progress',worker:ttWorker});
+      setTtProgress(p=>({...p,[updated.orderId]:{status:'in_progress',lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds)}}));
+    }
   };
 
   /* manager: save pick list */
@@ -937,7 +1286,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v19'),
+    h('span',{className:'app-ver '+D},'v20'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -978,29 +1327,110 @@ function App(){
     RT()
   );
 
-  /* Scan Page */
-  const ScanPage=()=>h('div',{style:{padding:'20px 24px 60px',maxWidth:560,background:'#ECEAE5',minHeight:'calc(100vh - 52px)'}},
-    h('h2',{style:{fontSize:18,fontWeight:700,color:'#111',marginBottom:4}},'Scan Station'),
-    h('p',{style:{fontSize:13,color:'#666',marginBottom:14}},'Scan packing slip barcode → auto-detect channel → update count'),
-    h('div',{style:{marginBottom:14,padding:'10px 14px',background:'#FFF0DC',borderRadius:10,fontSize:11,color:'#7A3A00',border:'1px solid #F5C070',display:'flex',gap:8,alignItems:'center'}},
-      h('span',{style:{flexShrink:0}},'ℹ️'),h('span',null,h('strong',null,'Seeding · Reshipment'),': use +1/+5/+10 in the Records table.')
-    ),
-    h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.25rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
-      h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'Barcode Input'),
-      h('input',{ref:scanRef,value:scanIn,onChange:e=>setSI(e.target.value),onKeyDown:handleScan,autoFocus:true,placeholder:'Scan packing slip or type Order# then Enter…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid '+(scanErr?'#E24B4A':'#5B5EF4'),borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}}),
-      lastScan&&h('div',{style:{marginTop:12,padding:'12px 14px',borderRadius:10,background:lastScan.ok?CA[lastScan.cat].bg:'#FFF0DC',border:'1px solid '+(lastScan.ok?CA[lastScan.cat].br:'#F5C070')}},
-        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
-          h('div',null,
-            h('div',{style:{fontSize:13,fontWeight:700,color:lastScan.ok?CA[lastScan.cat].tx:'#7A3A00'}},lastScan.ok?'✓ '+lastScan.cat+' — '+lastScan.store:'⚠ '+lastScan.cat),
-            h('div',{className:'mono',style:{fontSize:11,marginTop:3,color:'#666'}},lastScan.barcode)
-          ),
-          lastScan.pgNo&&h('div',{style:{textAlign:'right',marginLeft:14}},
-            h('div',{style:{fontSize:9,fontWeight:700,color:'#999',textTransform:'uppercase',marginBottom:2}},'Pick List'),
-            h('div',{className:'mono',style:{fontWeight:700,fontSize:14,color:'#111'}},lastScan.pgNo)
+  /* ── TikTok CBT 2단계 스캔 패널 (라벨→상품) ── */
+  const TTScanPanel=()=>{
+    const orderCount=ttOrders.length;
+    const completedCount=Object.values(ttProgress).filter(p=>p.status==='completed').length;
+    const inProgressCount=Object.values(ttProgress).filter(p=>p.status==='in_progress').length;
+    const pendingCount=Math.max(0,orderCount-completedCount-inProgressCount);
+    const rate=orderCount>0?Math.round(completedCount/orderCount*100):0;
+    return h(Fragment,null,
+      ttBigAlert&&h('div',{onClick:()=>setTtBigAlert(null),style:{position:'fixed',inset:0,zIndex:9999,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',
+        background:ttBigAlert.type==='err'?'rgba(196,40,47,.97)':ttBigAlert.type==='warn'?'rgba(214,148,0,.97)':'rgba(30,120,75,.97)'}},
+        h('div',{style:{fontSize:'min(26vw,180px)',lineHeight:1,filter:'drop-shadow(0 6px 10px rgba(0,0,0,.25))'}},ttBigAlert.icon),
+        h('div',{style:{fontSize:'clamp(28px,7vw,72px)',fontWeight:800,marginTop:8,color:'#fff',letterSpacing:'.02em',textShadow:'0 2px 12px rgba(0,0,0,.35)'}},ttBigAlert.msg),
+        ttBigAlert.sub&&h('div',{style:{fontSize:'clamp(14px,3vw,28px)',marginTop:14,color:'rgba(255,255,255,.92)',fontWeight:600,wordBreak:'break-all',padding:'0 20px',textAlign:'center'}},ttBigAlert.sub)
+      ),
+      // 진행 요약
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}},
+        [['Total',orderCount,'#111'],['Completed',completedCount,'#16A34A'],['In Progress',inProgressCount,'#D97706'],['Pending',pendingCount,'#DC2626']].map(([lbl,val,color])=>
+          h('div',{key:lbl,style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:12,padding:'12px 14px',textAlign:'center'}},
+            h('div',{style:{fontSize:22,fontWeight:800,color}},val),
+            h('div',{style:{fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginTop:2}},lbl)
           )
         )
       ),
-      scanErr&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:10,background:'#FCEBEB',color:'#9B2020',fontSize:12,border:'1px solid #F5BBBB',fontWeight:500}},scanErr)
+      orderCount===0&&h('div',{style:{padding:'14px 16px',background:'#FFF0DC',border:'1px solid #F5C070',borderRadius:10,fontSize:12,color:'#7A3A00',marginBottom:12}},
+        '⚠ 오늘 업로드된 TikTok CBT 주문이 없습니다. Settings → TikTok CBT 에서 레이블 PDF를 먼저 업로드하세요.'
+      ),
+      !ttWorker&&h('div',{style:{padding:'14px 16px',background:'#F0EEFF',border:'1px solid #C4C5FF',borderRadius:10,marginBottom:12}},
+        h('div',{style:{fontSize:12,fontWeight:700,color:'#5B5EF4',marginBottom:8}},'스캔 시작 전, 본인 이름을 선택하세요'),
+        h('div',{style:{display:'flex',flexWrap:'wrap',gap:6}},pickers.map(p=>h('button',{key:p,onClick:()=>setTtWorker(p),style:{padding:'7px 14px',borderRadius:100,border:'1px solid #C4C5FF',background:'#fff',color:'#5B5EF4',fontWeight:600,fontSize:12,cursor:'pointer'}},p)))
+      ),
+      ttWorker&&h(Fragment,null,
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}},
+          h('span',{style:{fontSize:12,color:'#666'}},'👷 스캔 작업자: '+ttWorker),
+          h('button',{onClick:()=>setTtWorker(''),style:{fontSize:11,color:'#999',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}},'변경')
+        ),
+        h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.1rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
+          h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'1. 배송 라벨 스캔 (Tracking Number)'),
+          h('input',{ref:ttLabelRef,value:ttLabelIn,onChange:e=>setTtLabelIn(e.target.value),onKeyDown:ttHandleLabelScan,autoFocus:true,disabled:!!ttCurrentOrder,placeholder:ttCurrentOrder?'주문 검수 중…':'라벨 스캔 대기중…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:ttCurrentOrder?'#F0F0F0':'#F6F5F1',border:'2px solid #14213D',borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}})
+        ),
+        ttAlert&&h('div',{style:{marginBottom:12,padding:'12px 16px',borderRadius:10,fontWeight:700,fontSize:14,
+          background:ttAlert.type==='ok'?'#E3F6E8':ttAlert.type==='warn'?'#FFF6E0':'#FDEBEB',
+          color:ttAlert.type==='ok'?'#1E6B3A':ttAlert.type==='warn'?'#8A5C00':'#A3282F',
+          border:'2px solid '+(ttAlert.type==='ok'?'#2E8B57':ttAlert.type==='warn'?'#E0A300':'#D84343')}},ttAlert.msg),
+        ttCurrentOrder&&h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.1rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}},
+            h('div',{style:{fontSize:16,fontWeight:800}},'주문 #'+ttCurrentOrder.orderId),
+            h('div',{style:{fontSize:12,color:'#666'}},ttCurrentOrder.buyer)
+          ),
+          ttCurrentOrder.trackingIds.length>1&&h('div',{style:{fontSize:11,color:'#888',marginBottom:10}},'박스 '+ttCurrentOrder.scannedTrackingIds.size+'/'+ttCurrentOrder.trackingIds.length+' 스캔됨'),
+          h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:13,marginBottom:14}},
+            h('thead',null,h('tr',null,
+              h('th',{style:{textAlign:'left',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'Product'),
+              h('th',{style:{textAlign:'left',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'SKU'),
+              h('th',{style:{textAlign:'center',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'Qty'),
+              h('th',{style:{textAlign:'center',padding:'6px',fontSize:10,color:'#999',textTransform:'uppercase'}},'Status')
+            )),
+            h('tbody',null,ttCurrentOrder.lines.map((l,i)=>h('tr',{key:i,style:{borderBottom:'1px solid #EEE'}},
+              h('td',{style:{padding:'8px 6px',maxWidth:220}},l.productName),
+              h('td',{className:'mono',style:{padding:'8px 6px',fontSize:11,color:'#555'}},l.sellerSku),
+              h('td',{style:{padding:'8px 6px',textAlign:'center',fontWeight:700}},l.scanned+'/'+l.required),
+              h('td',{style:{padding:'8px 6px',textAlign:'center'}},
+                h('span',{style:{fontWeight:700,fontSize:11,padding:'3px 8px',borderRadius:6,
+                  background:l.scanned>=l.required?'#DFF4E4':l.scanned>0?'#FFF1CC':'#EEE',
+                  color:l.scanned>=l.required?'#1E6B3A':l.scanned>0?'#8A5C00':'#777'}},
+                  l.scanned>=l.required?'✓ Done':l.scanned>0?'Partial':'Pending')
+              )
+            )))
+          ),
+          h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'2. 상품 바코드 스캔'),
+          h('input',{ref:ttItemRef,value:ttItemIn,onChange:e=>setTtItemIn(e.target.value),onKeyDown:ttHandleItemScan,autoFocus:true,placeholder:'상품 바코드 스캔…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid #D97706',borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}})
+        )
+      )
+    );
+  };
+
+  /* Scan Page */
+  const ScanPage=()=>h('div',{style:{padding:'20px 24px 60px',maxWidth:600,background:'#ECEAE5',minHeight:'calc(100vh - 52px)',margin:'0 auto'}},
+    h('h2',{style:{fontSize:18,fontWeight:700,color:'#111',marginBottom:4}},'Scan Station'),
+    h('p',{style:{fontSize:13,color:'#666',marginBottom:14}},scanMode==='tt'?'TikTok CBT — 라벨 스캔 후 상품 바코드로 2단계 검수':'Scan packing slip barcode → auto-detect channel → update count'),
+    h('div',{style:{display:'flex',gap:6,marginBottom:16}},
+      h('button',{onClick:()=>setScanMode('tt'),style:{flex:1,padding:'10px',borderRadius:10,border:'1.5px solid '+(scanMode==='tt'?'#C84A82':'#D8D7D2'),background:scanMode==='tt'?'#FCE8F0':'#fff',color:scanMode==='tt'?'#8A2A56':'#666',fontWeight:700,fontSize:13,cursor:'pointer'}},'🎵 TikTok CBT'),
+      h('button',{onClick:()=>setScanMode('std'),style:{flex:1,padding:'10px',borderRadius:10,border:'1.5px solid '+(scanMode==='std'?'#5B5EF4':'#D8D7D2'),background:scanMode==='std'?'#F0EEFF':'#fff',color:scanMode==='std'?'#5B5EF4':'#666',fontWeight:700,fontSize:13,cursor:'pointer'}},'📦 Official / Moida & Hola')
+    ),
+    scanMode==='tt'?TTScanPanel():h(Fragment,null,
+      h('div',{style:{marginBottom:14,padding:'10px 14px',background:'#FFF0DC',borderRadius:10,fontSize:11,color:'#7A3A00',border:'1px solid #F5C070',display:'flex',gap:8,alignItems:'center'}},
+        h('span',{style:{flexShrink:0}},'ℹ️'),h('span',null,h('strong',null,'Seeding · Reshipment'),': use +1/+5/+10 in the Records table.')
+      ),
+      h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.25rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
+        h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'Barcode Input'),
+        h('input',{ref:scanRef,value:scanIn,onChange:e=>setSI(e.target.value),onKeyDown:handleScan,autoFocus:true,placeholder:'Scan packing slip or type Order# then Enter…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid '+(scanErr?'#E24B4A':'#5B5EF4'),borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}}),
+        lastScan&&h('div',{style:{marginTop:12,padding:'12px 14px',borderRadius:10,background:lastScan.ok?CA[lastScan.cat].bg:'#FFF0DC',border:'1px solid '+(lastScan.ok?CA[lastScan.cat].br:'#F5C070')}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+            h('div',null,
+              h('div',{style:{fontSize:13,fontWeight:700,color:lastScan.ok?CA[lastScan.cat].tx:'#7A3A00'}},lastScan.ok?'✓ '+lastScan.cat+' — '+lastScan.store:'⚠ '+lastScan.cat),
+              h('div',{className:'mono',style:{fontSize:11,marginTop:3,color:'#666'}},lastScan.barcode)
+            ),
+            lastScan.pgNo&&h('div',{style:{textAlign:'right',marginLeft:14}},
+              h('div',{style:{fontSize:9,fontWeight:700,color:'#999',textTransform:'uppercase',marginBottom:2}},'Pick List'),
+              h('div',{className:'mono',style:{fontWeight:700,fontSize:14,color:'#111'}},lastScan.pgNo)
+            )
+          )
+        ),
+        scanErr&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:10,background:'#FCEBEB',color:'#9B2020',fontSize:12,border:'1px solid #F5BBBB',fontWeight:500}},scanErr)
+      )
     )
   );
 
@@ -1060,7 +1490,7 @@ function App(){
   /* Settings Page */
   const [settingsTab,setSettingsTab]=useState('sync');
   const SettingsPage=()=>{
-    const NAV=[{id:'sync',icon:'🔗',label:'Google Sheets'},{id:'picker',icon:'👷',label:'Pickers'},{id:'ss',icon:'📦',label:'ShipStation'},{id:'pin',icon:'🔐',label:'Security'},{id:'data',icon:'🗑',label:'Data'}];
+    const NAV=[{id:'sync',icon:'🔗',label:'Google Sheets'},{id:'picker',icon:'👷',label:'Pickers'},{id:'tt',icon:'🎵',label:'TikTok CBT'},{id:'ss',icon:'📦',label:'ShipStation'},{id:'pin',icon:'🔐',label:'Security'},{id:'data',icon:'🗑',label:'Data'}];
     const inp={background:'rgba(255,255,255,0.06)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'12px 16px',color:'#E8E6FF',fontFamily:'inherit',fontSize:14,outline:'none',width:'100%',display:'block'};
     const lbl={display:'block',fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:8,letterSpacing:'.02em'};
     const card={background:'#13132B',border:'1px solid rgba(255,255,255,0.07)',borderRadius:16,padding:'28px 32px'};
@@ -1129,17 +1559,58 @@ function App(){
         )
       ),
       h('div',{style:card},
-        h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:16,letterSpacing:'.02em'}},'TikTok CBT — Manual Count'),
-        h('div',{style:{background:'rgba(200,74,130,0.06)',border:'1px solid rgba(200,74,130,0.2)',borderRadius:12,padding:'16px 20px'}},
-          h('p',{style:{fontSize:12,color:'#F0A0C8',marginBottom:12}},'TikTok Seller Center → Awaiting Shipment 건수를 직접 입력하세요.'),
-          h('div',{style:{display:'flex',alignItems:'center',gap:12}},
-            h('label',{style:{fontSize:13,fontWeight:600,color:'#F0A0C8',whiteSpace:'nowrap'}},'CBT Orders Today:'),
-            h('input',{type:'number',min:0,value:ttCbtCount,onChange:e=>{const v=parseInt(e.target.value)||0;setTtCbtCount(v);lsSet('tt_cbt_count',v);},style:{width:100,padding:'8px 12px',borderRadius:8,border:'1.5px solid rgba(200,74,130,0.4)',background:'rgba(200,74,130,0.08)',color:'#F0A0C8',fontSize:16,fontWeight:700,textAlign:'center',outline:'none'}}),
-            h('span',{style:{fontSize:12,color:'#888'}},'orders')
-          )
-        )
+        h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',marginBottom:10,letterSpacing:'.02em'}},'TikTok CBT'),
+        h('p',{style:{fontSize:13,color:'#A0AABB',lineHeight:1.7,marginBottom:14}},'TikTok CBT는 레이블 PDF 업로드로 주문 수/제품 정보가 자동으로 집계됩니다. 더 이상 수동 입력할 필요 없습니다 →'),
+        h('button',{className:'btn-primary',style:{padding:'10px 22px',fontSize:13},onClick:()=>setSettingsTab('tt')},'🎵 TikTok CBT 탭으로 이동')
       )
     );
+
+    const TTDataTab=()=>{
+      const skuSingleCount=Object.keys(ttSkuSingle).length;
+      const skuSetCount=Object.keys(ttSkuSet).length;
+      const completedCount=Object.values(ttProgress).filter(p=>p.status==='completed').length;
+      return h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
+        h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'TikTok CBT — 레이블 & 제품 마스터'),
+          h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'ShipStation에 연동되지 않는 TikTok CBT는 매일 아침 레이블 PDF를 업로드하면, 그 안의 주문/트래킹/제품 정보를 자동 인식해서 피킹 수량과 스캔 매칭에 사용합니다.')
+        ),
+        h('div',{style:card},
+          h('div',{style:{fontSize:12,fontWeight:700,color:'#F0A0C8',marginBottom:10}},'① 오늘의 CBT 레이블 PDF (배송라벨+패킹슬립 합본, 여러 파일 가능)'),
+          h('input',{type:'file',accept:'.pdf',multiple:true,disabled:ttUploading,onChange:e=>ttUploadLabelFiles(e.target.files),style:{color:'#CCC',fontSize:13}}),
+          h('div',{style:{marginTop:10,fontSize:12,color:'#8888C0'}},'현재 로드된 오늘자 주문: '+ttOrders.length+'건 · 완료 '+completedCount+'건'),
+          ttUploadMsg&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:8,fontSize:12,fontWeight:600,background:ttUploadMsg.startsWith('✓')?'rgba(134,239,172,0.1)':'rgba(248,113,113,0.1)',color:ttUploadMsg.startsWith('✓')?'#86EFAC':'#F87171'}},ttUploadMsg)
+        ),
+        h('div',{style:card},
+          h('div',{style:{fontSize:12,fontWeight:700,color:'#A0C8F0',marginBottom:6}},'② 제품 마스터 (SKU Master .xlsx) — 한 번 올리면 계속 누적'),
+          h('p',{style:{fontSize:12,color:'#7070A0',marginBottom:10}},'"#1. Single SKU"(Seller SKU/Barcode), "#2. Set SKU"(Set SKU/Component Seller SKU/Component Qty/Set Product Name/Status) 시트 형식 그대로 업로드하세요.'),
+          h('input',{type:'file',accept:'.xlsx',disabled:ttUploading,onChange:e=>ttUploadSkuFile(e.target.files[0]),style:{color:'#CCC',fontSize:13}}),
+          h('div',{style:{marginTop:10,fontSize:12,color:'#8888C0'}},'저장된 SKU: 단품 '+skuSingleCount+'개 · 세트 '+skuSetCount+'개')
+        ),
+        h('div',{style:card},
+          h('div',{style:{fontSize:12,fontWeight:700,color:'#6060A0',marginBottom:12}},'오늘의 주문 현황'),
+          ttOrders.length===0
+            ?h('div',{style:{fontSize:13,color:'#5050A0',fontStyle:'italic'}},'PDF를 업로드하면 여기 표시됩니다.')
+            :h('div',{style:{maxHeight:320,overflowY:'auto'}},
+                h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
+                  h('thead',null,h('tr',null,
+                    h('th',{style:{textAlign:'left',padding:'6px 8px',color:'#6060A0',fontSize:10,textTransform:'uppercase',position:'sticky',top:0,background:'#13132B'}},'Order ID'),
+                    h('th',{style:{textAlign:'left',padding:'6px 8px',color:'#6060A0',fontSize:10,textTransform:'uppercase',position:'sticky',top:0,background:'#13132B'}},'Status'),
+                    h('th',{style:{textAlign:'center',padding:'6px 8px',color:'#6060A0',fontSize:10,textTransform:'uppercase',position:'sticky',top:0,background:'#13132B'}},'Items')
+                  )),
+                  h('tbody',null,ttOrders.map(o=>{
+                    const p=ttProgress[o.orderId];
+                    const st=p?p.status:'pending';
+                    const stLbl={completed:'✅ Completed',in_progress:'🔶 In Progress',pending:'⏳ Pending'}[st]||st;
+                    return h('tr',{key:o.orderId,style:{borderBottom:'1px solid rgba(255,255,255,0.05)'}},
+                      h('td',{className:'mono',style:{padding:'6px 8px',color:'#D0D0F0'}},o.orderId),
+                      h('td',{style:{padding:'6px 8px',color:'#A0AABB'}},stLbl),
+                      h('td',{style:{padding:'6px 8px',textAlign:'center',color:'#A0AABB'}},(o.items||[]).length)
+                    );
+                  }))
+                )
+              )
+        )
+      );
+    };
 
     const PinTab=()=>h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
       h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Security'),h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Change the 4-digit PIN required to access Manager Mode.')),
@@ -1222,6 +1693,7 @@ function App(){
       h('div',{style:{flex:1,padding:'32px 40px',overflowY:'auto'}},
         settingsTab==='sync'&&SyncTab(),
         settingsTab==='picker'&&PickerTab(),
+        settingsTab==='tt'&&TTDataTab(),
         settingsTab==='ss'&&SSTab(),
         settingsTab==='pin'&&PinTab(),
         settingsTab==='data'&&DataTab(),
