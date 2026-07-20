@@ -684,18 +684,36 @@ function upsertPickAssign_(a){
   finally{ lock.releaseLock(); }
 }
 
+// ★ v43 버그 수정: 시간 셀이 "HH:mm:ss"로 저장되면 Google Sheets가 내부적으로
+//   1899-12-30을 기준 날짜로 잡아버려서, 진행중(pickEnd 없음) 배정의 소요시간을
+//   "지금(2026)" - "1899"로 계산해 126년 같은 말도 안 되는 값이 나오던 문제.
+//   → 날짜를 다시 정확히 붙여서 완전한 ISO 문자열로 재구성.
+function reattachTime_(dateStr, timeVal) {
+  if (!timeVal) return '';
+  const str = String(timeVal).trim();
+  const m = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    const hh = m[1].padStart(2,'0'), mm = m[2], ss = m[3]||'00';
+    return (dateStr||today_()) + 'T' + hh + ':' + mm + ':' + ss;
+  }
+  return str;
+}
+
 function getPickAssigns_(date){
   const sh=pickAssignSheet_(); const lastRow=sh.getLastRow();
   if(lastRow<2) return { ok:true, assigns:[] };
   const lastCol=Math.max(sh.getLastColumn(),13);
   const data=sh.getRange(2,1,lastRow-1,lastCol).getValues();
   const toDS=v=>{ if(!v) return ''; try{ const d=new Date(v); if(!isNaN(d.getTime())) return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd'); }catch(e){} return String(v).slice(0,10); };
-  const assigns=data.filter(r=>!date||toDS(r[2])===date).map(r=>({
-    id:String(r[0]), pgNo:String(r[1]), date:toDS(r[2]), category:String(r[3]),
-    worker:String(r[4]), pages:Number(r[5])||0,
-    pickStart:String(r[6]||''), pickEnd:String(r[7]||''), duration:String(r[8]||''),
-    pageStart:Number(r[11])||0, pageEnd:Number(r[12])||0
-  }));
+  const assigns=data.filter(r=>!date||toDS(r[2])===date).map(r=>{
+    const ds=toDS(r[2]);
+    return {
+      id:String(r[0]), pgNo:String(r[1]), date:ds, category:String(r[3]),
+      worker:String(r[4]), pages:Number(r[5])||0,
+      pickStart:reattachTime_(ds,r[6]), pickEnd:reattachTime_(ds,r[7]), duration:String(r[8]||''),
+      pageStart:Number(r[11])||0, pageEnd:Number(r[12])||0
+    };
+  });
   return { ok:true, assigns, ver:getVersion_() };
 }
 
