@@ -1,5 +1,14 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v38
+ * SK B2C Fulfillment — Google Apps Script v39
+ * v39 핵심 수정:
+ *   - TikTok CBT 서버 동기화 추가 (TT_Orders/TT_Progress/TT_SkuSingle/TT_SkuSet 시트)
+ *     → 매니저가 매일 아침 레이블 PDF를 업로드하면 주문/트래킹/제품 정보가
+ *       서버에 저장되고, 여러 작업자가 각자 기기에서 동시에 2단계 스캔
+ *       (라벨→상품 바코드) 가능
+ *     → 주문 완료 시 오늘자 TikTok CBT 픽리스트 scanned 카운트에 자동 반영
+ *       (updateScanned_ 재사용 — 기존 KPI/DailySummary 로직 그대로 활용)
+ *   - doGet: ttOrders / ttSkuMaster / ttProgress 조회 op 추가
+ *   - doPost: ttUploadOrders / ttUploadSkuMaster / ttScanUpdate action 추가
  * v38 핵심 수정:
  *   - PREFIX_MAP: 1156 prefix 추가
  *   - upsertList_: active 행 보호 (scanned/times 덮어쓰기 방지)
@@ -87,6 +96,11 @@ function doGet(e) {
 
   // ★ ShipStation Webhook GET (연결 확인용)
   if (op === 'ssWebhookTest')  return json_({ ok:true, message:'SK B2C Webhook ready' });
+
+  // ★ TikTok CBT 서버 동기화 (v39 추가)
+  if (op === 'ttOrders')       return json_(ttGetOrders_((e.parameter||{}).date||''));
+  if (op === 'ttSkuMaster')    return json_(ttGetSkuMaster_());
+  if (op === 'ttProgress')     return json_(ttGetProgress_());
 
   return json_({ ok:false, error:'unknown op: '+op });
 }
@@ -279,6 +293,11 @@ function doPost(e) {
 
     // ★ ShipStation Webhook
     case 'ssWebhook':         return json_(handleSSWebhook_(data));
+
+    // ★ TikTok CBT 서버 동기화 (v39 추가) — 여러 작업자가 각자 기기에서 동시 스캔 가능하도록
+    case 'ttUploadOrders':    return json_(ttUploadOrders_(data.orders||[], data.date));
+    case 'ttUploadSkuMaster': return json_(ttUploadSkuMaster_(data.single||[], data.sets||[]));
+    case 'ttScanUpdate':      return json_(ttScanUpdate_(data.orderId, data.lineScanned, data.scannedTrackingIds, data.status, data.worker));
 
     default: return json_({ ok:false, error:'unknown action: '+action });
   }
@@ -522,6 +541,173 @@ function logSSFetch_(date, summary) {
 /* ════════════════════════════════════════
    SHEET HELPERS
 ════════════════════════════════════════ */
+/* ════════════════════════════════════════
+   TIKTOK CBT — 레이블/SKU 서버 동기화 (v39 추가)
+   ────────────────────────────────────────
+   TikTok CBT는 ShipStation에 주문이 잡히지 않아 매일 아침
+   매니저가 레이블 PDF를 업로드하면(프런트에서 pdf.js로 파싱),
+   그 결과(주문/트래킹/아이템)를 여기 서버에 저장한다.
+   SKU Master(xlsx)도 마찬가지로 서버에 누적 저장(append-only merge).
+   여러 작업자가 각자 기기에서 동시에 스캔할 수 있도록, 스캔 진행상황도
+   (라벨 스캔 → 상품 바코드 스캔 2단계) 서버에 실시간 반영한다.
+   주문이 완료(모든 라인 스캔) 처리되면, 오늘 날짜의 TikTok CBT
+   픽리스트 scanned 카운트를 자동으로 +1 해서 기존 KPI/대시보드에
+   그대로 반영되게 한다 (updateScanned_ 재사용).
+════════════════════════════════════════ */
+const SHEET_TT_ORDERS     = 'TT_Orders';
+const SHEET_TT_PROGRESS   = 'TT_Progress';
+const SHEET_TT_SKU_SINGLE = 'TT_SkuSingle';
+const SHEET_TT_SKU_SET    = 'TT_SkuSet';
+
+function ttOrdersSheet_()   { return getOrCreateSheet_(SHEET_TT_ORDERS,   ['OrderID','TrackingIDs','Buyer','ItemsJSON','Date','CreatedAt']); }
+function ttProgressSheet_() { return getOrCreateSheet_(SHEET_TT_PROGRESS, ['OrderID','Status','LineScannedJSON','ScannedTrackingJSON','CompletedBy','CompletedTime','UpdatedAt']); }
+function ttSkuSingleSheet_(){ return getOrCreateSheet_(SHEET_TT_SKU_SINGLE, ['SellerSKU','Barcode']); }
+function ttSkuSetSheet_()   { return getOrCreateSheet_(SHEET_TT_SKU_SET,    ['SetSKU','ComponentSKU','Qty','ProductName','Status']); }
+
+/* ── 주문 업로드 (레이블 PDF 파싱 결과) — 같은 Order ID면 트래킹/아이템 병합 ── */
+function ttUploadOrders_(orders, date) {
+  if (!Array.isArray(orders) || orders.length===0) return { ok:false, error:'orders required' };
+  const lock = LockService.getDocumentLock(); lock.waitLock(15000);
+  try {
+    const sh = ttOrdersSheet_();
+    const lastRow = sh.getLastRow();
+    const existingIds = lastRow>=2 ? sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0])) : [];
+    const now = nowLocal_();
+    let added=0, merged=0;
+    const newRows=[];
+    orders.forEach(o=>{
+      const idx = existingIds.indexOf(String(o.orderId));
+      if (idx>=0) {
+        const row = idx+2;
+        const cur = sh.getRange(row,1,1,6).getValues()[0];
+        const curTrack = String(cur[1]||'').split('|').filter(Boolean);
+        const newTrack = Array.from(new Set([...curTrack, ...(o.trackingIds||[])]));
+        let curItems=[]; try{ curItems=JSON.parse(cur[3]||'[]'); }catch(e){}
+        (o.items||[]).forEach(it=>{
+          const ex = curItems.find(x=>x.sellerSku===it.sellerSku);
+          if (ex) ex.qty=(ex.qty||0)+(it.qty||0); else curItems.push(it);
+        });
+        sh.getRange(row,2).setValue(newTrack.join('|'));
+        sh.getRange(row,4).setValue(JSON.stringify(curItems));
+        merged++;
+      } else {
+        newRows.push([String(o.orderId), (o.trackingIds||[]).join('|'), String(o.buyer||''), JSON.stringify(o.items||[]), date||today_(), now]);
+        existingIds.push(String(o.orderId));
+        added++;
+      }
+    });
+    if (newRows.length) sh.getRange(sh.getLastRow()+1,1,newRows.length,6).setValues(newRows);
+    bumpVersion_();
+    return { ok:true, added, merged };
+  } catch(e){ return { ok:false, error:e.message }; }
+  finally { lock.releaseLock(); }
+}
+
+function ttGetOrders_(date) {
+  const sh = ttOrdersSheet_(); const lastRow = sh.getLastRow();
+  if (lastRow<2) return { ok:true, orders:[] };
+  const data = sh.getRange(2,1,lastRow-1,6).getValues();
+  const toDS=v=>{ if(!v) return ''; try{ const d=new Date(v); if(!isNaN(d.getTime())) return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd'); }catch(e){} return String(v).slice(0,10); };
+  const orders = data
+    .filter(r=>!date || toDS(r[4])===date)
+    .map(r=>{
+      let items=[]; try{ items=JSON.parse(r[3]||'[]'); }catch(e){}
+      return { orderId:String(r[0]), trackingIds:String(r[1]||'').split('|').filter(Boolean), buyer:String(r[2]||''), items, date:toDS(r[4]) };
+    });
+  return { ok:true, orders, ver:getVersion_() };
+}
+
+/* ── SKU 마스터 — append-only merge (검색 실패 시에만 보완, 기존 값은 절대 덮어쓰지 않음) ── */
+function ttUploadSkuMaster_(single, sets) {
+  const lock = LockService.getDocumentLock(); lock.waitLock(15000);
+  try {
+    let addedSingle=0, addedSet=0;
+    if (Array.isArray(single) && single.length>0) {
+      const sh = ttSkuSingleSheet_(); const lastRow=sh.getLastRow();
+      const existing = lastRow>=2 ? sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0])) : [];
+      const rows=[];
+      single.forEach(s=>{
+        if (!s.sku || existing.includes(String(s.sku))) return;
+        rows.push([String(s.sku), String(s.barcode||'')]); existing.push(String(s.sku)); addedSingle++;
+      });
+      if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,2).setValues(rows);
+    }
+    if (Array.isArray(sets) && sets.length>0) {
+      const sh = ttSkuSetSheet_(); const lastRow=sh.getLastRow();
+      const existing = lastRow>=2 ? sh.getRange(2,1,lastRow-1,2).getValues().map(r=>r[0]+'|'+r[1]) : [];
+      const rows=[];
+      sets.forEach(s=>{
+        const key=String(s.setSku)+'|'+String(s.componentSku);
+        if (!s.setSku || !s.componentSku || existing.includes(key)) return;
+        rows.push([String(s.setSku), String(s.componentSku), Number(s.qty)||1, String(s.productName||''), String(s.status||'')]);
+        existing.push(key); addedSet++;
+      });
+      if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,5).setValues(rows);
+    }
+    bumpVersion_();
+    return { ok:true, addedSingle, addedSet };
+  } catch(e){ return { ok:false, error:e.message }; }
+  finally { lock.releaseLock(); }
+}
+
+function ttGetSkuMaster_() {
+  const shS = ttSkuSingleSheet_(); const lastS = shS.getLastRow();
+  const single = lastS>=2 ? shS.getRange(2,1,lastS-1,2).getValues().map(r=>({sku:String(r[0]),barcode:String(r[1])})) : [];
+  const shT = ttSkuSetSheet_(); const lastT = shT.getLastRow();
+  const sets = lastT>=2 ? shT.getRange(2,1,lastT-1,5).getValues().map(r=>({setSku:String(r[0]),componentSku:String(r[1]),qty:Number(r[2])||1,productName:String(r[3]),status:String(r[4])})) : [];
+  return { ok:true, single, sets };
+}
+
+/* ── 스캔 진행상황 (라벨 스캔 → 상품 바코드 스캔, 실시간 서버 동기화) ── */
+function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker) {
+  if (!orderId) return { ok:false, error:'orderId required' };
+  const lock = LockService.getDocumentLock(); lock.waitLock(15000);
+  try {
+    const sh = ttProgressSheet_(); const lastRow = sh.getLastRow();
+    const ids = lastRow>=2 ? sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0])) : [];
+    const idx = ids.indexOf(String(orderId));
+    const now = nowLocal_();
+    const row = [
+      String(orderId), String(status||'in_progress'),
+      JSON.stringify(lineScanned||{}), JSON.stringify(scannedTrackingIds||[]),
+      status==='completed' ? String(worker||'') : '',
+      status==='completed' ? now : '',
+      now
+    ];
+    if (idx>=0) sh.getRange(idx+2,1,1,7).setValues([row]);
+    else sh.appendRow(row);
+    bumpVersion_();
+
+    // ★ 완료 시 오늘 날짜 TikTok CBT 픽리스트의 scanned 카운트 자동 반영 (기존 KPI 대시보드 재사용)
+    if (status==='completed') {
+      const listsData = getLists_(today_());
+      if (listsData.ok) {
+        const target = listsData.lists.find(l =>
+          l.category==='TikTok CBT' && l.status!=='Complete' && l.status!=='Deleted' &&
+          l.pickEnd && (l.scanned||0) < (l.orderCount||0)
+        );
+        if (target) updateScanned_(target, orderId, 'TikTok CBT', false);
+      }
+    }
+    return { ok:true };
+  } catch(e){ return { ok:false, error:e.message }; }
+  finally { lock.releaseLock(); }
+}
+
+function ttGetProgress_() {
+  const sh = ttProgressSheet_(); const lastRow = sh.getLastRow();
+  if (lastRow<2) return { ok:true, progress:{}, ver:getVersion_() };
+  const data = sh.getRange(2,1,lastRow-1,7).getValues();
+  const progress = {};
+  data.forEach(r=>{
+    let lineScanned={}, scannedTracking=[];
+    try{ lineScanned=JSON.parse(r[2]||'{}'); }catch(e){}
+    try{ scannedTracking=JSON.parse(r[3]||'[]'); }catch(e){}
+    progress[String(r[0])] = { status:String(r[1]), lineScanned, scannedTrackingIds:scannedTracking, completedBy:String(r[4]||''), completedTime:String(r[5]||''), updatedAt:String(r[6]||'') };
+  });
+  return { ok:true, progress, ver:getVersion_() };
+}
+
 function ss_() { return SpreadsheetApp.openById(SS_ID); }
 
 function getOrCreateSheet_(name, headers) {
