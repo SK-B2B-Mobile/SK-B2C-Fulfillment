@@ -925,8 +925,20 @@ function listsSheet_() {
   return getOrCreateSheet_(SHEET_LISTS, [
     'Date','PG No','Category','SKU','Order Count','Scanned',
     'Worker','Pick Start','Pick End','Scan Start','Scan End',
-    'Pick Duration','Scan Duration','Status','Remarks','Skip Reason','Created At','Updated At','ID','Pages'
+    'Pick Duration','Scan Duration','Status','Remarks','Skip Reason','Created At','Updated At','ID','Pages','Worker Durations'
   ]);
+}
+
+/**
+ * ★ v44: PickLists 시트에 Worker Durations(작업자별 소요시간 요약) 컬럼이 없으면 자동 추가
+ */
+function ensureWorkerDurationsColumn_() {
+  const sh = listsSheet_();
+  const lastCol = sh.getLastColumn();
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (!headers.some(h => String(h).trim() === 'Worker Durations')) {
+    sh.getRange(1, lastCol + 1).setValue('Worker Durations');
+  }
 }
 
 /**
@@ -1064,6 +1076,7 @@ function upsertList_(list, skipSummary) {
   lock.waitLock(15000);
   try {
     ensurePagesColumn_();
+    ensureWorkerDurationsColumn_();
     const sh = listsSheet_();
     const lastRow = sh.getLastRow();
     const date = list.date || today_();
@@ -1089,6 +1102,7 @@ function upsertList_(list, skipSummary) {
     let finalPickStart = list.pickStart, finalPickEnd = list.pickEnd;
     let finalScanStart = list.scanStart, finalScanEnd = list.scanEnd;
     let finalPages = Number(list.pages)||0;
+    let finalWorkerDur = list.workerDurations;
     if (targetRow) {
       const existingRow = sh.getRange(targetRow, 1, 1, 11).getValues()[0];
       const existingScanned = Number(existingRow[5])||0;
@@ -1098,6 +1112,7 @@ function upsertList_(list, skipSummary) {
       if (!finalScanStart  && existingRow[9])  finalScanStart  = existingRow[9];
       if (!finalScanEnd    && existingRow[10]) finalScanEnd    = existingRow[10];
       if (!finalPages) { const existingPages = Number(sh.getRange(targetRow,20).getValue())||0; if (existingPages) finalPages = existingPages; }
+      if (finalWorkerDur==null) { finalWorkerDur = sh.getRange(targetRow,21).getValue()||''; }
     }
 
     const rowData = [
@@ -1108,7 +1123,8 @@ function upsertList_(list, skipSummary) {
       fmtTime_(finalScanStart), fmtTime_(finalScanEnd),
       dur_(finalPickStart,finalPickEnd,date), dur_(finalScanStart,finalScanEnd,date),
       getSt_({...list,scanned:finalScanned,pickStart:finalPickStart,pickEnd:finalPickEnd,scanStart:finalScanStart,scanEnd:finalScanEnd}),
-      String(list.memo||''), String(list.skipReason||''), createdAt, now, String(list.id||''), finalPages
+      String(list.memo||''), String(list.skipReason||''), createdAt, now, String(list.id||''), finalPages,
+      String(finalWorkerDur||'')
     ];
     // ★ id가 없으면 pgNo_date로 생성
     if (!rowData[18]) rowData[18] = String(list.pgNo||'') + '_' + String(date);
@@ -1170,7 +1186,7 @@ function deleteList_(pgNo, date) {
 function getLists_(date) {
   const sh=listsSheet_(); const lastRow=sh.getLastRow();
   if (lastRow<2) return { ok:true, lists:[] };
-  const lastCol=Math.max(sh.getLastColumn(),20);
+  const lastCol=Math.max(sh.getLastColumn(),21);
   const data=sh.getRange(2,1,lastRow-1,lastCol).getValues();
   const toDS=val=>{if(!val&&val!==0)return'';try{const d=new Date(val);if(!isNaN(d.getTime()))return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd');}catch(e){}return String(val).slice(0,10);};
   const lists=data.filter(r=>{
@@ -1183,7 +1199,7 @@ function getLists_(date) {
       scanStart:String(r[9]),scanEnd:String(r[10]),pickDur:String(r[11]),
       scanDur:String(r[12]),status:String(r[13]),memo:String(r[14]),
       skipReason:String(r[15]),createdAt:String(r[16]),updatedAt:String(r[17]),id:String(r[18]),
-      pages:Number(r[19])||0,
+      pages:Number(r[19])||0, workerDurations:String(r[20]||''),
     }));
   return { ok:true, lists, ver:getVersion_() };
 }
