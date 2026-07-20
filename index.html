@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v30</title>
+<title>SK B2C Fulfillment v31</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -549,6 +549,11 @@ function ttComputeRequiredLines(order,skuSingleMap,skuSetMap){
 
 function ttFindOrderByTracking(rawVal,orders){
   const info=ttNormalizeBarcode(rawVal);
+  // ★ v31: 라벨에 인쇄된 바코드가 Tracking Number가 아니라 Order ID인 경우도 있어서
+  //   Order ID로도 매칭 시도 (스캔값이 순수 숫자면 orderId와 직접 비교)
+  const rawDigits=String(rawVal||'').trim();
+  const byOrderId=orders.find(o=>String(o.orderId)===rawDigits);
+  if(byOrderId)return{order:byOrderId,info};
   for(const cand of info.candidates){
     const exact=orders.find(o=>(o.trackingIds||[]).includes(cand));
     if(exact)return{order:exact,info};
@@ -1439,7 +1444,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v30'),
+    h('span',{className:'app-ver '+D},'v31'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1517,7 +1522,7 @@ function App(){
           h('button',{onClick:()=>setTtWorker(''),style:{fontSize:11,color:'#999',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}},'변경')
         ),
         h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.1rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
-          h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'1. 배송 라벨 스캔 (Tracking Number)'),
+          h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'1. 배송 라벨 스캔 (Order ID 또는 Tracking Number)'),
           h('input',{ref:ttLabelRef,value:ttLabelIn,onChange:e=>setTtLabelIn(e.target.value),onKeyDown:ttHandleLabelScan,autoFocus:true,disabled:!!ttCurrentOrder,placeholder:ttCurrentOrder?'주문 검수 중…':'라벨 스캔 대기중…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:ttCurrentOrder?'#F0F0F0':'#F6F5F1',border:'2px solid #14213D',borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}})
         ),
         ttAlert&&h('div',{style:{marginBottom:12,padding:'12px 16px',borderRadius:10,fontWeight:700,fontSize:14,
