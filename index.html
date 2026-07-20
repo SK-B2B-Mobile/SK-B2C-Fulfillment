@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v20</title>
+<title>SK B2C Fulfillment v22</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -209,20 +209,19 @@ const LS={PIN:'b2c18_pin',LISTS:'b2c18_lists',LOG:'b2c18_log',WH:'b2c18_wh',PKS:
 const DEF_PIN='1234';
 const DEF_PKS='Kim Jisu,Park Minho,Lee Hayeon,Choi Dawon,Jung Soyeon,Helper 1,Helper 2';
 const PREFIX_MAP=[
-  {p:'US-HMS-',cat:'Official 1',store:'Heimish'},{p:'GSU',cat:'Official 1',store:'Shein'},
-  {p:'200014',cat:'Official 1',store:'Walmart'},{p:'TOCOBO-',cat:'Official 1',store:'Tocobo'},
-  {p:'SKINFOOD-',cat:'Official 2',store:'Skinfood'},{p:'KAJA-',cat:'Official 2',store:'Kaja'},
-  {p:'IDC-',cat:'Official 2',store:'I Dew Care'},{p:'jumiso-',cat:'Official 2',store:'Jumiso'},
-  {p:'Betheskin-',cat:'Official 2',store:'Be The Skin'},{p:'Hyaah-',cat:'Official 2',store:'Hyaah'},
+  {p:'US-HMS-',cat:'Official',store:'Heimish'},{p:'GSU',cat:'Official',store:'Shein'},
+  {p:'200014',cat:'Official',store:'Walmart'},{p:'TOCOBO-',cat:'Official',store:'Tocobo'},
+  {p:'SKINFOOD-',cat:'Official',store:'Skinfood'},{p:'KAJA-',cat:'Official',store:'Kaja'},
+  {p:'IDC-',cat:'Official',store:'I Dew Care'},{p:'jumiso-',cat:'Official',store:'Jumiso'},
+  {p:'Betheskin-',cat:'Official',store:'Be The Skin'},{p:'Hyaah-',cat:'Official',store:'Hyaah'},
   {p:'MD-',cat:'Moida & Hola',store:'Moida US'},{p:'HOA',cat:'Moida & Hola',store:'Hola'},
   {p:'5773',cat:'TikTok CBT',store:'TikTok CBT'},{p:'1155',cat:'TikTok CBT',store:'TikTok CBT'},
   {p:'1156',cat:'TikTok CBT',store:'TikTok CBT'},
   {p:'MBX',cat:'Seeding',store:'Seeding MBX'},{p:'RTN',cat:'Seeding',store:'Returns'},
 ];
-const CATS=['TikTok CBT','Official 1','Official 2','Moida & Hola','Seeding','Reshipment'];
+const CATS=['TikTok CBT','Official','Moida & Hola','Seeding','Reshipment'];
 const CA={
-  'Official 1':{bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2',ac:'#3B8FE0'},
-  'Official 2':{bg:'#EDECFE',tx:'#4038B5',br:'#B0A8F2',ac:'#7068D8'},
+  'Official':{bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2',ac:'#3B8FE0'},
   'Moida & Hola':{bg:'#E0F5D0',tx:'#1A6A08',br:'#90D870',ac:'#5DA832'},
   'TikTok CBT':{bg:'#FBE8F0',tx:'#8A1A5A',br:'#F0A0C8',ac:'#C84A82'},
   'Seeding':{bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070',ac:'#E89820'},
@@ -318,6 +317,7 @@ const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
         ...loc,                    // ★ 로컬 데이터 기반 (pgNo, id 등 로컬 유지)
         orderCount:remote.orderCount||loc.orderCount||0,
         sku:remote.sku||loc.sku||0,
+        pages:remote.pages||loc.pages||0,
         scanned:newScanned,
         worker:newWorker,
         pickStart:newPickStart,
@@ -336,6 +336,7 @@ const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
           pgNo:remote.pgNo,
           category:remote.category,
           sku:remote.sku||0,
+          pages:remote.pages||0,
           orderCount:remote.orderCount||0,
           scanned:remote.scanned||0,
           worker:remote.worker||'',
@@ -634,7 +635,7 @@ function PinModal({onOK,onCancel}){
 function EditModal({list,pickers,onSave,onDel,onCancel}){
   const fi=iso=>{if(!iso)return'';const d=new Date(iso);const pad=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());};
   const pi=s=>{if(!s.trim())return null;try{return new Date(s.trim()).toISOString();}catch{return null;}};
-  const [F,setF]=useState({pgNo:list.pgNo,sku:String(list.sku||0),orderCount:String(list.orderCount||0),scanned:String(list.scanned||0),worker:list.worker||'',memo:list.memo||'',pickStart:fi(list.pickStart),pickEnd:fi(list.pickEnd),scanStart:fi(list.scanStart),scanEnd:fi(list.scanEnd)});
+  const [F,setF]=useState({pgNo:list.pgNo,sku:String(list.sku||0),orderCount:String(list.orderCount||0),pages:String(list.pages||0),scanned:String(list.scanned||0),worker:list.worker||'',memo:list.memo||'',pickStart:fi(list.pickStart),pickEnd:fi(list.pickEnd),scanStart:fi(list.scanStart),scanEnd:fi(list.scanEnd)});
   const [del2,setDel2]=useState(false);
   const f=(k,v2)=>setF(p=>({...p,[k]:v2}));
   return h('div',{className:'overlay'},
@@ -649,6 +650,7 @@ function EditModal({list,pickers,onSave,onDel,onCancel}){
       h('div',{className:'modal-body'},
         h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}},
           h('div',null,h('label',{className:'lbl dark'},'PG No.'),h('input',{className:'inp-dark',value:F.pgNo,onChange:e=>f('pgNo',e.target.value)})),
+          h('div',null,h('label',{className:'lbl dark'},'Total Pages'),h('input',{className:'inp-dark',type:'number',value:F.pages,onChange:e=>f('pages',e.target.value)})),
           h('div',null,h('label',{className:'lbl dark'},'SKU'),h('input',{className:'inp-dark',type:'number',value:F.sku,onChange:e=>f('sku',e.target.value)})),
           h('div',null,h('label',{className:'lbl dark'},'Order Count'),h('input',{className:'inp-dark',type:'number',value:F.orderCount,onChange:e=>f('orderCount',e.target.value)})),
           h('div',null,h('label',{className:'lbl dark'},'Scanned'),h('input',{className:'inp-dark',type:'number',value:F.scanned,onChange:e=>f('scanned',e.target.value)}))
@@ -683,7 +685,7 @@ function EditModal({list,pickers,onSave,onDel,onCancel}){
           h('button',{onClick:()=>setDel2(true),className:'ab del-btn'},'🗑 Delete'),
           h('div',{style:{display:'flex',gap:8}},
             h('button',{onClick:onCancel,className:'btn-sec-dark btn-secondary',style:{padding:'8px 18px'}},'Cancel'),
-            h('button',{onClick:()=>onSave({...list,...F,sku:+F.sku||0,orderCount:+F.orderCount||0,scanned:+F.scanned||0,pickStart:pi(F.pickStart),pickEnd:pi(F.pickEnd),scanStart:pi(F.scanStart),scanEnd:pi(F.scanEnd)}),className:'btn-primary',style:{padding:'9px 22px'}},'Save')
+            h('button',{onClick:()=>onSave({...list,...F,sku:+F.sku||0,orderCount:+F.orderCount||0,pages:+F.pages||0,scanned:+F.scanned||0,pickStart:pi(F.pickStart),pickEnd:pi(F.pickEnd),scanStart:pi(F.scanStart),scanEnd:pi(F.scanEnd)}),className:'btn-primary',style:{padding:'9px 22px'}},'Save')
           )
         )
       )
@@ -738,7 +740,7 @@ function App(){
   const [scanIn,setSI]=useState('');
   const [lastScan,setLS]=useState(null);
   const [scanErr,setSE]=useState('');
-  const [mf,setMF]=useState({pgNo:'',cat:'Official 1',sku:'',orders:'',memo:''});
+  const [mf,setMF]=useState({pgNo:'',cat:'Official',sku:'',orders:'',memo:'',pages:''});
   const [editId,setEId]=useState(null);
   const [np1,setNP1]=useState('');const [np2,setNP2]=useState('');const [pm,setPM]=useState('');
   const [ssKey,setSSKey]=useState(()=>localStorage.getItem('b2c18_sskey')||'');
@@ -747,6 +749,8 @@ function App(){
   const [ssFetching,setSSF]=useState(false);
   const [ssResult,setSSR]=useState(null);
   const [ssMsg,setSSM]=useState('');
+  const [webhookMsg,setWebhookMsg]=useState('');
+  const [webhookBusy,setWebhookBusy]=useState(false);
   const [ssModal,setSSModal]=useState(false);
   const [ssModalData,setSSModalData]=useState([]);
   const [endScanModal,setEndScanModal]=useState(null);
@@ -763,7 +767,11 @@ function App(){
   const [ttCurrentOrder,setTtCurrentOrder]=useState(null); // 현재 검수 중인 주문 (라벨 스캔 후)
   const [ttLabelIn,setTtLabelIn]=useState('');
   const [ttItemIn,setTtItemIn]=useState('');
-  const [scanMode,setScanMode]=useState('tt'); // 'tt' | 'std' — Scan Station 화면 모드 (TikTok CBT 우선)
+  const [pickAssigns,setPickAssigns]=useState([]); // [{id,pgNo,date,category,worker,pages,pickStart,pickEnd}]
+  const [addPickerFor,setAddPickerFor]=useState(null); // 현재 "+ Add Picker" 모달 대상 list
+  const [apWorker,setApWorker]=useState('');
+  const [apPages,setApPages]=useState('');
+  const [showStdBackup,setShowStdBackup]=useState(false); // Official/Moida&Hola 백업 수동 스캔 — 평소엔 접어둠 (ShipStation 자동 연동이 기본)
   const [ttWorker,setTtWorker]=useState(()=>localStorage.getItem('b2c18_ttworker')||'');
   useEffect(()=>localStorage.setItem('b2c18_ttworker',ttWorker),[ttWorker]);
   const [ttAlert,setTtAlert]=useState(null);            // {msg,type}
@@ -853,6 +861,20 @@ function App(){
     return()=>clearInterval(id);
   },[wh]);
 
+  /* ── 페이지 기준 작업자 배정 폴링 ── */
+  useEffect(()=>{
+    if(!wh)return;
+    const pollPA=async()=>{
+      try{
+        const r=await fetch(wh+'?op=pickAssigns&date='+today()).then(r=>r.json());
+        if(r&&r.ok)setPickAssigns(r.assigns||[]);
+      }catch(e){console.warn('pickAssigns poll error',e);}
+    };
+    pollPA();
+    const id=setInterval(pollPA,15000);
+    return()=>clearInterval(id);
+  },[wh]);
+
   const sync=useCallback((action,payload)=>{
     if(!wh)return;
     syncData(wh,action,payload).then(()=>setSS('✓ '+new Date().toLocaleTimeString())).catch(()=>setSS('⚠'));
@@ -886,17 +908,21 @@ function App(){
   /* scan barcode */
   const handleScan=e=>{
     if(e.key!=='Enter')return;const b=scanIn.trim();if(!b)return;setSI('');
-    const d=detect(b);if(!d){setSE('Unrecognized: '+b);setLS(null);return;}
+    const d=detect(b);
+    if(!d){setSE('Unrecognized: '+b);setLS(null);ttPlayError();ttShowBigAlert('❓','UNKNOWN','인식할 수 없는 바코드: '+b,'err');return;}
     setSE('');const now=ts();const td=today();
     const tgt=lists.find(l=>l.category===d.cat&&l.date===td&&l.scanned<(l.orderCount||0));
-    if(!tgt){setSE(d.cat+' — No active pick list');setLS({barcode:b,cat:d.cat,store:d.store,time:fmtT(now),ok:false});return;}
+    if(!tgt){setSE(d.cat+' — No active pick list');setLS({barcode:b,cat:d.cat,store:d.store,time:fmtT(now),ok:false});ttPlayWarn();ttShowBigAlert('⚠️','NO ACTIVE LIST',d.cat+' — 진행중인 픽리스트 없음','warn');return;}
+    let willComplete=false;
     setLists(prev=>prev.map(l=>{
       if(l.id!==tgt.id)return l;const nc=l.scanned+1;const oc=l.orderCount||0;const ch={scanned:nc};
-      if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd)ch.scanEnd=now;
+      if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd){ch.scanEnd=now;willComplete=true;}
       const u={...l,...ch};sync('upsertList',{list:u});return u;
     }));
     const entry={barcode:b,cat:d.cat,store:d.store,time:fmtT(now),pgNo:tgt.pgNo,worker:tgt.worker||''};
     setLS({...entry,ok:true});setLog(prev=>[entry,...prev.slice(0,499)]);sync('addScanLog',{entry});
+    if(willComplete){ttPlayComplete();ttShowBigAlert('✅','LIST COMPLETE',tgt.pgNo+' ('+d.cat+') 스캔 완료!','ok',1600);}
+    else{ttPlayTick();}
   };
 
   /* ══════════════════════════════════════════
@@ -998,6 +1024,39 @@ function App(){
     }
   };
 
+  /* ══════════════════════════════════════════
+     페이지 기준 다중 작업자 배정 (Records → Add Picker)
+  ══════════════════════════════════════════ */
+  const assignsFor=pgNo=>pickAssigns.filter(a=>a.pgNo===pgNo&&a.date===today());
+  const openAddPicker=l=>{
+    const used=assignsFor(l.pgNo).reduce((s,a)=>s+(a.pages||0),0);
+    const remain=Math.max(0,(l.pages||0)-used);
+    setApWorker('');setApPages(remain>0?String(remain):'1');setAddPickerFor(l);
+  };
+  const submitAddPicker=()=>{
+    if(!addPickerFor||!apWorker||!(+apPages>0))return;
+    const a={id:addPickerFor.pgNo+'_'+uid(),pgNo:addPickerFor.pgNo,date:today(),category:addPickerFor.category,worker:apWorker,pages:+apPages,pickStart:ts(),pickEnd:null};
+    setPickAssigns(prev=>[...prev,a]);
+    sync('upsertPickAssign',{assign:a});
+    if(!addPickerFor.pickStart)upd(addPickerFor.id,{pickStart:ts()}); // 첫 배정 시 리스트 전체 Picking 시작으로 표시
+    setAddPickerFor(null);setApWorker('');setApPages('');
+  };
+  const endPickAssignFn=a=>{
+    const u={...a,pickEnd:ts()};
+    setPickAssigns(prev=>{
+      const next=prev.map(x=>x.id===a.id?u:x);
+      // ★ 이 PG의 총 페이지가 모두 완료(pickEnd 있는 배정들의 pages 합계 >= 리스트 pages)되면
+      //   리스트 전체를 Pick Done으로 자동 전환 (기존 Work/End Scan 버튼 로직이 pickEnd를 기준으로 하므로)
+      const l=lists.find(x=>x.pgNo===a.pgNo&&x.date===a.date);
+      if(l&&!l.pickEnd&&(l.pages||0)>0){
+        const doneSum=next.filter(x=>x.pgNo===a.pgNo&&x.date===a.date&&x.pickEnd).reduce((s,x)=>s+(x.pages||0),0);
+        if(doneSum>=l.pages)upd(l.id,{pickEnd:ts()});
+      }
+      return next;
+    });
+    sync('upsertPickAssign',{assign:u});
+  };
+
   /* manager: save pick list */
   const mSave=()=>{
     if(!mf.pgNo||!mf.orders)return;
@@ -1015,14 +1074,14 @@ function App(){
     const newId=mf.pgNo+'_'+listDate;
     const nl={
       id:editId?existing.id:newId,
-      pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,
+      pgNo:mf.pgNo,category:mf.cat,sku:+mf.sku||0,orderCount:+mf.orders,pages:+mf.pages||0,
       scanned:existing?.scanned||0,pickStart:existing?.pickStart||null,pickEnd:existing?.pickEnd||null,
       scanStart:existing?.scanStart||null,scanEnd:existing?.scanEnd||null,worker:existing?.worker||'',
       date:listDate,memo:mf.memo||''
     };
     setLists(p=>editId?p.map(x=>x.id===editId?nl:x):[...p,nl]);
     sync('upsertList',{list:nl});
-    setMF({pgNo:'',cat:cat!=='All'?cat:'Official 1',sku:'',orders:'',memo:''});
+    setMF({pgNo:'',cat:cat!=='All'?cat:'Official',sku:'',orders:'',memo:'',pages:''});
     setEId(null);setTab('records');
   };
 
@@ -1111,6 +1170,16 @@ function App(){
       const data=await r.json();setSSM(data.ok?'✓ Connected! '+data.storeCount+' stores found':'⚠ '+data.error);
     }catch(e){setSSM('⚠ '+e.message);}
     setSSF(false);
+  };
+  const subscribeWebhook=async()=>{
+    if(!wh||!ssKey||!ssSecret){setWebhookMsg('⚠ URL, API Key, Secret을 먼저 입력하세요');return;}
+    setWebhookBusy(true);setWebhookMsg('등록 중…');
+    try{
+      const r=await syncDataAwait(wh,'subscribeSSWebhook',{apiKey:ssKey,apiSecret:ssSecret});
+      if(r&&r.ok)setWebhookMsg('✓ '+(r.message||'등록 완료'));
+      else setWebhookMsg('⚠ '+((r&&r.error)||'등록 실패'));
+    }catch(e){setWebhookMsg('⚠ '+e.message);}
+    setWebhookBusy(false);
   };
 
   const changePin=()=>{if(np1.length!==4||!/^\d{4}$/.test(np1)){setPM('Must be 4 digits');return;}if(np1!==np2){setPM('PINs do not match');return;}lsSet(LS.PIN,np1);setNP1('');setNP2('');setPM('✓ PIN changed');};
@@ -1230,7 +1299,7 @@ function App(){
       h('table',{className:'tbl'},
         h('thead',null,
           h('tr',null,
-            ['#',...(showPrev&&prevIncomplete.length>0?['DATE']:[]),'PG NO','CATEGORY','SKU','ORDERS','SCANNED','PICKER','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
+            ['#',...(showPrev&&prevIncomplete.length>0?['DATE']:[]),'PG NO','CATEGORY','PAGES','SKU','ORDERS','SCANNED','PICKERS','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
               h('th',{key:col,className:D},col)
             )
           )
@@ -1244,10 +1313,21 @@ function App(){
               ...(showPrev&&prevIncomplete.length>0?[h('td',{className:D,style:{fontSize:11,fontWeight:600,color:isPrev?'#F59E0B':'#AAA',whiteSpace:'nowrap'}},isPrev?l.date:'today')]:[]),
               h('td',{className:D},h('span',{className:'mono',style:{fontWeight:700,color:isMgr?'#C4C2FF':'#111',fontSize:14}},l.pgNo)),
               h('td',{className:D},h('span',{className:'pill',style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},l.category)),
+              h('td',{className:D+' c',style:{fontWeight:700,color:isMgr?'#F0A0C8':'#8A2A56'}},l.pages||0),
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.sku||0),
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.orderCount||0),
               h('td',{className:D+' c',style:{fontWeight:700,fontSize:15,color:st==='complete'?(isMgr?'#86EFAC':'#1A6A08'):(isMgr?'#fff':'#111')}},l.scanned),
-              h('td',{className:D},h(PickerSelect,{value:l.worker||'',onChange:n=>setWrk(l.id,n),pickers,dark:isMgr,pkC})),
+              h('td',{className:D,style:{minWidth:180}},
+                h('div',{style:{display:'flex',flexWrap:'wrap',gap:4,alignItems:'center'}},
+                  assignsFor(l.pgNo).map(a=>{
+                    const wc=pkC(a.worker);const done=!!a.pickEnd;
+                    return h('div',{key:a.id,onClick:()=>!done&&!isMgr&&endPickAssignFn(a),title:done?'':'클릭해서 종료',style:{display:'inline-flex',alignItems:'center',gap:4,padding:'3px 9px',borderRadius:100,fontSize:11,fontWeight:600,background:wc.bg,color:wc.tx,border:'1px solid '+wc.tx,cursor:done||isMgr?'default':'pointer',opacity:done?0.75:1}},
+                      a.worker,h('span',{style:{opacity:.8}},a.pages+'p'),done?'✓':'▶'
+                    );
+                  }),
+                  !isMgr&&h('button',{onClick:()=>openAddPicker(l),style:{padding:'3px 10px',borderRadius:100,fontSize:11,fontWeight:600,border:'1px dashed #AAA',background:'transparent',color:'#888',cursor:'pointer'}},'+ Add')
+                )
+              ),
               ...[['pickStart'],['pickEnd'],['scanStart'],['scanEnd']].map(([fld])=>
                 h('td',{key:fld,className:D+' mono',style:{fontSize:12,color:l[fld]?(isMgr?'#7090E0':'#555'):(isMgr?'#2A2A5A':'#CCC'),cursor:isMgr?'pointer':'default'},onClick:()=>isMgr&&setEL(l)},
                   l[fld]?h('span',{style:{textDecoration:isMgr?'underline dotted':'none',textUnderlineOffset:'2px'}},fmtS(l[fld])):h('span',null,'—')
@@ -1261,8 +1341,6 @@ function App(){
               ),
               h('td',{className:D},
                 h('div',{style:{display:'flex',gap:4,alignItems:'center'}},
-                  !isMgr&&!l.pickStart&&h('button',{className:'ab start',onClick:()=>startPick(l.id)},'▶ Start'),
-                  !isMgr&&l.pickStart&&!l.pickEnd&&h('button',{className:'ab done',onClick:()=>endPick(l.id)},'✓ Done'),
                   !isMgr&&(manual||l.category==='TikTok CBT')&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
                   !isMgr&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab endscan',onClick:()=>endScan(l.id),title:'스캔 완료 또는 OOS·취소 등 미스캔 처리'},'⏹ End Scan'),
                   !isMgr&&st==='complete'&&h('button',{className:'ab done',style:{cursor:'default',opacity:0.85}},'✓ Complete'),
@@ -1286,7 +1364,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v20'),
+    h('span',{className:'app-ver '+D},'v22'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1311,7 +1389,7 @@ function App(){
   const RecordsPage=()=>h(Fragment,null,
     SB(),
     CTabs({actions:isMgr&&h(Fragment,null,
-      h('button',{className:'btn-primary',style:{padding:'5px 14px',fontSize:12},onClick:()=>{setMF({pgNo:'',cat:cat!=='All'?cat:'Official 1',sku:'',orders:'',memo:''});setEId(null);setTab('create');}},'+ Create List'),
+      h('button',{className:'btn-primary',style:{padding:'5px 14px',fontSize:12},onClick:()=>{setMF({pgNo:'',cat:cat!=='All'?cat:'Official',sku:'',orders:'',memo:'',pages:''});setEId(null);setTab('create');}},'+ Create List'),
       ssKey&&ssSecret&&h('button',{className:'btn-secondary btn-sec-dark',style:{padding:'5px 12px',fontSize:12,background:'rgba(16,185,129,0.15)',borderColor:'rgba(16,185,129,0.35)',color:'#10b981'},onClick:()=>{setTab('settings');fetchSSOrders();}},ssFetching?'⏳ Fetching…':'📦 SS Fetch'),
       h('button',{className:'btn-sec-dark btn-secondary',style:{padding:'5px 11px',fontSize:12},onClick:exportCSV},'Export CSV'),
       todayL.filter(l=>getSt(l)==='complete').length>0&&h('button',{className:'ab today-del',onClick:delCompleted},'Clear Completed'),
@@ -1328,6 +1406,13 @@ function App(){
   );
 
   /* ── TikTok CBT 2단계 스캔 패널 (라벨→상품) ── */
+  const BigAlertOverlay=()=>ttBigAlert&&h('div',{onClick:()=>setTtBigAlert(null),style:{position:'fixed',inset:0,zIndex:9999,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',
+    background:ttBigAlert.type==='err'?'rgba(196,40,47,.97)':ttBigAlert.type==='warn'?'rgba(214,148,0,.97)':'rgba(30,120,75,.97)'}},
+    h('div',{style:{fontSize:'min(26vw,180px)',lineHeight:1,filter:'drop-shadow(0 6px 10px rgba(0,0,0,.25))'}},ttBigAlert.icon),
+    h('div',{style:{fontSize:'clamp(28px,7vw,72px)',fontWeight:800,marginTop:8,color:'#fff',letterSpacing:'.02em',textShadow:'0 2px 12px rgba(0,0,0,.35)'}},ttBigAlert.msg),
+    ttBigAlert.sub&&h('div',{style:{fontSize:'clamp(14px,3vw,28px)',marginTop:14,color:'rgba(255,255,255,.92)',fontWeight:600,wordBreak:'break-all',padding:'0 20px',textAlign:'center'}},ttBigAlert.sub)
+  );
+
   const TTScanPanel=()=>{
     const orderCount=ttOrders.length;
     const completedCount=Object.values(ttProgress).filter(p=>p.status==='completed').length;
@@ -1335,12 +1420,6 @@ function App(){
     const pendingCount=Math.max(0,orderCount-completedCount-inProgressCount);
     const rate=orderCount>0?Math.round(completedCount/orderCount*100):0;
     return h(Fragment,null,
-      ttBigAlert&&h('div',{onClick:()=>setTtBigAlert(null),style:{position:'fixed',inset:0,zIndex:9999,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',
-        background:ttBigAlert.type==='err'?'rgba(196,40,47,.97)':ttBigAlert.type==='warn'?'rgba(214,148,0,.97)':'rgba(30,120,75,.97)'}},
-        h('div',{style:{fontSize:'min(26vw,180px)',lineHeight:1,filter:'drop-shadow(0 6px 10px rgba(0,0,0,.25))'}},ttBigAlert.icon),
-        h('div',{style:{fontSize:'clamp(28px,7vw,72px)',fontWeight:800,marginTop:8,color:'#fff',letterSpacing:'.02em',textShadow:'0 2px 12px rgba(0,0,0,.35)'}},ttBigAlert.msg),
-        ttBigAlert.sub&&h('div',{style:{fontSize:'clamp(14px,3vw,28px)',marginTop:14,color:'rgba(255,255,255,.92)',fontWeight:600,wordBreak:'break-all',padding:'0 20px',textAlign:'center'}},ttBigAlert.sub)
-      ),
       // 진행 요약
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}},
         [['Total',orderCount,'#111'],['Completed',completedCount,'#16A34A'],['In Progress',inProgressCount,'#D97706'],['Pending',pendingCount,'#DC2626']].map(([lbl,val,color])=>
@@ -1404,33 +1483,42 @@ function App(){
 
   /* Scan Page */
   const ScanPage=()=>h('div',{style:{padding:'20px 24px 60px',maxWidth:600,background:'#ECEAE5',minHeight:'calc(100vh - 52px)',margin:'0 auto'}},
+    BigAlertOverlay(),
     h('h2',{style:{fontSize:18,fontWeight:700,color:'#111',marginBottom:4}},'Scan Station'),
-    h('p',{style:{fontSize:13,color:'#666',marginBottom:14}},scanMode==='tt'?'TikTok CBT — 라벨 스캔 후 상품 바코드로 2단계 검수':'Scan packing slip barcode → auto-detect channel → update count'),
-    h('div',{style:{display:'flex',gap:6,marginBottom:16}},
-      h('button',{onClick:()=>setScanMode('tt'),style:{flex:1,padding:'10px',borderRadius:10,border:'1.5px solid '+(scanMode==='tt'?'#C84A82':'#D8D7D2'),background:scanMode==='tt'?'#FCE8F0':'#fff',color:scanMode==='tt'?'#8A2A56':'#666',fontWeight:700,fontSize:13,cursor:'pointer'}},'🎵 TikTok CBT'),
-      h('button',{onClick:()=>setScanMode('std'),style:{flex:1,padding:'10px',borderRadius:10,border:'1.5px solid '+(scanMode==='std'?'#5B5EF4':'#D8D7D2'),background:scanMode==='std'?'#F0EEFF':'#fff',color:scanMode==='std'?'#5B5EF4':'#666',fontWeight:700,fontSize:13,cursor:'pointer'}},'📦 Official / Moida & Hola')
-    ),
-    scanMode==='tt'?TTScanPanel():h(Fragment,null,
-      h('div',{style:{marginBottom:14,padding:'10px 14px',background:'#FFF0DC',borderRadius:10,fontSize:11,color:'#7A3A00',border:'1px solid #F5C070',display:'flex',gap:8,alignItems:'center'}},
-        h('span',{style:{flexShrink:0}},'ℹ️'),h('span',null,h('strong',null,'Seeding · Reshipment'),': use +1/+5/+10 in the Records table.')
-      ),
-      h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.25rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
-        h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'Barcode Input'),
-        h('input',{ref:scanRef,value:scanIn,onChange:e=>setSI(e.target.value),onKeyDown:handleScan,autoFocus:true,placeholder:'Scan packing slip or type Order# then Enter…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid '+(scanErr?'#E24B4A':'#5B5EF4'),borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}}),
-        lastScan&&h('div',{style:{marginTop:12,padding:'12px 14px',borderRadius:10,background:lastScan.ok?CA[lastScan.cat].bg:'#FFF0DC',border:'1px solid '+(lastScan.ok?CA[lastScan.cat].br:'#F5C070')}},
-          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
-            h('div',null,
-              h('div',{style:{fontSize:13,fontWeight:700,color:lastScan.ok?CA[lastScan.cat].tx:'#7A3A00'}},lastScan.ok?'✓ '+lastScan.cat+' — '+lastScan.store:'⚠ '+lastScan.cat),
-              h('div',{className:'mono',style:{fontSize:11,marginTop:3,color:'#666'}},lastScan.barcode)
+    h('p',{style:{fontSize:13,color:'#666',marginBottom:16}},'TikTok CBT — 라벨 스캔 후 상품 바코드로 2단계 검수'),
+    TTScanPanel(),
+    h('div',{style:{marginTop:28,paddingTop:18,borderTop:'1.5px dashed #CCC'}},
+      !showStdBackup
+        ? h('button',{onClick:()=>setShowStdBackup(true),style:{width:'100%',padding:'12px',borderRadius:10,border:'1.5px dashed #AAA',background:'transparent',color:'#888',fontWeight:600,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}},
+            '⚙️ Official · Moida & Hola는 ShipStation에서 자동 연동됩니다 — 문제 있을 때만 수동 스캔 열기 ▸'
+          )
+        : h(Fragment,null,
+            h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+              h('div',{style:{fontSize:12,fontWeight:700,color:'#7A3A00'}},'⚠️ 수동 백업 스캔 (Official · Moida & Hola)'),
+              h('button',{onClick:()=>setShowStdBackup(false),style:{fontSize:11,color:'#999',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}},'접기 ▲')
             ),
-            lastScan.pgNo&&h('div',{style:{textAlign:'right',marginLeft:14}},
-              h('div',{style:{fontSize:9,fontWeight:700,color:'#999',textTransform:'uppercase',marginBottom:2}},'Pick List'),
-              h('div',{className:'mono',style:{fontWeight:700,fontSize:14,color:'#111'}},lastScan.pgNo)
+            h('div',{style:{marginBottom:14,padding:'10px 14px',background:'#FFF0DC',borderRadius:10,fontSize:11,color:'#7A3A00',border:'1px solid #F5C070'}},
+              '이 채널은 평소엔 ShipStation → 자동 Webhook으로 스캔이 반영됩니다. 이 입력창은 웹훅이 잠시 안 될 때만 사용하는 백업 수단입니다. ',
+              h('br'),h('strong',null,'Seeding · Reshipment'),': use +1/+5/+10 in the Records table.'
+            ),
+            h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.25rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
+              h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'Barcode Input'),
+              h('input',{ref:scanRef,value:scanIn,onChange:e=>setSI(e.target.value),onKeyDown:handleScan,placeholder:'Scan packing slip or type Order# then Enter…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid '+(scanErr?'#E24B4A':'#5B5EF4'),borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}}),
+              lastScan&&h('div',{style:{marginTop:12,padding:'12px 14px',borderRadius:10,background:lastScan.ok?CA[lastScan.cat].bg:'#FFF0DC',border:'1px solid '+(lastScan.ok?CA[lastScan.cat].br:'#F5C070')}},
+                h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+                  h('div',null,
+                    h('div',{style:{fontSize:13,fontWeight:700,color:lastScan.ok?CA[lastScan.cat].tx:'#7A3A00'}},lastScan.ok?'✓ '+lastScan.cat+' — '+lastScan.store:'⚠ '+lastScan.cat),
+                    h('div',{className:'mono',style:{fontSize:11,marginTop:3,color:'#666'}},lastScan.barcode)
+                  ),
+                  lastScan.pgNo&&h('div',{style:{textAlign:'right',marginLeft:14}},
+                    h('div',{style:{fontSize:9,fontWeight:700,color:'#999',textTransform:'uppercase',marginBottom:2}},'Pick List'),
+                    h('div',{className:'mono',style:{fontWeight:700,fontSize:14,color:'#111'}},lastScan.pgNo)
+                  )
+                )
+              ),
+              scanErr&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:10,background:'#FCEBEB',color:'#9B2020',fontSize:12,border:'1px solid #F5BBBB',fontWeight:500}},scanErr)
             )
           )
-        ),
-        scanErr&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:10,background:'#FCEBEB',color:'#9B2020',fontSize:12,border:'1px solid #F5BBBB',fontWeight:500}},scanErr)
-      )
     )
   );
 
@@ -1448,27 +1536,36 @@ function App(){
             h('div',{style:{fontSize:13,color:'#5050A0',marginTop:4}},editId?'Editing: '+lists.find(x=>x.id===editId)?.pgNo:'Fill in the details below to create a pick list')
           )
         ),
-        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:24,padding:'12px 18px',background:cc.bg+'18',border:'1px solid '+cc.br+'44',borderRadius:12}},
-          h('div',{style:{width:10,height:10,borderRadius:'50%',background:cc.ac,flexShrink:0}}),
-          h('span',{style:{fontSize:13,color:'#8080C0'}},'Category'),
-          h('span',{className:'pill',style:{background:cc.bg,color:cc.tx,borderColor:cc.br,fontSize:13,padding:'4px 14px'}},mf.cat),
-          h('span',{style:{fontSize:12,color:'#4040A0'}},'← selected from tab')
+        h('div',{style:{marginBottom:24,padding:'16px 18px',background:cc.bg+'10',border:'1px solid '+cc.br+'33',borderRadius:12}},
+          h('div',{style:{fontSize:11,fontWeight:700,color:'#6060A0',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}},'Category'),
+          h('div',{style:{display:'flex',flexWrap:'wrap',gap:8}},
+            CATS.map(c=>{
+              const cc2=CA[c]||{bg:'#eee',tx:'#333',br:'#ccc'};
+              const on=mf.cat===c;
+              return h('button',{key:c,onClick:()=>setMF(p=>({...p,cat:c})),style:{padding:'8px 16px',borderRadius:100,border:'1.5px solid '+(on?cc2.br:'rgba(255,255,255,0.12)'),background:on?cc2.bg:'transparent',color:on?cc2.tx:'#8080C0',fontWeight:on?700:500,fontSize:13,cursor:'pointer',fontFamily:'inherit'}},c);
+            })
+          )
         ),
         h('div',{style:{background:'#13132B',border:'1px solid rgba(255,255,255,0.07)',borderRadius:18,overflow:'hidden',boxShadow:'0 8px 40px rgba(0,0,0,0.4)'}},
           h('div',{style:{padding:'28px 32px',borderBottom:'1px solid rgba(255,255,255,0.06)'}},
             h('label',{style:{...lbl2,fontSize:12}},'Pick List No. *'),
             h('input',{style:{...inp2,fontSize:18,fontWeight:700,fontFamily:'monospace',letterSpacing:'0.04em'},value:mf.pgNo,onChange:e=>setMF(p=>({...p,pgNo:e.target.value})),placeholder:'PG00004473',autoFocus:true})
           ),
-          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',padding:'28px 32px',gap:24,borderBottom:'1px solid rgba(255,255,255,0.06)'}},
+          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',padding:'28px 32px',gap:20,borderBottom:'1px solid rgba(255,255,255,0.06)'}},
             h('div',null,
-              h('label',{style:lbl2},'SKU Count'),
-              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},type:'number',min:0,value:mf.sku,onChange:e=>setMF(p=>({...p,sku:e.target.value})),placeholder:'0'}),
-              h('div',{style:{fontSize:11,color:'#3030A0',marginTop:6,textAlign:'center'}},'Number of unique products')
+              h('label',{style:{...lbl2,color:'#F0A0C8'}},'Total Pages *'),
+              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center',borderColor:'rgba(200,74,130,0.4)'},type:'number',min:0,value:mf.pages,onChange:e=>setMF(p=>({...p,pages:e.target.value})),placeholder:'0'}),
+              h('div',{style:{fontSize:11,color:'#C84A82',marginTop:6,textAlign:'center',fontWeight:600}},'작업자 배정·KPI 기준')
             ),
             h('div',null,
               h('label',{style:lbl2},'Order Count *'),
               h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},type:'number',min:1,value:mf.orders,onChange:e=>setMF(p=>({...p,orders:e.target.value})),placeholder:'0'}),
               h('div',{style:{fontSize:11,color:'#3030A0',marginTop:6,textAlign:'center'}},'Total orders to fulfill')
+            ),
+            h('div',null,
+              h('label',{style:lbl2},'SKU Count'),
+              h('input',{style:{...inp2,fontSize:22,fontWeight:700,textAlign:'center'},type:'number',min:0,value:mf.sku,onChange:e=>setMF(p=>({...p,sku:e.target.value})),placeholder:'0'}),
+              h('div',{style:{fontSize:11,color:'#3030A0',marginTop:6,textAlign:'center'}},'(선택) Unique products')
             )
           ),
           h('div',{style:{padding:'28px 32px',borderBottom:'1px solid rgba(255,255,255,0.06)'}},
@@ -1533,6 +1630,14 @@ function App(){
 
     const SSTab=()=>h('div',{style:{display:'flex',flexDirection:'column',gap:24}},
       h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'ShipStation Integration'),h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Connect your ShipStation account to automatically fetch order counts by channel.')),
+      h('div',{style:{...card,background:'rgba(16,185,129,0.05)',borderColor:'rgba(16,185,129,0.2)'}},
+        h('div',{style:{fontSize:12,fontWeight:700,color:'#34D399',marginBottom:6}},'🔔 자동 스캔 연동 (Webhook)'),
+        h('p',{style:{fontSize:13,color:'#A0AABB',lineHeight:1.7,marginBottom:14}},'등록하면 ShipStation에서 배송 라벨을 만드는(=발송 처리) 순간, 작업자가 우리 앱에서 스캔하지 않아도 자동으로 스캔 카운트가 올라갑니다. (단, ShipStation에서 "Mark as Shipped"로 수동 처리한 주문은 이 자동화 대상이 아닙니다 — 라벨 발급 건만 해당)'),
+        h('div',{style:{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}},
+          h('button',{className:'btn-primary',style:{padding:'10px 22px',fontSize:13,background:'linear-gradient(135deg,#10B981,#059669)'},onClick:subscribeWebhook,disabled:webhookBusy},webhookBusy?'⏳ 등록 중…':'🔔 자동 연동 등록하기'),
+          webhookMsg&&h('span',{style:{fontSize:12,fontWeight:600,color:webhookMsg.startsWith('✓')?'#86EFAC':'#F87171'}},webhookMsg)
+        )
+      ),
       h('div',{style:card},
         h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:20}},
           h('div',null,h('label',{style:lbl},'API Key'),h('input',{style:{...inp,fontFamily:'monospace'},type:'password',value:ssKey,onChange:e=>setSSKey(e.target.value),placeholder:'Enter API Key'})),
@@ -1754,7 +1859,30 @@ function App(){
           )
         )
       ),
-      editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:delItem,onCancel:()=>setEL(null)})
+      editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:delItem,onCancel:()=>setEL(null)}),
+      addPickerFor&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget)setAddPickerFor(null);}},
+        h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:380,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
+          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2}},'👷 Add Picker'),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:16}},addPickerFor.pgNo+' · '+addPickerFor.category+' · 총 '+(addPickerFor.pages||0)+'페이지'),
+          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'작업자 선택'),
+          h('div',{style:{display:'flex',flexWrap:'wrap',gap:6,marginBottom:16}},
+            pickers.map(p=>{const wc=pkC(p);const on=apWorker===p;
+              return h('button',{key:p,onClick:()=>setApWorker(p),style:{padding:'7px 13px',borderRadius:100,border:'1.5px solid '+(on?wc.tx:'#DDD'),background:on?wc.bg:'#fff',color:on?wc.tx:'#666',fontWeight:on?700:500,fontSize:12,cursor:'pointer',fontFamily:'inherit'}},p);
+            })
+          ),
+          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'가져갈 페이지 수'),
+          h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:20}},
+            h('button',{onClick:()=>setApPages(v=>String(Math.max(1,(+v||1)-1))),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'−'),
+            h('input',{type:'number',min:1,value:apPages,onChange:e=>setApPages(e.target.value),style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'6px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}}),
+            h('button',{onClick:()=>setApPages(v=>String((+v||0)+1)),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'+'),
+            h('span',{style:{fontSize:12,color:'#888'}},'페이지')
+          ),
+          h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
+            h('button',{onClick:()=>setAddPickerFor(null),style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
+            h('button',{onClick:submitAddPicker,disabled:!apWorker||!(+apPages>0),style:{padding:'9px 22px',borderRadius:8,border:'none',background:(apWorker&&+apPages>0)?'#5B5EF4':'#CCC',color:'#fff',cursor:(apWorker&&+apPages>0)?'pointer':'not-allowed',fontWeight:700}},'▶ Start Picking')
+          )
+        )
+      )
     );
   }catch(renderErr){
     console.error('Render error:',renderErr);
