@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v27</title>
+<title>SK B2C Fulfillment v28</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -250,7 +250,7 @@ const ts=()=>new Date().toISOString();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
-const fmtDurMin=ms=>{if(!ms||ms<0)return'0m';const mins=Math.round(ms/60000);if(mins<60)return mins+'m';return Math.floor(mins/60)+'h '+(mins%60)+'m';};
+const fmtDurMin=ms=>{if(!ms||ms<0||ms>1000*60*60*20)return'';const mins=Math.round(ms/60000);if(mins<60)return mins+'m';return Math.floor(mins/60)+'h '+(mins%60)+'m';};
 const dur=(s,e,listDate)=>{
   if(!s)return'—';
   const parseTime=(val,baseDate)=>{
@@ -1377,9 +1377,9 @@ function App(){
                         onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApPages(String(a.pages||1));}else if(!done){endPickAssignFn(a);}},
                         title:timeStr+(durStr?' · '+durStr:''),
                         style:{display:'inline-flex',alignItems:'center',gap:4,padding:done?'4px 10px':'3px 9px',borderRadius:100,fontSize:11,fontWeight:700,
-                          background:done?wc.tx:wc.bg,color:done?'#fff':wc.tx,
-                          border:'2px solid '+wc.tx,cursor:'pointer',
-                          boxShadow:done?'0 1px 3px rgba(0,0,0,0.25)':'none'}
+                          background:done?'#E0F5D0':wc.bg,color:done?'#1A6A08':wc.tx,
+                          border:'2px solid '+(done?'#90D870':wc.tx),cursor:'pointer',
+                          boxShadow:done?'0 1px 3px rgba(0,0,0,0.12)':'none'}
                       },
                         done&&h('span',{style:{fontSize:13}},'✅'),
                         a.worker,h('span',{style:{opacity:.85}},rangeStr),
@@ -1429,7 +1429,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v27'),
+    h('span',{className:'app-ver '+D},'v28'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
