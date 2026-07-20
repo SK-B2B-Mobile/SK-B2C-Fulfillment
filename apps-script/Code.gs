@@ -1,5 +1,11 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v42
+ * SK B2C Fulfillment — Google Apps Script v45
+ * v45 핵심 수정:
+ *   - TikTok CBT 수동 확인(Manual Verify) 기능 추가
+ *     → 제품은 맞지만 바코드가 등록된 것과 다를 때(제조사 이슈 등)
+ *       사유를 남기고 강제로 통과시킬 수 있음
+ *     → TT_ManualVerify 시트에 감사 기록 (누가/언제/어떤 제품/사유)
+ *   - Order ID로도 라벨 매칭 가능 (기존엔 Tracking Number만 지원)
  * v42 핵심 수정:
  *   - getOrCreateSheet_ 동시성 버그 수정: 여러 요청이 동시에 몰릴 때
  *     같은 시트를 중복 생성해서 "이름_conflict12345" 같은 시트가
@@ -319,6 +325,7 @@ function doPost(e) {
     case 'ttUploadOrders':    return json_(ttUploadOrders_(data.orders||[], data.date));
     case 'ttUploadSkuMaster': return json_(ttUploadSkuMaster_(data.single||[], data.sets||[]));
     case 'ttScanUpdate':      return json_(ttScanUpdate_(data.orderId, data.lineScanned, data.scannedTrackingIds, data.status, data.worker));
+    case 'ttManualVerify':    return json_(ttLogManualVerify_(data.orderId, data.sellerSku, data.productName, data.qty, data.worker, data.reason));
 
     // ★ Pick Assignments — 페이지 기준 다중 작업자 배정 (v40 추가)
     case 'upsertPickAssign':  return json_(upsertPickAssign_(data.assign));
@@ -844,6 +851,26 @@ function ttGetSkuMaster_() {
   const shT = ttSkuSetSheet_(); const lastT = shT.getLastRow();
   const sets = lastT>=2 ? shT.getRange(2,1,lastT-1,5).getValues().map(r=>({setSku:String(r[0]),componentSku:String(r[1]),qty:Number(r[2])||1,productName:String(r[3]),status:String(r[4])})) : [];
   return { ok:true, single, sets };
+}
+
+/* ════════════════════════════════════════
+   TIKTOK CBT — 수동 확인(Manual Verify) 감사 로그 (v33 추가)
+   ────────────────────────────────────────
+   제품은 맞는데 바코드가(제조사 이슈 등으로) 등록된 것과 다를 때,
+   작업자가 사유를 남기고 강제로 통과시킬 수 있음. 이 기록은 별도
+   시트에 남겨서 나중에 품질 이슈 추적/감사 용도로 쓸 수 있게 함.
+════════════════════════════════════════ */
+const SHEET_TT_MANUAL = 'TT_ManualVerify';
+function ttManualVerifySheet_(){
+  return getOrCreateSheet_(SHEET_TT_MANUAL, ['Time','OrderID','SellerSKU','ProductName','Qty','Worker','Reason']);
+}
+function ttLogManualVerify_(orderId, sellerSku, productName, qty, worker, reason){
+  if(!orderId||!sellerSku) return { ok:false, error:'orderId and sellerSku required' };
+  try{
+    ttManualVerifySheet_().appendRow([nowLocal_(), String(orderId), String(sellerSku), String(productName||''), Number(qty)||0, String(worker||''), String(reason||'')]);
+    bumpVersion_();
+    return { ok:true };
+  }catch(e){ return { ok:false, error:e.message }; }
 }
 
 /* ── 스캔 진행상황 (라벨 스캔 → 상품 바코드 스캔, 실시간 서버 동기화) ── */
