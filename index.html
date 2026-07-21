@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v58</title>
+<title>SK B2C Fulfillment v59</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1607,7 +1607,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v58'),
+    h('span',{className:'app-ver '+D},'v59'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1663,37 +1663,71 @@ function App(){
     const inProgressCount=Object.entries(ttProgress).filter(([id,p])=>p.status==='in_progress'&&todayOrderIdsSet.has(id)).length;
     const pendingCount=Math.max(0,orderCount-completedCount-inProgressCount);
     const rate=orderCount>0?Math.round(completedCount/orderCount*100):0;
+    const initials=n=>n.split(/\s+/).map(s=>s[0]).join('').slice(0,2).toUpperCase();
     return h(Fragment,null,
-      // 진행 요약
-      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}},
-        [['Total',orderCount,'#111'],['Completed',completedCount,'#16A34A'],['In Progress',inProgressCount,'#D97706'],['Pending',pendingCount,'#DC2626']].map(([lbl,val,color])=>
-          h('div',{key:lbl,style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:12,padding:'12px 14px',textAlign:'center'}},
-            h('div',{style:{fontSize:22,fontWeight:800,color}},val),
-            h('div',{style:{fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginTop:2}},lbl)
+      // ── 통합 진행률 카드 (그린 테마, 지난번 승인된 통계 카드와 통일) ──
+      h('div',{style:{background:'linear-gradient(135deg,#00331C 0%,#0A4B2A 100%)',borderRadius:16,padding:'22px 26px',color:'#fff',marginBottom:16,boxShadow:'0 8px 24px rgba(0,51,28,.22)'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:14}},
+          h('div',{style:{fontSize:38,fontWeight:800,lineHeight:1}},completedCount,h('span',{style:{fontSize:15,fontWeight:500,opacity:.65,marginLeft:4}},'/ '+orderCount+' orders')),
+          h('div',{style:{background:'rgba(255,255,255,.16)',border:'1px solid rgba(255,255,255,.25)',padding:'5px 14px',borderRadius:100,fontSize:12.5,fontWeight:700}},rate+'% complete')
+        ),
+        h('div',{style:{height:6,borderRadius:6,background:'rgba(255,255,255,.18)',overflow:'hidden',marginBottom:16}},
+          h('div',{style:{height:'100%',background:'#C6A44C',borderRadius:6,width:rate+'%',transition:'width .4s'}})
+        ),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)'}},
+          [['Completed',completedCount,'#6EE7B7',false],['In Progress',inProgressCount,'#EFDFAE',false],['Pending',pendingCount,'#FCA5A5',false]].map(([lbl,val,clr],i)=>
+            h('div',{key:lbl,style:{borderLeft:i>0?'1px solid rgba(255,255,255,.16)':'none',paddingLeft:i>0?16:0}},
+              h('div',{style:{fontSize:19,fontWeight:800,color:clr}},val),
+              h('div',{style:{fontSize:10,textTransform:'uppercase',letterSpacing:'.08em',opacity:.6,marginTop:2}},lbl)
+            )
           )
         )
       ),
       orderCount===0&&h('div',{style:{padding:'14px 16px',background:'#FFF0DC',border:'1px solid #F5C070',borderRadius:10,fontSize:12,color:'#7A3A00',marginBottom:12}},
         '⚠ 오늘 업로드된 TikTok CBT 주문이 없습니다. Settings → TikTok CBT 에서 레이블 PDF를 먼저 업로드하세요.'
       ),
-      !ttWorker&&h('div',{style:{padding:'14px 16px',background:'#F0EEFF',border:'1px solid #C4C5FF',borderRadius:10,marginBottom:12}},
-        h('div',{style:{fontSize:12,fontWeight:700,color:'#5B5EF4',marginBottom:8}},'스캔 시작 전, 본인 이름을 선택하세요'),
-        h('div',{style:{display:'flex',flexWrap:'wrap',gap:6}},pickers.map(p=>h('button',{key:p,onClick:()=>setTtWorker(p),style:{padding:'7px 14px',borderRadius:100,border:'1px solid #C4C5FF',background:'#fff',color:'#5B5EF4',fontWeight:600,fontSize:12,cursor:'pointer'}},p)))
+      // ── 작업자 선택 (이제 화면 전체를 막지 않고, 언제든 빠져나갈 수 있음) ──
+      !ttWorker&&h('div',{style:{background:'#fff',border:'1px solid #E5E2DA',borderRadius:14,padding:'1.1rem',marginBottom:12,boxShadow:'0 2px 10px rgba(0,0,0,.05)'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
+          h('div',{style:{fontSize:12.5,fontWeight:700,color:'#111'}},'스캔 시작 전, 본인 이름을 선택하세요'),
+          h('button',{onClick:()=>setTab('records'),style:{fontSize:11.5,color:'#666',background:'#F5F3EE',border:'1px solid #E5E2DA',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontWeight:600}},'← Records로 돌아가기')
+        ),
+        h('div',{style:{display:'flex',flexWrap:'wrap',gap:7}},pickers.map(p=>h('button',{key:p,onClick:()=>setTtWorker(p),style:{padding:'8px 15px',borderRadius:100,border:'1px solid #C4C5FF',background:'#F8F7FF',color:'#5B5EF4',fontWeight:600,fontSize:12.5,cursor:'pointer'}},p)))
       ),
       ttWorker&&h(Fragment,null,
-        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}},
-          h('span',{style:{fontSize:12,color:'#666'}},'👷 스캔 작업자: '+ttWorker),
-          h('button',{onClick:()=>setTtWorker(''),style:{fontSize:11,color:'#999',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}},'변경')
+        // ── 작업자 아바타 행 ──
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,background:'#fff',border:'1px solid #E5E2DA',borderRadius:12,padding:'10px 16px',marginBottom:16}},
+          h('div',{style:{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#F59E0B,#D97706)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:12.5,flexShrink:0}},initials(ttWorker)),
+          h('div',null,
+            h('div',{style:{fontSize:13,fontWeight:700,color:'#111'}},ttWorker),
+            h('div',{style:{fontSize:10.5,color:'#888'}},'스캔 작업자')
+          ),
+          h('span',{onClick:()=>setTtWorker(''),style:{marginLeft:'auto',fontSize:11.5,color:'#00331C',fontWeight:600,cursor:'pointer',textDecoration:'underline',textUnderlineOffset:'2px'}},'변경')
         ),
-        h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.1rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
-          h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'1. 배송 라벨 스캔 (Order ID 또는 Tracking Number)'),
-          h('input',{ref:ttLabelRef,value:ttLabelIn,onChange:e=>setTtLabelIn(e.target.value),onKeyDown:ttHandleLabelScan,autoFocus:true,disabled:!!ttCurrentOrder,placeholder:ttCurrentOrder?'주문 검수 중…':'라벨 스캔 대기중…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:ttCurrentOrder?'#F0F0F0':'#F6F5F1',border:'2px solid #14213D',borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}})
+        // ── 스캔 카드 (스텝퍼 포함) ──
+        h('div',{style:{background:'#fff',border:'1px solid #E5E2DA',borderRadius:16,padding:'1.4rem',boxShadow:'0 2px 10px rgba(0,0,0,.05)',marginBottom:12}},
+          h('div',{style:{display:'flex',alignItems:'center',marginBottom:18}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+              h('div',{style:{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,flexShrink:0,background:'#00331C',color:'#fff'}},'1'),
+              h('div',{style:{fontSize:12,fontWeight:700,color:'#111'}},'라벨 스캔')
+            ),
+            h('div',{style:{flex:1,height:2,background:ttCurrentOrder?'#00331C':'#EEECE6',margin:'0 10px',borderRadius:2,transition:'background .3s'}}),
+            h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+              h('div',{style:{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,flexShrink:0,background:ttCurrentOrder?'#00331C':'#EEECE6',color:ttCurrentOrder?'#fff':'#999'}},'2'),
+              h('div',{style:{fontSize:12,fontWeight:700,color:ttCurrentOrder?'#111':'#AAA'}},'상품 검수')
+            )
+          ),
+          h('div',{style:{position:'relative'}},
+            h('span',{style:{position:'absolute',left:16,top:'50%',transform:'translateY(-50%)',fontSize:18,opacity:.5}},'📦'),
+            h('input',{ref:ttLabelRef,value:ttLabelIn,onChange:e=>setTtLabelIn(e.target.value),onKeyDown:ttHandleLabelScan,autoFocus:true,disabled:!!ttCurrentOrder,placeholder:ttCurrentOrder?'주문 검수 중…':'Order ID 또는 Tracking Number 스캔…',style:{display:'block',width:'100%',fontSize:15,padding:'16px 16px 16px 46px',background:ttCurrentOrder?'#F0F0F0':'#F9F8F4',border:'2px solid #00331C',borderRadius:12,outline:'none',color:'#111',fontFamily:'inherit'}})
+          ),
+          !ttCurrentOrder&&h('div',{style:{fontSize:10.5,color:'#888',marginTop:8,display:'flex',alignItems:'center',gap:5}},'⌨️ 스캐너가 자동으로 입력됩니다 — 별도 클릭 필요 없음')
         ),
         ttAlert&&h('div',{style:{marginBottom:12,padding:'12px 16px',borderRadius:10,fontWeight:700,fontSize:14,
           background:ttAlert.type==='ok'?'#E3F6E8':ttAlert.type==='warn'?'#FFF6E0':'#FDEBEB',
           color:ttAlert.type==='ok'?'#1E6B3A':ttAlert.type==='warn'?'#8A5C00':'#A3282F',
           border:'2px solid '+(ttAlert.type==='ok'?'#2E8B57':ttAlert.type==='warn'?'#E0A300':'#D84343')}},ttAlert.msg),
-        ttCurrentOrder&&h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.1rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
+        ttCurrentOrder&&h('div',{style:{background:'#fff',border:'1px solid #E5E2DA',borderRadius:16,padding:'1.4rem',boxShadow:'0 2px 10px rgba(0,0,0,.05)',marginBottom:12}},
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}},
             h('div',{style:{fontSize:16,fontWeight:800}},'주문 #'+ttCurrentOrder.orderId),
             h('div',{style:{fontSize:12,color:'#666'}},ttCurrentOrder.buyer)
@@ -1722,8 +1756,10 @@ function App(){
               )
             )))
           ),
-          h('label',{style:{display:'block',fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}},'2. 상품 바코드 스캔'),
-          h('input',{ref:ttItemRef,value:ttItemIn,onChange:e=>setTtItemIn(e.target.value),onKeyDown:ttHandleItemScan,autoFocus:true,placeholder:'상품 바코드 스캔…',style:{display:'block',width:'100%',fontSize:16,padding:'14px',background:'#F6F5F1',border:'2px solid #D97706',borderRadius:10,outline:'none',color:'#111',fontFamily:'inherit'}})
+          h('div',{style:{position:'relative'}},
+            h('span',{style:{position:'absolute',left:16,top:'50%',transform:'translateY(-50%)',fontSize:18,opacity:.5}},'🏷️'),
+            h('input',{ref:ttItemRef,value:ttItemIn,onChange:e=>setTtItemIn(e.target.value),onKeyDown:ttHandleItemScan,autoFocus:true,placeholder:'상품 바코드 스캔…',style:{display:'block',width:'100%',fontSize:15,padding:'16px 16px 16px 46px',background:'#F9F8F4',border:'2px solid #D97706',borderRadius:12,outline:'none',color:'#111',fontFamily:'inherit'}})
+          )
         )
       ),
       /* ── 완료 내역: 검색 + 페이지네이션 (오늘 업로드된 주문만 — 어제 기록이 안 사라지던 버그 수정) ── */
@@ -1738,24 +1774,30 @@ function App(){
         const totalPages=Math.max(1,Math.ceil(filtered.length/ttPageSize));
         const curPage=Math.min(ttPage,totalPages-1);
         const pageItems=filtered.slice(curPage*ttPageSize,curPage*ttPageSize+ttPageSize);
-        return h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.1rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginTop:16}},
+        return h('div',{style:{background:'#fff',border:'1px solid #E5E2DA',borderRadius:16,padding:'1.25rem',boxShadow:'0 2px 10px rgba(0,0,0,.05)',marginTop:16}},
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}},
-            h('div',{style:{fontSize:12,fontWeight:700,color:'#333'}},'✅ 완료 내역 ('+completedList.length+'건)'),
+            h('div',{style:{fontSize:13,fontWeight:800,color:'#111',display:'flex',alignItems:'center',gap:6}},'✅ 완료 내역',h('span',{style:{background:'#00331C',color:'#fff',fontSize:10.5,fontWeight:700,padding:'2px 9px',borderRadius:100}},completedList.length+'건')),
             h('div',{style:{display:'flex',alignItems:'center',gap:6}},
               h('span',{style:{fontSize:11,color:'#888'}},'페이지당'),
-              h('select',{value:ttPageSize,onChange:e=>{setTtPageSize(+e.target.value);setTtPage(0);},style:{padding:'4px 8px',borderRadius:6,border:'1px solid #DDD',fontSize:12,fontFamily:'inherit'}},
+              h('select',{value:ttPageSize,onChange:e=>{setTtPageSize(+e.target.value);setTtPage(0);},style:{padding:'4px 10px',borderRadius:8,border:'1px solid #E5E2DA',fontSize:12,fontFamily:'inherit',background:'#F9F8F4'}},
                 [10,20,30,50].map(n=>h('option',{key:n,value:n},n+'개'))
               )
             )
           ),
-          h('input',{value:ttSearchQ,onChange:e=>{setTtSearchQ(e.target.value);setTtPage(0);},placeholder:'🔍 주문번호로 검색…',style:{display:'block',width:'100%',fontSize:13,padding:'10px 12px',background:'#F6F5F1',border:'1.5px solid #D8D7D2',borderRadius:8,outline:'none',marginBottom:10,fontFamily:'inherit'}}),
+          h('div',{style:{display:'flex',alignItems:'center',gap:8,background:'#F9F8F4',border:'1px solid #E5E2DA',borderRadius:10,padding:'10px 14px',marginBottom:12}},
+            h('span',null,'🔍'),
+            h('input',{value:ttSearchQ,onChange:e=>{setTtSearchQ(e.target.value);setTtPage(0);},placeholder:'주문번호로 검색…',style:{flex:1,border:'none',background:'transparent',outline:'none',fontSize:13,fontFamily:'inherit'}})
+          ),
           filtered.length===0
             ? h('div',{style:{fontSize:12,color:'#999',fontStyle:'italic',padding:'8px 0',textAlign:'center'}},q?'검색 결과 없음':'아직 완료된 주문이 없습니다')
-            : h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
-                pageItems.map(o=>h('div',{key:o.orderId,style:{display:'flex',alignItems:'center',gap:10,background:'#E3F6E8',border:'1px solid #2E8B57',borderRadius:8,padding:'8px 12px',fontSize:12}},
-                  h('span',{style:{fontWeight:700,color:'#1E6B3A'}},'✅ #'+o.orderId),
-                  h('span',{style:{color:'#5c8f6f',marginLeft:'auto'}},o.completedBy||''),
-                  h('span',{className:'mono',style:{color:'#888',fontSize:11}},o.completedTime?fmtS(o.completedTime):'')
+            : h('div',{style:{display:'flex',flexDirection:'column',gap:7}},
+                pageItems.map(o=>h('div',{key:o.orderId,style:{display:'flex',alignItems:'center',gap:10,background:'#F0FBF4',border:'1px solid #C8ECD4',borderRadius:10,padding:'11px 14px',fontSize:12.5}},
+                  h('div',{style:{width:18,height:18,borderRadius:'50%',background:'#00331C',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,flexShrink:0}},'✓'),
+                  h('span',{className:'mono',style:{fontWeight:700,color:'#111'}},'#'+o.orderId),
+                  h('div',{style:{marginLeft:'auto',textAlign:'right'}},
+                    h('div',{style:{fontSize:11,fontWeight:600,color:'#0A4B2A'}},o.completedBy||''),
+                    h('div',{className:'mono',style:{fontSize:10,color:'#888'}},o.completedTime?fmtS(o.completedTime):'')
+                  )
                 ))
               ),
           totalPages>1&&h('div',{style:{display:'flex',justifyContent:'center',alignItems:'center',gap:10,marginTop:12}},
