@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v51</title>
+<title>SK B2C Fulfillment v52</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -885,7 +885,10 @@ function App(){
         const data=await res.json();
         if(!data.ok)return;
         const newVer=String(data.ver||'');
-        if(lastVerRef.current&&newVer!==lastVerRef.current){
+        // ★ 심각한 버그 수정: 새 브라우저는 lastVerRef.current가 비어있어서
+        //   "버전이 바뀌었을 때만" 조건이 무조건 거짓이 되어 최초 데이터 로딩이
+        //   영원히 안 일어나던 문제. → 최초 1회는 무조건 가져오도록 수정.
+        if(!lastVerRef.current||newVer!==lastVerRef.current){
           // 버전 변경 → 오늘 데이터 pull
           const r2=await fetch(wh+'?op=getLists&date='+today());
           const d2=await r2.json();
@@ -1568,7 +1571,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v51'),
+    h('span',{className:'app-ver '+D},'v52'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
