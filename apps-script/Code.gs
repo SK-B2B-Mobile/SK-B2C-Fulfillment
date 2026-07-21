@@ -132,6 +132,9 @@ function doGet(e) {
   // ★ Pick Assignments — 페이지 기준 다중 작업자 배정 (v40 추가)
   if (op === 'pickAssigns')    return json_(getPickAssigns_((e.parameter||{}).date||''));
 
+  // ★ 작업자 색상 (v47 추가)
+  if (op === 'pickerColors')   return json_(getPickerColors_());
+
   return json_({ ok:false, error:'unknown op: '+op });
 }
 
@@ -336,6 +339,9 @@ function doPost(e) {
     case 'upsertPickAssign':  return json_(upsertPickAssign_(data.assign));
     case 'deletePickAssign':  return json_(deletePickAssign_(data.id));
 
+    // ★ 작업자 색상 (v47 추가)
+    case 'savePickerColors':  return json_(savePickerColors_(data.colorMap));
+
     default: return json_({ ok:false, error:'unknown action: '+action });
   }
 }
@@ -410,6 +416,23 @@ function subscribeSSWebhook_(apiKey, apiSecret) {
     if (code !== 200 && code !== 201) return { ok:false, error:'HTTP '+code+': '+resp.getContentText().slice(0,300) };
     return { ok:true, targetUrl, message:'SHIP_NOTIFY 웹훅이 등록되었습니다. 이제부터 ShipStation에서 배송 라벨을 만들면 자동으로 스캔 카운트가 올라갑니다.' };
   } catch(e) { return { ok:false, error: e.message }; }
+}
+
+/* ════════════════════════════════════════
+   작업자 색상 서버 저장 (v47 추가) — 매니저가 지정한 색상이 모든 기기에서 동일하게 보이도록
+════════════════════════════════════════ */
+function savePickerColors_(colorMapJson) {
+  try {
+    PROP.setProperty('PICKER_COLORS', JSON.stringify(colorMapJson||{}));
+    bumpVersion_();
+    return { ok:true };
+  } catch(e) { return { ok:false, error:e.message }; }
+}
+function getPickerColors_() {
+  try {
+    const raw = PROP.getProperty('PICKER_COLORS');
+    return { ok:true, colorMap: raw ? JSON.parse(raw) : {} };
+  } catch(e) { return { ok:false, error:e.message, colorMap:{} }; }
 }
 
 function saveSSCredentials_(apiKey, apiSecret) {
