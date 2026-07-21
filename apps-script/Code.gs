@@ -1,5 +1,13 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v49
+ * SK B2C Fulfillment — Google Apps Script v50
+ * v50 핵심 수정:
+ *   - detectChannel_ 단순화: 브랜드별 개별 등록 대신, "MD-"/"HOA"로 시작하면
+ *     Moida & Hola, 나머지 전부 Official로 규칙 통일 (매니저 확인된 규칙)
+ *   - testShipmentVerifiedField() 진단 함수 추가: /shipments API 원본 응답에서
+ *     "Scan To Verify" 시각 필드가 실제로 존재하는지 직접 확인 가능
+ *   - ⚠ 참고: SHIP_NOTIFY 웹훅은 "라벨 생성 시점"에 발동하는 것으로 확인됨.
+ *     라벨을 미리 배치 인쇄하는 워크플로우에서는 실제 스캔/포장 시점과
+ *     다를 수 있어, 정확한 신호를 찾을 때까지 결과 해석에 주의 필요.
  * v49 핵심 수정:
  *   - 삭제 방식 개선: 기존엔 Status를 "Deleted"로 덮어써서 원래 상태(Complete 등)
  *     이력이 사라졌음 → 이제 Status는 그대로 두고 Archived/ArchivedAt 컬럼만
@@ -621,17 +629,20 @@ const IGNORE_PREFIXES = [
 
 function detectChannel_(orderNumber) {
   const upper = String(orderNumber).trim().toUpperCase();
-  // ★ v48 추가: 주문번호 끝에 "-RESHIPMENT"가 붙어있으면 원래 채널 접두사(MD- 등)와 무관하게
+  // ★ v48: 주문번호 끝에 "-RESHIPMENT"가 붙어있으면 원래 채널 접두사(MD- 등)와 무관하게
   //   무조건 Reshipment로 분류. ShipStation 라벨/사이트에도 이 접미사가 그대로 표시되므로
   //   웹훅(주문번호 텍스트)이나 스캔(바코드가 주문번호를 담고 있는 경우) 둘 다 정확히 잡힘.
   if (upper.endsWith('-RESHIPMENT')) return { cat: 'Reshipment', store: 'Reshipment' };
   for (const ig of IGNORE_PREFIXES) {
     if (upper.startsWith(ig.toUpperCase())) return null;
   }
-  for (const m of PREFIX_MAP) {
-    if (upper.startsWith(m.p.toUpperCase())) return { cat: m.cat, store: m.store };
-  }
-  return null;
+  // ★ v50: 채널 판별 단순화 (매니저 확인된 규칙) — 브랜드별로 일일이 등록할 필요 없음
+  //   "MD-" 또는 "HOA"로 시작 → Moida & Hola / 그 외 전부 → Official
+  //   매장명(store)은 참고용으로만 PREFIX_MAP에서 찾아서 붙여줌(없으면 카테고리명으로 대체)
+  const isMoida = upper.startsWith('MD-') || upper.startsWith('HOA');
+  const cat = isMoida ? 'Moida & Hola' : 'Official';
+  const matched = PREFIX_MAP.find(m => upper.startsWith(m.p.toUpperCase()));
+  return { cat, store: matched ? matched.store : cat };
 }
 
 function logSSFetch_(date, summary) {
@@ -3031,6 +3042,51 @@ function testOrderModifyDate() {
   }
 
   Logger.log('=== 테스트 3 완료 ===');
+}
+
+/* ────────────────────────────────────────
+   ★ v50 진단용: /shipments API 원본 응답에서 "Scan To Verify" 관련
+   필드가 실제로 존재하는지 직접 확인. GAS 에디터에서 이 함수를 실행하고
+   Execution log 전체를 복사해서 확인하면 됨 (필드명을 추측하지 않고 직접 확인).
+──────────────────────────────────────── */
+function testShipmentVerifiedField() {
+  const key    = PROP.getProperty('SS_API_KEY')    || '';
+  const secret = PROP.getProperty('SS_API_SECRET') || '';
+  const auth   = 'Basic ' + Utilities.base64Encode(key + ':' + secret);
+  const today  = today_();
+
+  Logger.log('=== /shipments API 원본 응답 확인: ' + today + ' ===');
+
+  const url = 'https://ssapi.shipstation.com/shipments'
+    + '?shipDateStart=' + today
+    + '&shipDateEnd='   + today
+    + '&pageSize=5';
+
+  const r = UrlFetchApp.fetch(url, {
+    method: 'GET',
+    headers: { 'Authorization': auth },
+    muteHttpExceptions: true,
+  });
+
+  if (r.getResponseCode() !== 200) {
+    Logger.log('⚠ HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0,300));
+    return;
+  }
+
+  const data = JSON.parse(r.getContentText());
+  Logger.log('오늘 shipDate 기준 shipment: ' + (data.total || 0) + '건');
+
+  if (data.shipments && data.shipments.length > 0) {
+    const s0 = data.shipments[0];
+    Logger.log('--- 첫 번째 shipment 전체 필드 (키 목록) ---');
+    Logger.log(Object.keys(s0).join(', '));
+    Logger.log('--- 전체 원본 JSON (verify/scan 관련 필드 찾기) ---');
+    Logger.log(JSON.stringify(s0, null, 2));
+  } else {
+    Logger.log('오늘 날짜로 조회된 shipment이 없습니다. shipDateStart/End 범위를 조정해서 재시도 필요할 수 있음.');
+  }
+
+  Logger.log('=== 진단 완료 — 위 JSON에서 "verif", "scan" 이 들어간 필드명이 있는지 확인하세요 ===');
 }
 
 
