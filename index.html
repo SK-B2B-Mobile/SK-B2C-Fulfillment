@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v59</title>
+<title>SK B2C Fulfillment v60</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -134,7 +134,7 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .tbl tbody tr.light:hover td.light{background:#FAFAF8}
 .tbl tbody tr.dark:hover td.dark{background:#13132B}
 .tbl td.c{text-align:center}
-.mono{font-family:'SF Mono',ui-monospace,Consolas,monospace}
+.mono{font-family:'SF Mono','JetBrains Mono','Roboto Mono',ui-monospace,Consolas,'Courier New',monospace;font-variant-numeric:tabular-nums}
 .pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:600;border:1px solid;white-space:nowrap}
 .s0{background:#F2F1EC;color:#666;border-color:#CCC}
 .s1{background:#FFF0DC;color:#7A3A00;border-color:#F5C070}
@@ -882,6 +882,7 @@ function App(){
   const [editAssign,setEditAssign]=useState(null); // 매니저: 기존 배정 범위 수정
   const [showStdBackup,setShowStdBackup]=useState(false); // Official/Moida&Hola 백업 수동 스캔 — 평소엔 접어둠 (ShipStation 자동 연동이 기본)
   const [ttWorker,setTtWorker]=useState(()=>localStorage.getItem('b2c18_ttworker')||'');
+  const [ttPickingWorker,setTtPickingWorker]=useState(false); // "변경" 눌렀을 때만 true — 취소하면 기존 작업자 유지
   useEffect(()=>localStorage.setItem('b2c18_ttworker',ttWorker),[ttWorker]);
   const [ttAlert,setTtAlert]=useState(null);            // {msg,type}
   const [ttToast,setTtToast]=useState(null);             // {msg,sub} — 하단 토스트 (완료 시)
@@ -1607,7 +1608,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v59'),
+    h('span',{className:'app-ver '+D},'v60'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1687,14 +1688,16 @@ function App(){
         '⚠ 오늘 업로드된 TikTok CBT 주문이 없습니다. Settings → TikTok CBT 에서 레이블 PDF를 먼저 업로드하세요.'
       ),
       // ── 작업자 선택 (이제 화면 전체를 막지 않고, 언제든 빠져나갈 수 있음) ──
-      !ttWorker&&h('div',{style:{background:'#fff',border:'1px solid #E5E2DA',borderRadius:14,padding:'1.1rem',marginBottom:12,boxShadow:'0 2px 10px rgba(0,0,0,.05)'}},
+      (!ttWorker||ttPickingWorker)&&h('div',{style:{background:'#fff',border:'1px solid #E5E2DA',borderRadius:14,padding:'1.1rem',marginBottom:12,boxShadow:'0 2px 10px rgba(0,0,0,.05)'}},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
           h('div',{style:{fontSize:12.5,fontWeight:700,color:'#111'}},'스캔 시작 전, 본인 이름을 선택하세요'),
-          h('button',{onClick:()=>setTab('records'),style:{fontSize:11.5,color:'#666',background:'#F5F3EE',border:'1px solid #E5E2DA',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontWeight:600}},'← Records로 돌아가기')
+          ttWorker
+            ? h('button',{onClick:()=>setTtPickingWorker(false),style:{fontSize:11.5,color:'#666',background:'#F5F3EE',border:'1px solid #E5E2DA',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontWeight:600}},'✕ 취소')
+            : h('button',{onClick:()=>setTab('records'),style:{fontSize:11.5,color:'#666',background:'#F5F3EE',border:'1px solid #E5E2DA',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontWeight:600}},'← Records로 돌아가기')
         ),
-        h('div',{style:{display:'flex',flexWrap:'wrap',gap:7}},pickers.map(p=>h('button',{key:p,onClick:()=>setTtWorker(p),style:{padding:'8px 15px',borderRadius:100,border:'1px solid #C4C5FF',background:'#F8F7FF',color:'#5B5EF4',fontWeight:600,fontSize:12.5,cursor:'pointer'}},p)))
+        h('div',{style:{display:'flex',flexWrap:'wrap',gap:7}},pickers.map(p=>h('button',{key:p,onClick:()=>{setTtWorker(p);setTtPickingWorker(false);},style:{padding:'8px 15px',borderRadius:100,border:'1px solid #C4C5FF',background:'#F8F7FF',color:'#5B5EF4',fontWeight:600,fontSize:12.5,cursor:'pointer'}},p)))
       ),
-      ttWorker&&h(Fragment,null,
+      ttWorker&&!ttPickingWorker&&h(Fragment,null,
         // ── 작업자 아바타 행 ──
         h('div',{style:{display:'flex',alignItems:'center',gap:10,background:'#fff',border:'1px solid #E5E2DA',borderRadius:12,padding:'10px 16px',marginBottom:16}},
           h('div',{style:{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#F59E0B,#D97706)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:12.5,flexShrink:0}},initials(ttWorker)),
@@ -1702,7 +1705,7 @@ function App(){
             h('div',{style:{fontSize:13,fontWeight:700,color:'#111'}},ttWorker),
             h('div',{style:{fontSize:10.5,color:'#888'}},'스캔 작업자')
           ),
-          h('span',{onClick:()=>setTtWorker(''),style:{marginLeft:'auto',fontSize:11.5,color:'#00331C',fontWeight:600,cursor:'pointer',textDecoration:'underline',textUnderlineOffset:'2px'}},'변경')
+          h('span',{onClick:()=>setTtPickingWorker(true),style:{marginLeft:'auto',fontSize:11.5,color:'#00331C',fontWeight:600,cursor:'pointer',textDecoration:'underline',textUnderlineOffset:'2px'}},'변경')
         ),
         // ── 스캔 카드 (스텝퍼 포함) ──
         h('div',{style:{background:'#fff',border:'1px solid #E5E2DA',borderRadius:16,padding:'1.4rem',boxShadow:'0 2px 10px rgba(0,0,0,.05)',marginBottom:12}},
@@ -1793,7 +1796,7 @@ function App(){
             : h('div',{style:{display:'flex',flexDirection:'column',gap:7}},
                 pageItems.map(o=>h('div',{key:o.orderId,style:{display:'flex',alignItems:'center',gap:10,background:'#F0FBF4',border:'1px solid #C8ECD4',borderRadius:10,padding:'11px 14px',fontSize:12.5}},
                   h('div',{style:{width:18,height:18,borderRadius:'50%',background:'#00331C',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,flexShrink:0}},'✓'),
-                  h('span',{className:'mono',style:{fontWeight:700,color:'#111'}},'#'+o.orderId),
+                  h('span',{className:'mono',style:{fontWeight:600,fontSize:13,letterSpacing:'.02em',color:'#111'}},'#'+o.orderId),
                   h('div',{style:{marginLeft:'auto',textAlign:'right'}},
                     h('div',{style:{fontSize:11,fontWeight:600,color:'#0A4B2A'}},o.completedBy||''),
                     h('div',{className:'mono',style:{fontSize:10,color:'#888'}},o.completedTime?fmtS(o.completedTime):'')
