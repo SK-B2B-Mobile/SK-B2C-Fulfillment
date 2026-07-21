@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v50</title>
+<title>SK B2C Fulfillment v51</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1096,6 +1096,7 @@ function App(){
     scannedTrackingIds.add(info.normalized||val);
     setTtCurrentOrder({orderId:order.orderId,trackingIds:order.trackingIds||[],scannedTrackingIds,buyer:order.buyer,lines});
     setTtAlert(null);
+    ttPlayTick(); // ★ 라벨 스캔 성공 시에도 소리 — 지금까진 2단계(상품 스캔)만 소리가 났음
     if(ttItemRef.current)setTimeout(()=>ttItemRef.current.focus(),50);
   };
 
@@ -1567,7 +1568,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v50'),
+    h('span',{className:'app-ver '+D},'v51'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1747,16 +1748,17 @@ function App(){
     TTScanPanel(),
     h('div',{style:{marginTop:28,paddingTop:18,borderTop:'1.5px dashed #CCC'}},
       !showStdBackup
-        ? h('button',{onClick:()=>setShowStdBackup(true),style:{width:'100%',padding:'12px',borderRadius:10,border:'1.5px dashed #AAA',background:'transparent',color:'#888',fontWeight:600,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}},
-            '⚙️ Official · Moida & Hola는 ShipStation "라벨 생성" 기준으로 자동 반영됩니다 (실시간 스캔이 아니라 "오늘 처리 대상" 수량 — 마감 시 Records에서 End Scan으로 실제 발송건수 최종 확인) — 문제 있을 때만 수동 스캔 열기 ▸'
+        ? h('button',{onClick:()=>setShowStdBackup(true),style:{width:'100%',padding:'14px 20px',borderRadius:10,border:'1.5px dashed #AAA',background:'transparent',color:'#888',fontWeight:600,fontSize:12,lineHeight:1.6,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,textAlign:'left'}},
+            h('span',{style:{flexShrink:0}},'⚙️'),
+            h('span',null,'Official · Moida & Hola는 ShipStation "라벨 생성" 기준으로 자동 반영됩니다 — 문제 있을 때만 수동 스캔 열기 ▸')
           )
         : h(Fragment,null,
             h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
               h('div',{style:{fontSize:12,fontWeight:700,color:'#7A3A00'}},'⚠️ 수동 백업 스캔 (Official · Moida & Hola)'),
               h('button',{onClick:()=>setShowStdBackup(false),style:{fontSize:11,color:'#999',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}},'접기 ▲')
             ),
-            h('div',{style:{marginBottom:14,padding:'10px 14px',background:'#FFF0DC',borderRadius:10,fontSize:11,color:'#7A3A00',border:'1px solid #F5C070'}},
-              '이 채널은 평소엔 ShipStation → 자동 Webhook으로 스캔이 반영됩니다. 이 입력창은 웹훅이 잠시 안 될 때만 사용하는 백업 수단입니다. ',
+            h('div',{style:{marginBottom:14,padding:'10px 14px',background:'#FFF0DC',borderRadius:10,fontSize:11,color:'#7A3A00',border:'1px solid #F5C070',lineHeight:1.6}},
+              '이 채널은 평소엔 ShipStation "라벨 생성" 시점 기준으로 자동 반영됩니다 (실시간 스캔이 아니라 "오늘 처리 대상" 수량 — 마감 시 Records에서 End Scan으로 실제 발송건수 최종 확인 필요). 이 입력창은 웹훅이 잠시 안 될 때만 사용하는 백업 수단입니다. ',
               h('br'),h('strong',null,'Seeding · Reshipment'),': use +1/+5/+10 in the Records table.'
             ),
             h('div',{style:{background:'#fff',border:'1.5px solid #D8D7D2',borderRadius:14,padding:'1.25rem',boxShadow:'0 1px 4px rgba(0,0,0,0.07)',marginBottom:12}},
