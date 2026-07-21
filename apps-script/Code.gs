@@ -1,5 +1,10 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v45
+ * SK B2C Fulfillment — Google Apps Script v46
+ * v46 핵심 수정:
+ *   - 자정 자동 정리 기능 추가: 매일 밤 12시경, "완료"(피킹+스캔 모두 끝남)된
+ *     픽리스트만 자동으로 소프트 삭제(시트 데이터는 유지, Status만 Deleted로 표시)
+ *   - 피킹만 끝나고 스캔 미완료인 건은 자동 정리 대상에서 제외
+ *   - 설정: Apps Script 에디터에서 installMidnightCleanupTrigger 함수 1회 실행 필요
  * v45 핵심 수정:
  *   - TikTok CBT 수동 확인(Manual Verify) 기능 추가
  *     → 제품은 맞지만 바코드가 등록된 것과 다를 때(제조사 이슈 등)
@@ -1181,6 +1186,51 @@ function bulkLists_(lists) {
   let count=0;
   lists.forEach(l=>{ const r=upsertList_(l); if(r.ok)count++; });
   return { ok:true, count };
+}
+
+/* ════════════════════════════════════════
+   자정 자동 정리 (v46 추가)
+   ────────────────────────────────────────
+   매일 자정, "완료"(피킹+스캔 둘 다 끝남, Status==='Complete')된
+   픽리스트만 자동으로 소프트 삭제(Deleted 표시, 시트 데이터는 유지)한다.
+   피킹만 끝나고 스캔이 안 끝난 건("Pick Done"/"Scanning")은 절대 건드리지 않음.
+   ────────────────────────────────────────
+   ★ 설정 방법 (최초 1회, Apps Script 에디터에서 직접 실행 필요):
+     함수 목록에서 installMidnightCleanupTrigger 선택 → ▶ 실행
+   (GAS 특성상 정확히 00:00:00은 아니고, 자정~새벽 1시 사이 어딘가에 실행됩니다)
+════════════════════════════════════════ */
+function autoClearCompletedLists() {
+  const result = getLists_(); // 날짜 필터 없이 전체 (이미 Deleted인 건 제외됨)
+  if (!result.ok) { Logger.log('autoClearCompletedLists: failed to read lists'); return { ok:false }; }
+  let cleared = 0;
+  (result.lists || []).forEach(l => {
+    if (l.status === 'Complete') {
+      const r = deleteList_(l.pgNo, l.date);
+      if (r.ok) cleared++;
+    }
+  });
+  Logger.log('✅ autoClearCompletedLists: ' + cleared + '개 완료 픽리스트 자동 정리됨');
+  return { ok:true, cleared };
+}
+
+function installMidnightCleanupTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'autoClearCompletedLists') {
+      ScriptApp.deleteTrigger(t);
+      Logger.log('Deleted existing trigger');
+    }
+  });
+
+  ScriptApp.newTrigger('autoClearCompletedLists')
+    .timeBased()
+    .atHour(0)
+    .everyDays(1)
+    .create();
+
+  Logger.log('✅ autoClearCompletedLists trigger set: every day at midnight');
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    '매일 자정 완료 픽리스트 자동 정리 설정 완료!', '✅ Trigger Set', 5
+  );
 }
 
 function deleteList_(pgNo, date) {
