@@ -155,6 +155,9 @@ function doGet(e) {
 
   // ★ 작업자 색상 (v47 추가)
   if (op === 'pickerColors')   return json_(getPickerColors_());
+  if (op === 'pickerNames')    return json_(getPickerNames_());
+  if (op === 'managerPin')     return json_(getManagerPin_());
+  if (op === 'ssCredentials')  return json_(getSSCredentials_((e.parameter||{}).pin||''));
 
   return json_({ ok:false, error:'unknown op: '+op });
 }
@@ -362,6 +365,8 @@ function doPost(e) {
 
     // ★ 작업자 색상 (v47 추가)
     case 'savePickerColors':  return json_(savePickerColors_(data.colorMap));
+    case 'savePickerNames':   return json_(savePickerNames_(data.pksStr));
+    case 'saveManagerPin':    return json_(saveManagerPin_(data.pin));
 
     default: return json_({ ok:false, error:'unknown action: '+action });
   }
@@ -449,6 +454,35 @@ function savePickerColors_(colorMapJson) {
     return { ok:true };
   } catch(e) { return { ok:false, error:e.message }; }
 }
+// ★ v55: 작업자 명단(Team Members)도 색상과 같은 문제 — 브라우저에만 저장되고 서버엔 없어서
+//   새 기기는 코드에 박힌 기본 이름(Kim Jisu, Park Minho...)으로 보이던 문제. 서버 저장 추가.
+function savePickerNames_(pksStr) {
+  try {
+    PROP.setProperty('PICKER_NAMES', String(pksStr||''));
+    bumpVersion_();
+    return { ok:true };
+  } catch(e) { return { ok:false, error:e.message }; }
+}
+function getPickerNames_() {
+  try {
+    return { ok:true, pksStr: PROP.getProperty('PICKER_NAMES') || '' };
+  } catch(e) { return { ok:false, error:e.message, pksStr:'' }; }
+}
+// ★ v56: 매니저 PIN도 로컬 전용이라 새 기기는 기본값(1234)로 보이던 문제 — 서버 저장 추가.
+//   (PIN은 민감정보가 아니라 단순 접근 방지용이라 서버 저장이 안전함 — ShipStation API 키와는 다름)
+function saveManagerPin_(pin) {
+  try {
+    if (!/^\d{4}$/.test(String(pin||''))) return { ok:false, error:'PIN must be 4 digits' };
+    PROP.setProperty('MANAGER_PIN', String(pin));
+    bumpVersion_();
+    return { ok:true };
+  } catch(e) { return { ok:false, error:e.message }; }
+}
+function getManagerPin_() {
+  try {
+    return { ok:true, pin: PROP.getProperty('MANAGER_PIN') || '' };
+  } catch(e) { return { ok:false, error:e.message, pin:'' }; }
+}
 function getPickerColors_() {
   try {
     const raw = PROP.getProperty('PICKER_COLORS');
@@ -461,6 +495,18 @@ function saveSSCredentials_(apiKey, apiSecret) {
   PROP.setProperty('SS_API_KEY',    apiKey.trim());
   PROP.setProperty('SS_API_SECRET', apiSecret.trim());
   return { ok:true, message:'ShipStation credentials saved' };
+}
+// ★ v58: 매니저 컴퓨터의 ShipStation API 키를 다른 기기에서도 자동으로 보이게 해달라는 요청.
+//   Settings 화면 자체는 PIN으로 막혀있지만, 서버 요청은 URL만 알면 누구나 호출 가능한 구조라
+//   여기서 다시 한번 PIN을 확인해서, 매니저 PIN 없이는 실제 키/시크릿이 응답에 안 담기게 함.
+function getSSCredentials_(pin) {
+  const correctPin = PROP.getProperty('MANAGER_PIN') || '1234';
+  if (String(pin||'') !== correctPin) return { ok:false, error:'invalid pin' };
+  return {
+    ok:true,
+    apiKey:    PROP.getProperty('SS_API_KEY')    || '',
+    apiSecret: PROP.getProperty('SS_API_SECRET') || ''
+  };
 }
 
 function testSSConnection_(apiKey, apiSecret) {
