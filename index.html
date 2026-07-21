@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v48</title>
+<title>SK B2C Fulfillment v49</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -228,6 +228,10 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 <script>
 /* ══════ CONFIG ══════ */
 const LS={PIN:'b2c18_pin',LISTS:'b2c18_lists',LOG:'b2c18_log',WH:'b2c18_wh',PKS:'b2c18_pickers',PKC_MAP:'b2c18_pkcolors'};
+// ★ v49: 새 컴퓨터/브라우저에서 Settings 설정 없이도 바로 연결되도록 기본 서버 주소 하드코딩.
+//   (Settings에서 다른 값을 넣으면 그 값이 우선 — 아래는 어디까지나 "기본값")
+//   주의: AKfycby 다음은 O(알파벳 오) + 0(숫자 영) 순서 — 매니저 확인 완료
+const DEFAULT_WEBHOOK_URL='https://script.google.com/macros/s/AKfycbyO0SLk5gbpyCHsUqvBnN8sNtXyTiR33_6Vw67GNHYS3v8F4GdjUAbuA-VV2CPYt3PA1Q/exec';
 const DEF_PIN='1234';
 const DEF_PKS='Kim Jisu,Park Minho,Lee Hayeon,Choi Dawon,Jung Soyeon,Helper 1,Helper 2';
 const PREFIX_MAP=[
@@ -764,7 +768,7 @@ function App(){
   const [cat,setCat]=useState('All');
   const [lists,setLists]=useState(()=>lsGet(LS.LISTS,[]).map(l=>({...l,category:normalizeCat(l.category)})));
   const [log,setLog]=useState(()=>lsGet(LS.LOG,[]));
-  const [wh,setWH]=useState(()=>localStorage.getItem(LS.WH)||'');
+  const [wh,setWH]=useState(()=>localStorage.getItem(LS.WH)||DEFAULT_WEBHOOK_URL);
   const [pksStr,setPKS]=useState(()=>localStorage.getItem(LS.PKS)||DEF_PKS);
   const [pkColorMap,setPkColorMap]=useState(()=>lsGet(LS.PKC_MAP,{}));
   useEffect(()=>lsSet(LS.PKC_MAP,pkColorMap),[pkColorMap]);
@@ -1544,7 +1548,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v48'),
+    h('span',{className:'app-ver '+D},'v49'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
