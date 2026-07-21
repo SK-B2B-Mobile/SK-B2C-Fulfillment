@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v37</title>
+<title>SK B2C Fulfillment v38</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -233,20 +233,20 @@ const CA={
 const normalizeCat=c=>(c==='Official 1'||c==='Official 2')?'Official':c;
 const catStyle=c=>CA[normalizeCat(c)]||{bg:'#EEE',tx:'#666',br:'#CCC',ac:'#999'};
 const PKC_PRESETS=[
-  {bg:'#EFBDBD',tx:'#7E1B1B',label:'Red'},
-  {bg:'#EFCEBD',tx:'#7E3C1B',label:'Coral'},
-  {bg:'#EFDDBD',tx:'#7E5A1B',label:'Orange'},
-  {bg:'#EFE9BD',tx:'#7E711B',label:'Amber'},
-  {bg:'#D6EFBD',tx:'#4D7E1B',label:'Lime'},
-  {bg:'#BDEFC5',tx:'#1B7E2B',label:'Green'},
-  {bg:'#BDEFE3',tx:'#1B7E65',label:'Emerald'},
-  {bg:'#BDE7EF',tx:'#1B6E7E',label:'Cyan'},
-  {bg:'#BDD5EF',tx:'#1B497E',label:'Sky'},
-  {bg:'#BDC4EF',tx:'#1B287E',label:'Blue'},
-  {bg:'#CABDEF',tx:'#341B7E',label:'Indigo'},
-  {bg:'#DABDEF',tx:'#551B7E',label:'Violet'},
-  {bg:'#EFBDEF',tx:'#7E1B7E',label:'Magenta'},
-  {bg:'#EFBDD6',tx:'#7E1B4D',label:'Pink'},
+  {bg:'#EF8080',tx:'#6B0F0F',label:'Red'},
+  {bg:'#EFAC80',tx:'#6B340F',label:'Orange'},
+  {bg:'#EFCE80',tx:'#6B500F',label:'Amber'},
+  {bg:'#EFEF80',tx:'#6B6B0F',label:'Olive'},
+  {bg:'#BBEF80',tx:'#406B0F',label:'Lime'},
+  {bg:'#80EF8F',tx:'#0F6B1C',label:'Green'},
+  {bg:'#80EFCE',tx:'#0F6B50',label:'Teal'},
+  {bg:'#80E0EF',tx:'#0F5F6B',label:'Cyan'},
+  {bg:'#80BFEF',tx:'#0F436B',label:'Sky'},
+  {bg:'#809EEF',tx:'#0F286B',label:'Blue'},
+  {bg:'#8F80EF',tx:'#1C0F6B',label:'Indigo'},
+  {bg:'#BB80EF',tx:'#400F6B',label:'Purple'},
+  {bg:'#EF80C6',tx:'#6B0F49',label:'Magenta'},
+  {bg:'#EF809C',tx:'#6B0F26',label:'Rose'},
 ];
 const ST=['pending','picking','picked','scanning','complete'];
 const STL=['Pending','Picking','Pick Done','Scanning','Complete'];
@@ -1449,8 +1449,8 @@ function App(){
                         onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApPages(String(a.pages||1));}else if(!done){endPickAssignFn(a);}},
                         title:timeStr+(durStr?' · '+durStr:''),
                         style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,padding:done?'5px 10px':'4px 9px',borderRadius:8,fontSize:11.5,fontWeight:700,width:'100%',
-                          background:done?'#E0F5D0':wc.bg,color:done?'#1A6A08':wc.tx,
-                          border:'1.5px solid '+(done?'#90D870':wc.tx),cursor:'pointer',
+                          background:done?'#DCEAFE':wc.bg,color:done?wc.tx:wc.tx,
+                          border:'1.5px solid '+(done?'#5B9BFF':wc.tx),cursor:'pointer',
                           boxShadow:done?'0 1px 3px rgba(0,0,0,0.12)':'none'}
                       },
                         h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}},
@@ -1461,9 +1461,9 @@ function App(){
                           isMgr&&h('span',{onClick:e=>{e.stopPropagation();deleteAssignFn(a);},style:{opacity:.7,fontSize:10,marginLeft:2}},'✕')
                         )
                       ),
-                      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:9,color:isMgr?'#7070A0':'#999',fontFamily:'monospace',padding:'0 2px'}},
+                      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:10.5,color:isMgr?'#8888C0':'#777',fontFamily:'monospace',padding:'0 2px'}},
                         h('span',null,timeStr),
-                        durStr&&h('span',{style:{fontWeight:700,color:done?'#1A6A08':'#B45309',fontFamily:'inherit'}},'⏱ '+durStr)
+                        durStr&&h('span',{style:{fontWeight:700,color:done?'#2563EB':'#B45309',fontFamily:'inherit',fontSize:11}},'⏱ '+durStr)
                       )
                     );
                   }),
@@ -1506,7 +1506,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v37'),
+    h('span',{className:'app-ver '+D},'v38'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
