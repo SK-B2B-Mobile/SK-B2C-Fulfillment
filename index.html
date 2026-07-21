@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v38</title>
+<title>SK B2C Fulfillment v41</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -233,20 +233,20 @@ const CA={
 const normalizeCat=c=>(c==='Official 1'||c==='Official 2')?'Official':c;
 const catStyle=c=>CA[normalizeCat(c)]||{bg:'#EEE',tx:'#666',br:'#CCC',ac:'#999'};
 const PKC_PRESETS=[
-  {bg:'#EF8080',tx:'#6B0F0F',label:'Red'},
-  {bg:'#EFAC80',tx:'#6B340F',label:'Orange'},
-  {bg:'#EFCE80',tx:'#6B500F',label:'Amber'},
-  {bg:'#EFEF80',tx:'#6B6B0F',label:'Olive'},
-  {bg:'#BBEF80',tx:'#406B0F',label:'Lime'},
-  {bg:'#80EF8F',tx:'#0F6B1C',label:'Green'},
-  {bg:'#80EFCE',tx:'#0F6B50',label:'Teal'},
-  {bg:'#80E0EF',tx:'#0F5F6B',label:'Cyan'},
-  {bg:'#80BFEF',tx:'#0F436B',label:'Sky'},
-  {bg:'#809EEF',tx:'#0F286B',label:'Blue'},
-  {bg:'#8F80EF',tx:'#1C0F6B',label:'Indigo'},
-  {bg:'#BB80EF',tx:'#400F6B',label:'Purple'},
-  {bg:'#EF80C6',tx:'#6B0F49',label:'Magenta'},
-  {bg:'#EF809C',tx:'#6B0F26',label:'Rose'},
+  {bg:'#F56666',tx:'#650B0B',label:'Red'},
+  {bg:'#F49657',tx:'#57290A',label:'Orange'},
+  {bg:'#F5D866',tx:'#65530B',label:'Yellow'},
+  {bg:'#AEF44E',tx:'#314E09',label:'Lime'},
+  {bg:'#3FF35D',tx:'#084913',label:'Green'},
+  {bg:'#36F2C3',tx:'#084939',label:'Teal'},
+  {bg:'#3FD5F3',tx:'#083F49',label:'Cyan'},
+  {bg:'#5799F4',tx:'#0A2A57',label:'Blue'},
+  {bg:'#6672F5',tx:'#0B1365',label:'Navy'},
+  {bg:'#A76FF6',tx:'#350C6E',label:'Violet'},
+  {bg:'#D166F5',tx:'#4F0B65',label:'Purple'},
+  {bg:'#F566D1',tx:'#650B4F',label:'Magenta'},
+  {bg:'#F56695',tx:'#650B29',label:'Pink'},
+  {bg:'#F14927',tx:'#491308',label:'Maroon'},
 ];
 const ST=['pending','picking','picked','scanning','complete'];
 const STL=['Pending','Picking','Pick Done','Scanning','Complete'];
@@ -745,6 +745,19 @@ function App(){
   const [pksStr,setPKS]=useState(()=>localStorage.getItem(LS.PKS)||DEF_PKS);
   const [pkColorMap,setPkColorMap]=useState(()=>lsGet(LS.PKC_MAP,{}));
   useEffect(()=>lsSet(LS.PKC_MAP,pkColorMap),[pkColorMap]);
+  const [pkSaveMsg,setPkSaveMsg]=useState('');
+  useEffect(()=>{
+    if(!wh)return;
+    fetch(wh+'?op=pickerColors').then(r=>r.json()).then(r=>{
+      if(r&&r.ok&&r.colorMap&&Object.keys(r.colorMap).length>0)setPkColorMap(r.colorMap);
+    }).catch(()=>{});
+  },[wh]);
+  const savePickerColorsToServer=()=>{
+    if(!wh){setPkSaveMsg('⚠ Google Sheets URL을 먼저 설정하세요');return;}
+    sync('savePickerColors',{colorMap:pkColorMap});
+    setPkSaveMsg('✓ 저장되었습니다 — 모든 기기에 반영됩니다');
+    setTimeout(()=>setPkSaveMsg(''),3000);
+  };
   const pkC=(nameOrIdx)=>{
     if(typeof nameOrIdx==='string'){
       if(pkColorMap[nameOrIdx])return pkColorMap[nameOrIdx];
@@ -1418,8 +1431,8 @@ function App(){
       h('table',{className:'tbl'},
         h('thead',null,
           h('tr',null,
-            ['#',...(showPrev&&prevIncomplete.length>0?['DATE']:[]),'PG NO','CATEGORY','PAGES','SKU','ORDERS','SCANNED','PICKERS','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map(col=>
-              h('th',{key:col,className:D},col)
+            ['#',...(showPrev&&prevIncomplete.length>0?['DATE']:[]),'PG NO','CATEGORY','PAGES','SKU','ORDERS','SCANNED','PICKERS','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map((col,ci,arr)=>
+              h('th',{key:col,className:D,style:ci===arr.length-1?{position:'sticky',right:0,zIndex:3,boxShadow:'-4px 0 6px -2px rgba(0,0,0,0.08)',background:isMgr?'#22224A':'#EEECEA'}:null},col)
             )
           )
         ),
@@ -1436,8 +1449,8 @@ function App(){
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.sku||0),
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.orderCount||0),
               h('td',{className:D+' c',style:{fontWeight:700,fontSize:15,color:st==='complete'?(isMgr?'#86EFAC':'#1A6A08'):(isMgr?'#fff':'#111')}},l.scanned),
-              h('td',{className:D,style:{minWidth:320}},
-                h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,minmax(150px,1fr))',gap:'6px 8px',alignItems:'start'}},
+              h('td',{className:D,style:{minWidth:280}},
+                h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,minmax(132px,1fr))',gap:'6px 7px',alignItems:'start'}},
                   assignsFor(l.pgNo).map(a=>{
                     const wc=pkC(a.worker);const done=!!a.pickEnd;
                     const rangeStr=(a.pageStart&&a.pageEnd)?(a.pageStart+'~'+a.pageEnd+'p'):(a.pages+'p');
@@ -1449,8 +1462,8 @@ function App(){
                         onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApPages(String(a.pages||1));}else if(!done){endPickAssignFn(a);}},
                         title:timeStr+(durStr?' · '+durStr:''),
                         style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,padding:done?'5px 10px':'4px 9px',borderRadius:8,fontSize:11.5,fontWeight:700,width:'100%',
-                          background:done?'#DCEAFE':wc.bg,color:done?wc.tx:wc.tx,
-                          border:'1.5px solid '+(done?'#5B9BFF':wc.tx),cursor:'pointer',
+                          background:done?'#DCF7DC':wc.bg,color:done?wc.tx:wc.tx,
+                          border:'1.5px solid '+(done?'#4ADE80':wc.tx),cursor:'pointer',
                           boxShadow:done?'0 1px 3px rgba(0,0,0,0.12)':'none'}
                       },
                         h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}},
@@ -1463,7 +1476,7 @@ function App(){
                       ),
                       h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:10.5,color:isMgr?'#8888C0':'#777',fontFamily:'monospace',padding:'0 2px'}},
                         h('span',null,timeStr),
-                        durStr&&h('span',{style:{fontWeight:700,color:done?'#2563EB':'#B45309',fontFamily:'inherit',fontSize:11}},'⏱ '+durStr)
+                        durStr&&h('span',{style:{fontWeight:700,color:done?'#15803D':'#B45309',fontFamily:'inherit',fontSize:11}},'⏱ '+durStr)
                       )
                     );
                   }),
@@ -1481,7 +1494,7 @@ function App(){
               h('td',{className:D,style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',color:isMgr?'#7070A0':'#888',fontSize:11}},
                 l.skipReason?h('span',null,l.memo?l.memo+' ':null,h('span',{style:{color:'#DC2626',fontWeight:700}},l.skipReason)):l.memo||'—'
               ),
-              h('td',{className:D},
+              h('td',{className:D,style:{position:'sticky',right:0,zIndex:2,boxShadow:'-4px 0 6px -2px rgba(0,0,0,0.08)',background:isMgr?'#0E0E1C':'#fff'}},
                 h('div',{style:{display:'flex',gap:4,alignItems:'center'}},
                   !isMgr&&(manual||l.category==='TikTok CBT')&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
                   !isMgr&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab endscan',onClick:()=>endScan(l.id),title:'스캔 완료 또는 OOS·취소 등 미스캔 처리'},'⏹ End Scan'),
@@ -1506,7 +1519,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v38'),
+    h('span',{className:'app-ver '+D},'v41'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1806,9 +1819,13 @@ function App(){
         h('label',{style:lbl},'Team Members (comma-separated)'),
         h('textarea',{style:{...inp,resize:'vertical',lineHeight:1.7,marginBottom:24,minHeight:60},value:pksStr,onChange:e=>setPKS(e.target.value),placeholder:'Kim Jisu, Park Minho, Lee Hayeon…'}),
         h('div',{style:{height:1,background:'rgba(255,255,255,0.06)',marginBottom:24}}),
-        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}},
           h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',letterSpacing:'.02em'}},'COLOR ASSIGNMENT'),
-          h('button',{onClick:()=>{if(confirm('모든 작업자 색상을 새 팔레트 기본값으로 초기화할까요? (직접 고른 색상도 포함해 전부 초기화됩니다)'))setPkColorMap({});},style:{padding:'6px 14px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.04)',color:'#8888C0',fontSize:12,fontWeight:600,cursor:'pointer'}},'🔄 Reset to New Palette')
+          h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+            pkSaveMsg&&h('span',{style:{fontSize:12,fontWeight:600,color:pkSaveMsg.startsWith('✓')?'#86EFAC':'#F87171'}},pkSaveMsg),
+            h('button',{onClick:()=>{if(confirm('모든 작업자 색상을 새 팔레트 기본값으로 초기화할까요? (직접 고른 색상도 포함해 전부 초기화됩니다)'))setPkColorMap({});},style:{padding:'6px 14px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.04)',color:'#8888C0',fontSize:12,fontWeight:600,cursor:'pointer'}},'🔄 Reset to New Palette'),
+            h('button',{onClick:savePickerColorsToServer,style:{padding:'6px 16px',borderRadius:8,border:'none',background:'#5B5EF4',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}},'💾 Save')
+          )
         ),
         h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
           pickers.map(w=>{
