@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v53</title>
+<title>SK B2C Fulfillment v54</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -29,11 +29,11 @@ if('serviceWorker' in navigator){
 html,body{height:100%;font-family:'DM Sans',system-ui,sans-serif;font-size:13px;background:#ECEAE5;color:#111}
 button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all .15s;user-select:none;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid}
 .nav{height:56px;border-bottom:1.5px solid #CCC;display:flex;align-items:center;padding:0 20px;gap:4px;position:sticky;top:0;z-index:200;}
-.nav.light{background:linear-gradient(115deg,#3730A3 0%,#5B3FD9 45%,#7C3AED 100%);border-color:transparent;box-shadow:0 2px 12px rgba(55,48,163,0.25)}
-.nav.dark{background:linear-gradient(115deg,#141430,#1E1B4B 55%,#2A1F5E);border-color:rgba(255,255,255,0.1);box-shadow:0 2px 16px rgba(0,0,0,0.4)}
+.nav.light{background:linear-gradient(120deg,#1C1B18 0%,#2A2822 55%,#33301F 100%);border-color:transparent;box-shadow:0 2px 14px rgba(0,0,0,0.35)}
+.nav.dark{background:linear-gradient(120deg,#141311,#201E19 55%,#26241A);border-color:rgba(255,255,255,0.1);box-shadow:0 2px 16px rgba(0,0,0,0.4)}
 .logo-box{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.logo-box.light{background:linear-gradient(145deg,#FDE9B8,#F2A93A);box-shadow:0 1px 6px rgba(0,0,0,0.25)}
-.logo-box.dark{background:linear-gradient(145deg,#5B5EF4,#8B5CF6);box-shadow:0 2px 8px rgba(91,94,244,0.5)}
+.logo-box.light{background:linear-gradient(145deg,#E8D9A8,#C6A44C);box-shadow:0 1px 6px rgba(0,0,0,0.3)}
+.logo-box.dark{background:linear-gradient(145deg,#C6A44C,#8B6F2E);box-shadow:0 2px 8px rgba(198,164,76,0.35)}
 .app-title{font-size:16px;font-weight:700;letter-spacing:-.02em;margin:0 4px 0 9px}
 .app-title.light{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.15)}
 .app-title.dark{color:#E8E6FF}
@@ -52,8 +52,8 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .nav-btn.dark.on{background:rgba(91,94,244,0.22);border-color:rgba(91,94,244,0.5);color:#A0A8FF;font-weight:600}
 .mgr-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;background:rgba(91,94,244,0.25);border:1px solid rgba(91,94,244,0.5);border-radius:100px;font-size:11px;font-weight:700;color:#A0A8FF;letter-spacing:.04em;text-transform:uppercase}
 .mgr-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 16px;border-radius:100px;font-weight:600}
-.mgr-btn.unlock{background:#fff;border-color:transparent;color:#5B21B6;box-shadow:0 1px 4px rgba(0,0,0,0.15)}
-.mgr-btn.unlock:hover{background:#F3EEFF}
+.mgr-btn.unlock{background:#F5E9C8;border-color:transparent;color:#3D3212;box-shadow:0 1px 4px rgba(0,0,0,0.15)}
+.mgr-btn.unlock:hover{background:#EFDFAE}
 .mgr-btn.lock{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);color:#888}
 .mgr-btn.lock:hover{border-color:rgba(255,255,255,0.25);color:#CCC}
 .stats-bar{display:grid;grid-template-columns:repeat(5,1fr);align-items:stretch}
@@ -82,6 +82,15 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .stat-bar{height:clamp(3px,0.28vw,4px);border-radius:4px;margin-top:clamp(4px,0.4vw,7px);overflow:hidden;position:relative}
 .stat-bar.light{background:#F0F0F8}
 .stat-bar.dark{background:rgba(255,255,255,0.07)}
+/* ── 통계 카드: 올리브 단색 + 흰 글씨 통일 ── */
+.stat.olive{background:linear-gradient(145deg,#6B6E3D,#5C5E33);border-right:1px solid rgba(255,255,255,0.12)}
+.stat.olive:last-child{border-right:none}
+.stat-lbl.olive{font-size:clamp(9px,0.6vw,10.5px);font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:clamp(2px,0.25vw,4px);color:rgba(255,255,255,0.72)}
+.stat-num.olive{font-size:clamp(18px,1.35vw,25px);font-weight:800;line-height:1;letter-spacing:-0.02em;color:#fff}
+.stat-sub.olive{font-size:clamp(10px,0.75vw,12.5px);font-weight:500;color:rgba(255,255,255,0.6)}
+.stat-pct.olive{font-size:clamp(9px,0.65vw,11px);font-weight:700;padding:clamp(1px,0.12vw,2px) clamp(5px,0.5vw,8px);border-radius:100px;flex-shrink:0;background:rgba(255,255,255,0.18);color:#fff}
+.stat-bar.olive{height:clamp(3px,0.28vw,4px);border-radius:4px;margin-top:clamp(4px,0.4vw,7px);overflow:hidden;background:rgba(255,255,255,0.18)}
+.olive-fill{height:100%;background:#EFDFAE;border-radius:4px}
 .stat-fill{height:100%;border-radius:4px;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
 .cat-tabs-row{display:flex;align-items:center}
 .cat-tabs-row.light{background:#FAFAFA;border-bottom:2px solid #EEEEF8}
@@ -1423,32 +1432,30 @@ function App(){
      {lbl:'Total Orders',big:tScan,sub:'/'+tOrd,pct:ordPct,clr:'#10B981'},
      {lbl:'Scan Progress',big:tScan,sub:'/'+tOrd,pct:ordPct,clr:'#F59E0B'},
      {lbl:'Jobs Complete',big:tDone,sub:'/'+todayL.length,pct:jobPct,clr:'#EC4899'},
-    ].map((c,i)=>h('div',{key:i,className:'stat '+D,style:{background:isMgr?c.clr+'14':c.clr+'0D'}},
-      h('div',{className:'stat-accent',style:{background:c.clr}}),
-      h('div',{className:'stat-lbl '+D},c.lbl),
+    ].map((c,i)=>h('div',{key:i,className:'stat olive'},
+      h('div',{className:'stat-lbl olive'},c.lbl),
       h('div',{className:'stat-row'},
         h('div',{style:{display:'flex',alignItems:'baseline',gap:4}},
-          h('span',{className:'stat-num '+D,style:{color:c.clr}},c.big),
-          h('span',{className:'stat-sub '+D},c.sub)
+          h('span',{className:'stat-num olive'},c.big),
+          h('span',{className:'stat-sub olive'},c.sub)
         ),
-        h('span',{className:'stat-pct '+D,style:{background:c.clr+'22',color:c.clr}},c.pct+'%')
+        h('span',{className:'stat-pct olive'},c.pct+'%')
       ),
-      h('div',{className:'stat-bar '+D},h('div',{className:'stat-fill',style:{width:c.pct+'%',background:c.clr}}))
+      h('div',{className:'stat-bar olive'},h('div',{className:'stat-fill olive-fill',style:{width:c.pct+'%'}}))
     )).concat([
-      h('div',{key:'pickers',className:'stat '+D,style:{background:isMgr?'#3B82F614':'#3B82F60D'}},
-        h('div',{className:'stat-accent',style:{background:'#3B82F6'}}),
-        h('div',{className:'stat-lbl '+D},'Active Pickers'),
+      h('div',{key:'pickers',className:'stat olive'},
+        h('div',{className:'stat-lbl olive'},'Active Pickers'),
         h('div',{className:'stat-row'},
           h('div',{style:{display:'flex',alignItems:'baseline',gap:4}},
-            h('span',{className:'stat-num '+D,style:{color:'#3B82F6'}},actWk.length),
-            h('span',{className:'stat-sub '+D},actWk.length?'pickers':'—')
+            h('span',{className:'stat-num olive'},actWk.length),
+            h('span',{className:'stat-sub olive'},actWk.length?'pickers':'—')
           )
         ),
         h('div',{style:{marginTop:6,display:'flex',flexWrap:'wrap',gap:4,maxHeight:20,overflow:'hidden'}},
           actWk.length===0
-            ?h('span',{style:{fontSize:11,color:isMgr?'#4848A0':'#CCC',fontStyle:'italic'}},'No active pickers')
-            :[...actWk.slice(0,3).map(w=>{const c=pkC(w);return h('span',{key:w,style:{display:'inline-flex',alignItems:'center',gap:3,background:isMgr?'rgba(255,255,255,0.07)':c.bg,border:'1px solid '+(isMgr?'rgba(255,255,255,0.14)':c.br||c.bg),borderRadius:100,padding:'2px 8px 2px 6px',fontSize:10.5,fontWeight:600,color:isMgr?'#D0D0F0':c.tx,whiteSpace:'nowrap'}},h('span',{style:{width:6,height:6,borderRadius:'50%',flexShrink:0,background:c.tx}}),w);}),
-               actWk.length>3&&h('span',{key:'more',style:{fontSize:10.5,fontWeight:700,color:isMgr?'#8080C0':'#999',padding:'2px 6px',whiteSpace:'nowrap'}},'+'+(actWk.length-3)+' more')]
+            ?h('span',{style:{fontSize:11,color:'rgba(255,255,255,0.55)',fontStyle:'italic'}},'No active pickers')
+            :[...actWk.slice(0,3).map(w=>{return h('span',{key:w,style:{display:'inline-flex',alignItems:'center',gap:3,background:'rgba(255,255,255,0.16)',border:'1px solid rgba(255,255,255,0.28)',borderRadius:100,padding:'2px 8px 2px 6px',fontSize:10.5,fontWeight:600,color:'#fff',whiteSpace:'nowrap'}},h('span',{style:{width:6,height:6,borderRadius:'50%',flexShrink:0,background:'#fff'}}),w);}),
+               actWk.length>3&&h('span',{key:'more',style:{fontSize:10.5,fontWeight:700,color:'rgba(255,255,255,0.75)',padding:'2px 6px',whiteSpace:'nowrap'}},'+'+(actWk.length-3)+' more')]
         )
       )
     ])
@@ -1571,7 +1578,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v53'),
+    h('span',{className:'app-ver '+D},'v54'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1583,7 +1590,7 @@ function App(){
     ...[['records','Records'],['scan','Scan Station'],...(isMgr?[['create',editId?'Edit List':'Create List'],['settings','Settings']]:[])]
       .map(([p,l])=>h('button',{key:p,onClick:()=>setTab(p),className:'nav-btn '+D+(tab===p?' on':'')},l)),
     h('div',{style:{flex:1}}),
-    syncSt&&h('span',{style:{fontSize:10,color:isMgr?'#86EFAC':'#1A6A08',marginRight:8,fontWeight:500}},syncSt),
+    syncSt&&h('span',{style:{fontSize:10,color:'#86EFAC',marginRight:8,fontWeight:600}},syncSt),
     isMgr
       ?h('button',{className:'mgr-btn lock',onClick:()=>{setMgr(false);setTab('records');}},'🔓 Worker Mode')
       :h('button',{className:'mgr-btn unlock',onClick:()=>setPin(true)},
