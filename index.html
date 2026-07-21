@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v49</title>
+<title>SK B2C Fulfillment v50</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -192,6 +192,13 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{border-radius:10px;background:rgba(128,128,128,0.2)}
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tbl-wrap::-webkit-scrollbar{height:14px}
+.tbl-wrap::-webkit-scrollbar-track{background:#EEEDEA;border-top:1px solid #DDD}
+.tbl-wrap.dark::-webkit-scrollbar-track{background:#1A1A38;border-top:1px solid rgba(255,255,255,0.08)}
+.tbl-wrap::-webkit-scrollbar-thumb{background:#9B9B9B;border-radius:7px;border:3px solid #EEEDEA}
+.tbl-wrap.dark::-webkit-scrollbar-thumb{background:#5C5C8A;border:3px solid #1A1A38}
+.tbl-wrap::-webkit-scrollbar-thumb:hover{background:#7A7A7A}
+.tbl-wrap{scrollbar-width:auto}
 @media(max-width:899px) and (min-width:600px){
   .nav{padding:0 10px;gap:2px;height:48px}.app-title{font-size:13px !important}.app-ver{display:none}.nav-sep{display:none}
   .stats-bar{grid-template-columns:repeat(3,1fr)}.tbl{min-width:700px}.clock-date{display:none}
@@ -935,16 +942,26 @@ function App(){
 
   /* ── 페이지 기준 작업자 배정 폴링 ── */
   const deletedAssignIds=useRef(new Set());
+  const pendingAssignPatches=useRef(new Map()); // id -> {patch:{...}, ts} — 서버가 따라잡을 때까지 로컬 변경(완료 처리 등) 보호
   useEffect(()=>{
     if(!wh)return;
     const pollPA=async()=>{
       try{
         const r=await fetch(wh+'?op=pickAssigns&date='+today()).then(r=>r.json());
         if(r&&r.ok){
-          const remote=(r.assigns||[]).filter(a=>!deletedAssignIds.current.has(a.id));
+          const remote=(r.assigns||[]).filter(a=>!deletedAssignIds.current.has(a.id)).map(a=>{
+            // ★ 버그 수정: "완료" 눌러도 서버가 아직 처리 전이면 폴링이 옛(미완료) 데이터로
+            //   덮어써서 잠깐 되돌아갔다 나중에 다시 반영되는 현상 발생.
+            //   → 로컬에서 방금 바꾼 필드는, 서버 값이 실제로 따라잡을 때까지 그대로 유지.
+            const pending=pendingAssignPatches.current.get(a.id);
+            if(!pending)return a;
+            const confirmed=Object.entries(pending.patch).every(([k,v])=>String(a[k]||'')===String(v||''));
+            if(confirmed||Date.now()-pending.ts>30000){pendingAssignPatches.current.delete(a.id);return a;}
+            return {...a,...pending.patch};
+          });
           setPickAssigns(prev=>{
-            // ★ 버그 수정: 방금 로컬에서 추가한 배정이 서버에 아직 반영되기 전에
-            //   폴링이 통째로 덮어써서 "이름이 잠깐 사라졌다 다시 나타나는" 현상 발생.
+            // ★ 방금 로컬에서 추가한 배정이 서버에 아직 반영되기 전에 폴링이 통째로
+            //   덮어써서 "이름이 잠깐 사라졌다 다시 나타나는" 현상 방지.
             //   → remote에 아직 없는 로컬 항목(반영 중)은 지우지 않고 그대로 유지.
             const remoteIds=new Set(remote.map(a=>a.id));
             const pendingLocal=prev.filter(a=>!remoteIds.has(a.id)&&!deletedAssignIds.current.has(a.id));
@@ -1186,6 +1203,7 @@ function App(){
   };
   const endPickAssignFn=a=>{
     const u={...a,pickEnd:ts()};
+    pendingAssignPatches.current.set(a.id,{patch:{pickEnd:u.pickEnd},ts:Date.now()});
     setPickAssigns(prev=>{
       const next=prev.map(x=>x.id===a.id?u:x);
       // ★ 이 PG의 총 페이지가 모두 완료(pickEnd 있는 배정들의 pages 합계 >= 리스트 pages)되면
@@ -1205,6 +1223,7 @@ function App(){
     if(!editAssign||!apWorker||!(+apPages>0))return;
     const start=+apStart||1;const cnt=+apPages;const end=start+cnt-1;
     const u={...editAssign,worker:apWorker,pages:cnt,pageStart:start,pageEnd:end};
+    pendingAssignPatches.current.set(editAssign.id,{patch:{worker:u.worker,pages:u.pages,pageStart:u.pageStart,pageEnd:u.pageEnd},ts:Date.now()});
     setPickAssigns(prev=>{const next=prev.map(x=>x.id===editAssign.id?u:x);syncListWorkerSummary(editAssign.pgNo,next);return next;});
     sync('upsertPickAssign',{assign:u});
     setEditAssign(null);setApWorker('');setApPages('');
@@ -1548,7 +1567,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v49'),
+    h('span',{className:'app-ver '+D},'v50'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
