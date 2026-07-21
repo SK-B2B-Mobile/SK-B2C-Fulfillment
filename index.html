@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v54</title>
+<title>SK B2C Fulfillment v58</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -83,7 +83,7 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .stat-bar.light{background:#F0F0F8}
 .stat-bar.dark{background:rgba(255,255,255,0.07)}
 /* ── 통계 카드: 올리브 단색 + 흰 글씨 통일 ── */
-.stat.olive{background:linear-gradient(145deg,#6B6E3D,#5C5E33);border-right:1px solid rgba(255,255,255,0.12)}
+.stat.olive{background:linear-gradient(145deg,#00331C,#00230F);border-right:1px solid rgba(255,255,255,0.12)}
 .stat.olive:last-child{border-right:none}
 .stat-lbl.olive{font-size:clamp(9px,0.6vw,10.5px);font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:clamp(2px,0.25vw,4px);color:rgba(255,255,255,0.72)}
 .stat-num.olive{font-size:clamp(18px,1.35vw,25px);font-weight:800;line-height:1;letter-spacing:-0.02em;color:#fff}
@@ -786,6 +786,27 @@ function App(){
   const [log,setLog]=useState(()=>lsGet(LS.LOG,[]));
   const [wh,setWH]=useState(()=>localStorage.getItem(LS.WH)||DEFAULT_WEBHOOK_URL);
   const [pksStr,setPKS]=useState(()=>localStorage.getItem(LS.PKS)||DEF_PKS);
+  const [pkNamesSaveMsg,setPkNamesSaveMsg]=useState('');
+  useEffect(()=>{
+    if(!wh)return;
+    fetch(wh+'?op=pickerNames').then(r=>r.json()).then(r=>{
+      // ★ v55: 작업자 명단도 서버 값을 신뢰 — 매니저가 등록한 명단이 모든 기기에 반영되도록
+      if(r&&r.ok&&r.pksStr)setPKS(r.pksStr);
+    }).catch(()=>{});
+  },[wh]);
+  const savePickerNamesToServer=()=>{
+    if(!wh){setPkNamesSaveMsg('⚠ Google Sheets URL을 먼저 설정하세요');return;}
+    sync('savePickerNames',{pksStr});
+    setPkNamesSaveMsg('✓ 저장되었습니다 — 모든 기기에 반영됩니다');
+    setTimeout(()=>setPkNamesSaveMsg(''),3000);
+  };
+  useEffect(()=>{
+    if(!wh)return;
+    fetch(wh+'?op=managerPin').then(r=>r.json()).then(r=>{
+      // ★ v56: 서버에 저장된 PIN이 있으면 로컬에 반영 (PinModal이 로컬값을 직접 읽으므로)
+      if(r&&r.ok&&r.pin)lsSet(LS.PIN,r.pin);
+    }).catch(()=>{});
+  },[wh]);
   const [pkColorMap,setPkColorMap]=useState(()=>lsGet(LS.PKC_MAP,{}));
   useEffect(()=>lsSet(LS.PKC_MAP,pkColorMap),[pkColorMap]);
   const [pkSaveMsg,setPkSaveMsg]=useState('');
@@ -823,6 +844,14 @@ function App(){
   const [np1,setNP1]=useState('');const [np2,setNP2]=useState('');const [pm,setPM]=useState('');
   const [ssKey,setSSKey]=useState(()=>localStorage.getItem('b2c18_sskey')||'');
   const [ssSecret,setSSSec]=useState(()=>localStorage.getItem('b2c18_sssec')||'');
+  useEffect(()=>{
+    if(!wh||!isMgr)return;
+    const pin=lsGet(LS.PIN,DEF_PIN);
+    fetch(wh+'?op=ssCredentials&pin='+encodeURIComponent(pin)).then(r=>r.json()).then(r=>{
+      // ★ v58: 매니저 인증된 기기라면, 서버에 저장된 ShipStation 키를 자동으로 채워줌
+      if(r&&r.ok){ if(r.apiKey)setSSKey(r.apiKey); if(r.apiSecret)setSSSec(r.apiSecret); }
+    }).catch(()=>{});
+  },[wh,isMgr]);
   const [syncMsg,setSyncMsg]=useState('');
   const [ssFetching,setSSF]=useState(false);
   const [ssResult,setSSR]=useState(null);
@@ -1371,7 +1400,7 @@ function App(){
     setWebhookBusy(false);
   };
 
-  const changePin=()=>{if(np1.length!==4||!/^\d{4}$/.test(np1)){setPM('Must be 4 digits');return;}if(np1!==np2){setPM('PINs do not match');return;}lsSet(LS.PIN,np1);setNP1('');setNP2('');setPM('✓ PIN changed');};
+  const changePin=()=>{if(np1.length!==4||!/^\d{4}$/.test(np1)){setPM('Must be 4 digits');return;}if(np1!==np2){setPM('PINs do not match');return;}lsSet(LS.PIN,np1);sync('saveManagerPin',{pin:np1});setNP1('');setNP2('');setPM('✓ PIN changed — 모든 기기에 반영됩니다');};
   const exportCSV=()=>{const h2=['Date','PG No','Category','SKU','Orders','Scanned','Worker','Pick Start','Pick End','Scan Start','Scan End','Pick Dur','Scan Dur','Status','Remarks'];const rows=lists.map(l=>[l.date,l.pgNo,l.category,l.sku||0,l.orderCount,l.scanned,l.worker||'',fmtT(l.pickStart),fmtT(l.pickEnd),fmtT(l.scanStart),fmtT(l.scanEnd),dur(l.pickStart,l.pickEnd,l.date),dur(l.scanStart,l.scanEnd,l.date),getSt(l),l.memo||'']);const csv=[h2,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download='B2C_'+today()+'.csv';a.click();};
 
   /* SS Modal */
@@ -1578,7 +1607,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v54'),
+    h('span',{className:'app-ver '+D},'v58'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1879,7 +1908,11 @@ function App(){
       h('div',null,h('h3',{style:{fontSize:18,fontWeight:700,color:'#E8E6FF',marginBottom:4}},'Picker Names & Colors'),h('p',{style:{fontSize:14,color:'#5050A0',lineHeight:1.7}},'Manage your team members and assign a unique color to each picker.')),
       h('div',{style:card},
         h('label',{style:lbl},'Team Members (comma-separated)'),
-        h('textarea',{style:{...inp,resize:'vertical',lineHeight:1.7,marginBottom:24,minHeight:60},value:pksStr,onChange:e=>setPKS(e.target.value),placeholder:'Kim Jisu, Park Minho, Lee Hayeon…'}),
+        h('textarea',{style:{...inp,resize:'vertical',lineHeight:1.7,marginBottom:10,minHeight:60},value:pksStr,onChange:e=>setPKS(e.target.value),placeholder:'Kim Jisu, Park Minho, Lee Hayeon…'}),
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:24}},
+          h('button',{onClick:savePickerNamesToServer,style:{padding:'8px 18px',borderRadius:8,border:'none',background:'#5B5EF4',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}},'💾 Save'),
+          pkNamesSaveMsg&&h('span',{style:{fontSize:12,fontWeight:600,color:pkNamesSaveMsg.startsWith('✓')?'#86EFAC':'#F87171'}},pkNamesSaveMsg)
+        ),
         h('div',{style:{height:1,background:'rgba(255,255,255,0.06)',marginBottom:24}}),
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}},
           h('div',{style:{fontSize:12,fontWeight:600,color:'#6060A0',letterSpacing:'.02em'}},'COLOR ASSIGNMENT'),
