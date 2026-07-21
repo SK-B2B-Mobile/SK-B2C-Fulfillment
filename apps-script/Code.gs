@@ -1,5 +1,12 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v46
+ * SK B2C Fulfillment — Google Apps Script v48
+ * v48 핵심 수정:
+ *   - detectChannel_: 주문번호가 "-RESHIPMENT"로 끝나면 원래 채널 접두사와
+ *     무관하게 무조건 Reshipment로 분류 (예: "MD-2026-156312-RESHIPMENT"가
+ *     "MD-" 접두사 때문에 Moida & Hola로 잘못 잡히던 문제 방지)
+ *   - ShipStation Webhook(SHIP_NOTIFY)과 수동 스캔 둘 다 이 규칙 적용됨
+ * v47 핵심 수정:
+ *   - 작업자 색상 서버 저장 기능 추가 (모든 기기에서 동일한 색상 보이도록)
  * v46 핵심 수정:
  *   - 자정 자동 정리 기능 추가: 매일 밤 12시경, "완료"(피킹+스캔 모두 끝남)된
  *     픽리스트만 자동으로 소프트 삭제(시트 데이터는 유지, Status만 Deleted로 표시)
@@ -608,6 +615,10 @@ const IGNORE_PREFIXES = [
 
 function detectChannel_(orderNumber) {
   const upper = String(orderNumber).trim().toUpperCase();
+  // ★ v48 추가: 주문번호 끝에 "-RESHIPMENT"가 붙어있으면 원래 채널 접두사(MD- 등)와 무관하게
+  //   무조건 Reshipment로 분류. ShipStation 라벨/사이트에도 이 접미사가 그대로 표시되므로
+  //   웹훅(주문번호 텍스트)이나 스캔(바코드가 주문번호를 담고 있는 경우) 둘 다 정확히 잡힘.
+  if (upper.endsWith('-RESHIPMENT')) return { cat: 'Reshipment', store: 'Reshipment' };
   for (const ig of IGNORE_PREFIXES) {
     if (upper.startsWith(ig.toUpperCase())) return null;
   }
