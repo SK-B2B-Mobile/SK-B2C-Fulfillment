@@ -1,5 +1,11 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v48
+ * SK B2C Fulfillment — Google Apps Script v49
+ * v49 핵심 수정:
+ *   - 삭제 방식 개선: 기존엔 Status를 "Deleted"로 덮어써서 원래 상태(Complete 등)
+ *     이력이 사라졌음 → 이제 Status는 그대로 두고 Archived/ArchivedAt 컬럼만
+ *     따로 표시 (B2B 프로젝트의 archived/archivedAt 패턴과 동일)
+ *   - "완료됐는지"와 "정리(보관처리)됐는지"를 구글시트에서 동시에 확인 가능
+ *   - 자정 자동정리, 수동 Del, Clear Completed 전부 이 방식으로 통일
  * v48 핵심 수정:
  *   - detectChannel_: 주문번호가 "-RESHIPMENT"로 끝나면 원래 채널 접두사와
  *     무관하게 무조건 Reshipment로 분류 (예: "MD-2026-156312-RESHIPMENT"가
@@ -991,8 +997,21 @@ function listsSheet_() {
   return getOrCreateSheet_(SHEET_LISTS, [
     'Date','PG No','Category','SKU','Order Count','Scanned',
     'Worker','Pick Start','Pick End','Scan Start','Scan End',
-    'Pick Duration','Scan Duration','Status','Remarks','Skip Reason','Created At','Updated At','ID','Pages','Worker Durations'
+    'Pick Duration','Scan Duration','Status','Remarks','Skip Reason','Created At','Updated At','ID','Pages','Worker Durations','Archived','ArchivedAt'
   ]);
+}
+
+/**
+ * ★ v49: PickLists 시트에 Archived/ArchivedAt 컬럼이 없으면 자동 추가.
+ *   기존 "Deleted"로 Status를 덮어쓰던 방식 대신, 원래 Status(Complete 등)는
+ *   그대로 두고 Archived=TRUE로만 표시 — 완료 이력이 사라지지 않게.
+ */
+function ensureArchivedColumns_() {
+  const sh = listsSheet_();
+  const lastCol = sh.getLastColumn();
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (!headers.some(h => String(h).trim() === 'Archived')) sh.getRange(1, sh.getLastColumn() + 1).setValue('Archived');
+  if (!headers.some(h => String(h).trim() === 'ArchivedAt')) sh.getRange(1, sh.getLastColumn() + 1).setValue('ArchivedAt');
 }
 
 /**
@@ -1269,11 +1288,15 @@ function installMidnightCleanupTrigger() {
 
 function deleteList_(pgNo, date) {
   if (!pgNo) return { ok:false, error:'pgNo required' };
+  ensureArchivedColumns_();
   const sh=listsSheet_(); const lastRow=sh.getLastRow();
   if (lastRow<2) return { ok:false, error:'not found' };
   const pgNos=sh.getRange(2,2,lastRow-1,1).getValues();
   const dates=sh.getRange(2,1,lastRow-1,1).getValues();
-  // ★ 중복 행 모두 삭제: pgNo 일치 + date 일치 (또는 date 없으면 pgNo만)
+  const archivedCol = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].indexOf('Archived') + 1;
+  const archivedAtCol = archivedCol + 1;
+  // ★ v49: Status는 그대로 두고(Complete 등 원래 이력 보존), Archived만 TRUE로 표시
+  //   → 구글시트에서 "완료됐는지"와 "정리(삭제)됐는지"를 동시에 확인 가능
   let deleted=false;
   for (let i=0; i<pgNos.length; i++) {
     const pgMatch=String(pgNos[i][0])===String(pgNo);
@@ -1283,10 +1306,9 @@ function deleteList_(pgNo, date) {
     const dateMatch=!date||dv===String(date).slice(0,10);
     if (pgMatch&&dateMatch) {
       const row=2+i;
-      sh.getRange(row,14).setValue('Deleted');
-      sh.getRange(row,17).setValue(nowLocal_());
-      sh.getRange(row,1,1,17).setFontColor(null);
-      sh.getRange(row,14).setBackground('#FFCCCC').setFontColor('#9C0006').setFontWeight('bold');
+      sh.getRange(row,archivedCol).setValue('TRUE').setBackground('#FFE8CC').setFontColor('#7A3A00').setFontWeight('bold');
+      sh.getRange(row,archivedAtCol).setValue(nowLocal_());
+      sh.getRange(row,18).setValue(nowLocal_()); // Updated At
       deleted=true;
     }
   }
@@ -1297,12 +1319,14 @@ function deleteList_(pgNo, date) {
 function getLists_(date) {
   const sh=listsSheet_(); const lastRow=sh.getLastRow();
   if (lastRow<2) return { ok:true, lists:[] };
-  const lastCol=Math.max(sh.getLastColumn(),21);
+  const lastCol=Math.max(sh.getLastColumn(),23);
   const data=sh.getRange(2,1,lastRow-1,lastCol).getValues();
   const toDS=val=>{if(!val&&val!==0)return'';try{const d=new Date(val);if(!isNaN(d.getTime()))return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd');}catch(e){}return String(val).slice(0,10);};
   const lists=data.filter(r=>{
     const rowDate=toDS(r[0]);
-    return String(r[13])!=='Deleted'&&(!date||rowDate===date);
+    // ★ v49: 이제 Archived 컬럼으로 판단 (Status는 더 이상 'Deleted'로 덮어쓰지 않음, 원래 이력 보존)
+    const isArchived = String(r[21]).toUpperCase()==='TRUE';
+    return !isArchived&&(!date||rowDate===date);
   }).map(r=>({
       date:toDS(r[0]),pgNo:String(r[1]),category:normalizeCat_(r[2]),
       sku:Number(r[3])||0,orderCount:Number(r[4])||0,scanned:Number(r[5])||0,
@@ -2800,7 +2824,9 @@ function deduplicatePickLists() {
     }
   });
   
-  // 중복 행 Deleted 처리
+  // 중복 행 Archived 처리 (v49: Status는 안 건드리고 Archived만 표시)
+  ensureArchivedColumns_();
+  const archivedCol = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].indexOf('Archived') + 1;
   let count = 0;
   data.forEach((row, i) => {
     const pgNo = String(row[1]);
@@ -2813,8 +2839,8 @@ function deduplicatePickLists() {
       const key = pgNo + '_' + date;
       if (seen[key] !== i) {
         // 마지막 행이 아니면 Deleted 처리
-        sh.getRange(2+i, 14).setValue('Deleted');
-        sh.getRange(2+i, 14).setBackground('#FFCCCC').setFontColor('#9C0006');
+        sh.getRange(2+i, archivedCol).setValue('TRUE');
+        sh.getRange(2+i, archivedCol).setBackground('#FFE8CC').setFontColor('#7A3A00');
         count++;
         Logger.log('중복 삭제: ' + pgNo + ' (' + date + ') row ' + (2+i));
       }
