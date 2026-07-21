@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v33</title>
+<title>SK B2C Fulfillment v34</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -233,13 +233,20 @@ const CA={
 const normalizeCat=c=>(c==='Official 1'||c==='Official 2')?'Official':c;
 const catStyle=c=>CA[normalizeCat(c)]||{bg:'#EEE',tx:'#666',br:'#CCC',ac:'#999'};
 const PKC_PRESETS=[
-  {bg:'#DCEAFE',tx:'#1D4ED8',label:'Blue'},   {bg:'#FFDADA',tx:'#B91C1C',label:'Red'},
-  {bg:'#DCF7DC',tx:'#15803D',label:'Green'},  {bg:'#EDE0FF',tx:'#6D28D9',label:'Purple'},
-  {bg:'#FFE8CC',tx:'#B45309',label:'Orange'}, {bg:'#D0F5F0',tx:'#0F766E',label:'Teal'},
-  {bg:'#FCE0EF',tx:'#BE185D',label:'Pink'},   {bg:'#FEF3C0',tx:'#A16207',label:'Yellow'},
-  {bg:'#E0E4FF',tx:'#4338CA',label:'Indigo'}, {bg:'#CFF4FF',tx:'#0369A1',label:'Cyan'},
-  {bg:'#EFE0D0',tx:'#78350F',label:'Brown'},  {bg:'#FBE0FF',tx:'#A21CAF',label:'Magenta'},
-  {bg:'#ECF9C8',tx:'#4D7C0F',label:'Lime'},   {bg:'#E5E7EB',tx:'#374151',label:'Gray'},
+  {bg:'#EFBDBD',tx:'#7E1B1B',label:'Red'},
+  {bg:'#EFCEBD',tx:'#7E3C1B',label:'Coral'},
+  {bg:'#EFDDBD',tx:'#7E5A1B',label:'Orange'},
+  {bg:'#EFE9BD',tx:'#7E711B',label:'Amber'},
+  {bg:'#D6EFBD',tx:'#4D7E1B',label:'Lime'},
+  {bg:'#BDEFC5',tx:'#1B7E2B',label:'Green'},
+  {bg:'#BDEFE3',tx:'#1B7E65',label:'Emerald'},
+  {bg:'#BDE7EF',tx:'#1B6E7E',label:'Cyan'},
+  {bg:'#BDD5EF',tx:'#1B497E',label:'Sky'},
+  {bg:'#BDC4EF',tx:'#1B287E',label:'Blue'},
+  {bg:'#CABDEF',tx:'#341B7E',label:'Indigo'},
+  {bg:'#DABDEF',tx:'#551B7E',label:'Violet'},
+  {bg:'#EFBDEF',tx:'#7E1B7E',label:'Magenta'},
+  {bg:'#EFBDD6',tx:'#7E1B4D',label:'Pink'},
 ];
 const ST=['pending','picking','picked','scanning','complete'];
 const STL=['Pending','Picking','Pick Done','Scanning','Complete'];
@@ -1491,7 +1498,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v33'),
+    h('span',{className:'app-ver '+D},'v34'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
