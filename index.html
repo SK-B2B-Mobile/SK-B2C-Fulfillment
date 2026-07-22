@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v74</title>
+<title>SK B2C Fulfillment v75</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1361,6 +1361,9 @@ function App(){
   const openAddPicker=l=>{
     const used=assignsFor(l.pgNo).reduce((s,a)=>s+(a.pages||0),0);
     const remain=Math.max(0,(l.pages||0)-used);
+    // ★ v75: 버튼이 숨겨져 있어도, 혹시 다른 기기와 거의 동시에 클릭해서 여기 진입했다면
+    //   2차 방어 — 남은 페이지가 없으면 모달을 아예 열지 않음
+    if(remain<=0){alert('이미 모든 페이지('+(l.pages||0)+'페이지)가 배정되었습니다.');return;}
     const start=nextStartPage(l.pgNo);
     // ★ v70: 기본값 = 남은 페이지를 다 가져가는 것으로 채워두되(마지막 페이지 번호),
     //   작업자가 원하면 그 칸에 직접 다른 종료 페이지 번호를 입력해서 줄일 수 있음
@@ -1368,7 +1371,10 @@ function App(){
     setApWorker('');setApStart(start);setApEnd(String(defaultEnd));setAddPickerFor(l);
   };
   const submitAddPicker=()=>{
-    const start=+apStart||1;const end=Math.max(start,+apEnd||start);const cnt=end-start+1;
+    const totalP=addPickerFor?.pages||0;
+    const start=+apStart||1;let end=Math.max(start,+apEnd||start);
+    if(totalP>0)end=Math.min(end,totalP); // ★ v75: 제출 순간에도 총 페이지 초과 방지 (최종 안전장치)
+    const cnt=end-start+1;
     if(!addPickerFor||!apWorker||!(cnt>0))return;
     const a={id:addPickerFor.pgNo+'_'+uid(),pgNo:addPickerFor.pgNo,date:today(),category:addPickerFor.category,worker:apWorker,pages:cnt,pageStart:start,pageEnd:end,pickStart:ts(),pickEnd:null};
     setPickAssigns(prev=>{const next=[...prev,a];syncListWorkerSummary(addPickerFor.pgNo,next);return next;});
@@ -1408,7 +1414,10 @@ function App(){
   // ★ 매니저: 잘못 배정된 범위/작업자 직접 수정
   const submitEditAssign=()=>{
     if(!editAssign||!apWorker)return;
-    const start=+apStart||1;const end=Math.max(start,+apEnd||start);const cnt=end-start+1;
+    const totalP=lists.find(x=>x.pgNo===editAssign.pgNo&&x.date===today())?.pages||0;
+    const start=+apStart||1;let end=Math.max(start,+apEnd||start);
+    if(totalP>0)end=Math.min(end,totalP); // ★ v75: 매니저 수정 시에도 총 페이지 초과 방지
+    const cnt=end-start+1;
     const u={...editAssign,worker:apWorker,pages:cnt,pageStart:start,pageEnd:end};
     pendingAssignPatches.current.set(editAssign.id,{patch:{worker:u.worker,pages:u.pages,pageStart:u.pageStart,pageEnd:u.pageEnd},ts:Date.now()});
     setPickAssigns(prev=>{const next=prev.map(x=>x.id===editAssign.id?u:x);syncListWorkerSummary(editAssign.pgNo,next);return next;});
@@ -1732,7 +1741,13 @@ function App(){
                       )
                     );
                   }),
-                  !isMgr&&h('button',{onClick:()=>openAddPicker(l),style:{padding:'5px 10px',borderRadius:8,fontSize:11.5,fontWeight:600,border:'1.5px dashed #AAA',background:'transparent',color:'#888',cursor:'pointer',width:'100%'}},'+ Add')
+                  // ★ v75 버그 수정: 총 페이지가 이미 다 배정됐는데도 +Add가 계속 떠서
+                  //   총 페이지를 초과하는 배정이 생기던 문제. 남은 페이지가 있을 때만 노출.
+                  !isMgr&&(()=>{
+                    const used=assignsFor(l.pgNo).reduce((s,a)=>s+(a.pages||0),0);
+                    const remain=Math.max(0,(l.pages||0)-used);
+                    return remain>0&&h('button',{onClick:()=>openAddPicker(l),style:{padding:'5px 10px',borderRadius:8,fontSize:11.5,fontWeight:600,border:'1.5px dashed #AAA',background:'transparent',color:'#888',cursor:'pointer',width:'100%'}},'+ Add');
+                  })()
                 )
               ),
               ...[['pickStart'],['pickEnd'],['scanStart'],['scanEnd']].map(([fld])=>
@@ -1775,7 +1790,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v74'),
+    h('span',{className:'app-ver '+D},'v75'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -2433,8 +2448,16 @@ function App(){
           h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'몇 페이지까지 (마지막 페이지 번호)'),
           h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:6}},
             h('button',{onClick:()=>setApEnd(v=>String(Math.max(+apStart||1,(+v||+apStart||1)-1))),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'−'),
-            h('input',{type:'number',min:+apStart||1,value:apEnd,onChange:e=>setApEnd(e.target.value),style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'6px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}}),
-            h('button',{onClick:()=>setApEnd(v=>String((+v||+apStart||0)+1)),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'+'),
+            h('input',{type:'number',min:+apStart||1,max:(editAssign?lists.find(x=>x.pgNo===editAssign.pgNo&&x.date===today())?.pages:addPickerFor?.pages)||undefined,value:apEnd,onChange:e=>{
+              // ★ v75: 총 페이지 수를 넘는 값은 입력 즉시 총 페이지로 잘라냄
+              const totalP=(editAssign?lists.find(x=>x.pgNo===editAssign.pgNo&&x.date===today())?.pages:addPickerFor?.pages)||0;
+              const v=e.target.value;
+              setApEnd(totalP>0&&+v>totalP?String(totalP):v);
+            },style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'6px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}}),
+            h('button',{onClick:()=>{
+              const totalP=(editAssign?lists.find(x=>x.pgNo===editAssign.pgNo&&x.date===today())?.pages:addPickerFor?.pages)||0;
+              setApEnd(v=>{const n=(+v||+apStart||0)+1;return String(totalP>0?Math.min(n,totalP):n);});
+            },style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'+'),
             h('span',{style:{fontSize:12,color:'#888'}},'페이지까지 · 1페이지만 가져가면 시작 페이지와 같은 숫자를 입력')
           ),
           h('div',{style:{fontSize:13,fontWeight:700,color:'#5B5EF4',marginBottom:20}},'→ '+apStart+'~'+Math.max(+apStart||1,+apEnd||(+apStart||1))+' 페이지 배정 (총 '+(Math.max(+apStart||1,+apEnd||(+apStart||1))-(+apStart||1)+1)+'페이지)'),
