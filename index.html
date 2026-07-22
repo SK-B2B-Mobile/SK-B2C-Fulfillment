@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v71</title>
+<title>SK B2C Fulfillment v72</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1741,7 +1741,11 @@ function App(){
               h('td',{className:D,style:{position:'sticky',right:0,zIndex:2,paddingLeft:16,boxShadow:'-6px 0 10px -3px rgba(0,0,0,0.14)',background:isMgr?'#0E0E1C':'#fff'}},
                 h('div',{style:{display:'flex',gap:4,alignItems:'center'}},
                   !isMgr&&(manual||l.category==='TikTok CBT')&&l.pickEnd&&!l.scanStart&&h('button',{className:'ab work',onClick:()=>startScan(l.id)},'▶ Work'),
-                  !isMgr&&l.pickEnd&&!l.scanEnd&&h('button',{className:'ab endscan',onClick:()=>endScan(l.id),title:'스캔 완료 또는 OOS·취소 등 미스캔 처리'},'⏹ End Scan'),
+                  // ★ v72: TikTok CBT는 End Scan으로 숫자만 밀어서 수동완료하면 실제 검수 없이
+                  //   완료 처리되어버려 오배송 방지 목적이 무너짐 — 이 채널은 End Scan을 막고
+                  //   반드시 Scan Station에서 실제 스캔으로만 완료되도록 강제 (Manual Verify로 예외처리)
+                  !isMgr&&l.pickEnd&&!l.scanEnd&&l.category!=='TikTok CBT'&&h('button',{className:'ab endscan',onClick:()=>endScan(l.id),title:'스캔 완료 또는 OOS·취소 등 미스캔 처리'},'⏹ End Scan'),
+                  !isMgr&&l.pickEnd&&!l.scanEnd&&l.category==='TikTok CBT'&&h('span',{style:{fontSize:10.5,color:'#B45309',fontWeight:600,whiteSpace:'nowrap'}},'Scan Station에서 스캔 필요'),
                   !isMgr&&st==='complete'&&h('button',{className:'ab done',style:{cursor:'default',opacity:0.85}},'✓ Complete'),
                   isMgr&&h('button',{className:'ab edit-btn',onClick:()=>setEL(l)},'Edit'),
                   isMgr&&h('button',{className:'ab del-btn',onClick:()=>delFromTable(l.id)},'Del')
@@ -1763,7 +1767,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v71'),
+    h('span',{className:'app-ver '+D},'v72'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
