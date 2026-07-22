@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v76</title>
+<title>SK B2C Fulfillment v78</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -336,10 +336,13 @@ const dur=(s,e,listDate)=>{
   while(cur<end&&guard++<400){const y=cur.getFullYear(),mo=cur.getMonth(),d=cur.getDate();const nextDay=new Date(y,mo,d+1,8,30,0);const sm=toM(cur);const em=cur.toDateString()===end.toDateString()?toM(end):WE;total+=dayWork(sm,Math.min(em,WE));cur=nextDay;if(cur>=end)break;}
   if(total<=0)return'—';return total<60?total+'m':Math.floor(total/60)+'h '+(total%60)+'m';
 };
+// ★ v78: hm-seeding 무시 규칙 제거 — 웹훅 자체(백엔드)에 날짜 필터(shipDate===오늘)를
+//   넣어서 더 안전하게 다시 자동판별을 사용함
 const IGNORE_PREFIXES=['kpopglow'];
 const detect=b=>{const u=b.trim().toUpperCase();if(u.endsWith('-RESHIPMENT'))return{cat:'Reshipment',store:'Reshipment'};for(const ig of IGNORE_PREFIXES)if(u.startsWith(ig.toUpperCase()))return null;
-  // ★ v74: 주문번호 어디든 "SEEDING"이 포함되면 Seeding으로 자동 분류 (Reshipment와 동일한 우선순위)
-  //   예: hm-seeding-3668 → ShipStation에서 실제로 이렇게 명명되고 있음을 확인함
+  // ★ v78: "SEEDING 포함 시 자동분류" 다시 사용. v74에서 넣었다가, 과거 날짜/다른 배치
+  //   주문까지 오늘 리스트에 잡혀서 되돌렸었는데(v77), 이번엔 백엔드 웹훅 단에서 shipDate가
+  //   오늘 날짜가 아니면 아예 처리하지 않도록 막아서 다시 안전하게 켬.
   if(u.indexOf('SEEDING')>=0)return{cat:'Seeding',store:'Seeding'};
   const isMoida=u.startsWith('MD-')||u.startsWith('HOA');const cat=isMoida?'Moida & Hola':'Official';const matched=PREFIX_MAP.find(m=>u.startsWith(m.p.toUpperCase()));return{cat,store:matched?matched.store:cat};};
 // ★ v73 버그 수정: "scanned>=orderCount"만으로도 자동 Complete 처리하던 규칙 제거.
@@ -1798,7 +1801,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v76'),
+    h('span',{className:'app-ver '+D},'v78'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
