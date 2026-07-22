@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v64</title>
+<title>SK B2C Fulfillment v65</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1521,7 +1521,11 @@ function App(){
   /* derived */
   const todayL=lists.filter(l=>l.date===today());
   const prevIncomplete=lists.filter(l=>l.date!==today()&&!['complete'].includes(getSt(l)));
-  const displayL=showPrev?[...prevIncomplete,...todayL]:todayL;
+  // ★ v65 버그 수정: 이전 날짜 항목이 "완료"되는 순간 목록에서 사라지던 문제.
+  //   자정 자동정리(archive) 전까지는 완료 여부와 상관없이 화면에 남아있어야 함.
+  //   prevAll = 이전 날짜의 모든 미보관(non-archived) 항목 (완료 포함)
+  const prevAll=lists.filter(l=>l.date!==today());
+  const displayL=showPrev?[...prevAll,...todayL]:todayL;
   const filtL=cat==='All'?displayL:displayL.filter(l=>l.category===cat);
   // ★ v63: 대시보드 통계 카드/카테고리 탭 숫자는 "오늘 것만"이 아니라
   //   "오늘 + 아직 안 끝난 이전 날짜 항목"을 항상 합산 — 접혀있어도(⚠ Incomplete 안 눌러도)
@@ -1608,7 +1612,7 @@ function App(){
       h('table',{className:'tbl'},
         h('thead',null,
           h('tr',null,
-            ['#',...(showPrev&&prevIncomplete.length>0?['DATE']:[]),'PG NO','CATEGORY','PAGES','SKU','ORDERS','SCANNED','PICKERS','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map((col,ci,arr)=>
+            ['#',...(showPrev&&prevAll.length>0?['DATE']:[]),'PG NO','CATEGORY','PAGES','SKU','ORDERS','SCANNED','PICKERS','PICK START','PICK END','SCAN START','SCAN END','PICK DUR','SCAN DUR','STATUS','REMARKS',isMgr?'ACTIONS':'ACTION'].map((col,ci,arr)=>
               h('th',{key:col,className:D,style:ci===arr.length-1?{position:'sticky',right:0,zIndex:3,paddingLeft:16,boxShadow:'-6px 0 10px -3px rgba(0,0,0,0.14)',background:isMgr?'#22224A':'#EEECEA'}:null},col)
             )
           )
@@ -1619,7 +1623,7 @@ function App(){
             const isPrev=l.date!==today();
             return h('tr',{key:l.id,className:D,style:isPrev?{background:isMgr?'rgba(245,158,11,0.06)':'rgba(245,158,11,0.04)'}:{}},
               h('td',{className:D+' c',style:{color:isMgr?'#5555AA':'#CCC',fontWeight:600,fontSize:13,width:38}},i+1),
-              ...(showPrev&&prevIncomplete.length>0?[h('td',{className:D,style:{fontSize:11,fontWeight:600,color:isPrev?'#F59E0B':'#AAA',whiteSpace:'nowrap'}},isPrev?l.date:'today')]:[]),
+              ...(showPrev&&prevAll.length>0?[h('td',{className:D,style:{fontSize:11,fontWeight:600,color:isPrev?'#F59E0B':'#AAA',whiteSpace:'nowrap'}},isPrev?l.date:'today')]:[]),
               h('td',{className:D},h('span',{className:'mono',style:{fontWeight:700,color:isMgr?'#C4C2FF':'#111',fontSize:14}},l.pgNo)),
               h('td',{className:D},h('span',{className:'pill',style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},l.category)),
               h('td',{className:D+' c',style:{fontWeight:700,color:isMgr?'#F0A0C8':'#8A2A56'}},l.pages||0),
@@ -1697,7 +1701,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v64'),
+    h('span',{className:'app-ver '+D},'v65'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -1732,8 +1736,10 @@ function App(){
     isMgr
       ?h('div',{className:'info-note dark'},'💡 Click any time value in the table to edit · "Clear Completed" removes done lists (data stays in Sheets)')
       :h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 20px',background:'#fff',borderBottom:'1px solid #EEEDF5'}},
-          h('span',{style:{fontSize:12,color:'#AAA',fontStyle:'italic'}},displayL.length+' pick list'+(displayL.length!==1?'s':'')+(showPrev&&prevIncomplete.length>0?' ('+prevIncomplete.length+' from previous days)':'')),
-          prevIncomplete.length>0&&h('button',{onClick:()=>setShowPrev(p=>!p),style:{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,padding:'5px 12px',borderRadius:100,border:'1px solid',cursor:'pointer',fontFamily:'inherit',background:showPrev?'#FFF0DC':'transparent',color:showPrev?'#7A3A00':'#AAA',borderColor:showPrev?'#F5C070':'#DDD'}},'⚠️ '+prevIncomplete.length+' Incomplete'+(showPrev?' ✕':''))
+          h('span',{style:{fontSize:12,color:'#AAA',fontStyle:'italic'}},displayL.length+' pick list'+(displayL.length!==1?'s':'')+(showPrev&&prevAll.length>0?' ('+prevAll.length+' from previous days)':'')),
+          prevAll.length>0&&h('button',{onClick:()=>setShowPrev(p=>!p),style:{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,padding:'5px 12px',borderRadius:100,border:'1px solid',cursor:'pointer',fontFamily:'inherit',background:showPrev?(prevIncomplete.length>0?'#FFF0DC':'#E8F5EC'):'transparent',color:showPrev?(prevIncomplete.length>0?'#7A3A00':'#15803D'):'#AAA',borderColor:showPrev?(prevIncomplete.length>0?'#F5C070':'#B8E3C4'):'#DDD'}},
+            prevIncomplete.length>0?('⚠️ '+prevIncomplete.length+' Incomplete'+(prevAll.length>prevIncomplete.length?' + '+(prevAll.length-prevIncomplete.length)+' done':'')):('✓ '+prevAll.length+' from yesterday (완료, 자정에 정리됨)'),
+            showPrev?' ✕':'')
         ),
     RT()
   );
