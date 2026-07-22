@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v78</title>
+<title>SK B2C Fulfillment v81</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -278,9 +278,10 @@ const PREFIX_MAP=[
   {p:'1156',cat:'TikTok CBT',store:'TikTok CBT'},
   {p:'MBX',cat:'Seeding',store:'Seeding MBX'},{p:'RTN',cat:'Seeding',store:'Returns'},
 ];
-const CATS=['TikTok CBT','Official','Moida & Hola','Seeding','Reshipment'];
+const CATS=['TikTok CBT','Official','Official_Walmart','Moida & Hola','Seeding','Reshipment'];
 const CA={
   'Official':{bg:'#E6F1FB',tx:'#1254A0',br:'#A8CFF2',ac:'#3B8FE0'},
+  'Official_Walmart':{bg:'#FFF4D6',tx:'#8A5A00',br:'#FFD966',ac:'#E8B400'},
   'Moida & Hola':{bg:'#E0F5D0',tx:'#1A6A08',br:'#90D870',ac:'#5DA832'},
   'TikTok CBT':{bg:'#FBE8F0',tx:'#8A1A5A',br:'#F0A0C8',ac:'#C84A82'},
   'Seeding':{bg:'#FFF0DC',tx:'#7A3A00',br:'#F5C070',ac:'#E89820'},
@@ -344,6 +345,13 @@ const detect=b=>{const u=b.trim().toUpperCase();if(u.endsWith('-RESHIPMENT'))ret
   //   주문까지 오늘 리스트에 잡혀서 되돌렸었는데(v77), 이번엔 백엔드 웹훅 단에서 shipDate가
   //   오늘 날짜가 아니면 아예 처리하지 않도록 막아서 다시 안전하게 켬.
   if(u.indexOf('SEEDING')>=0)return{cat:'Seeding',store:'Seeding'};
+  // ★ v81: Walmart 주문(200014로 시작)을 별도 "Official_Walmart" 채널로 분리.
+  //   기존엔 다른 스토어(Heimish/Shein/Tocobo 등)와 전부 "Official" 하나로 뭉쳐서,
+  //   오늘 Walmart 26건짜리 리스트에 다른 스토어 주문까지 섞여 카운트가 부풀려지는
+  //   문제가 있었음. Walmart는 ShipStation에서도 별도 스토어로 분리되어 있어서
+  //   (매니저가 직접 확인: Filter By Walmart → 오늘 날짜 정확히 26건) 주문번호
+  //   접두사로도 안전하게 분리 가능.
+  if(u.startsWith('200014'))return{cat:'Official_Walmart',store:'Walmart'};
   const isMoida=u.startsWith('MD-')||u.startsWith('HOA');const cat=isMoida?'Moida & Hola':'Official';const matched=PREFIX_MAP.find(m=>u.startsWith(m.p.toUpperCase()));return{cat,store:matched?matched.store:cat};};
 // ★ v73 버그 수정: "scanned>=orderCount"만으로도 자동 Complete 처리하던 규칙 제거.
 //   ShipStation 자동카운트(라벨 생성 수)가 우연히 주문수와 같아져도, 실제 발송 확인
@@ -1167,9 +1175,15 @@ function App(){
   const endScan=id=>{
     const l=lists.find(x=>x.id===id);
     if(!l||!l.pickEnd||l.scanEnd)return;
-    const oc=l.orderCount||0;const missed=oc-l.scanned;
-    if(missed<=0){if(!window.confirm('⏹ End Scan — '+l.pgNo+'\nAll '+oc+' scanned. End scan?'))return;upd(id,{scanEnd:ts()});return;}
-    setScanInput(l.scanned||0);
+    const oc=l.orderCount||0;
+    // ★ v80 버그 수정: scanned>=orderCount("다 스캔된 것처럼 보임")이면 단순 confirm창만
+    //   띄우고 바로 끝내던 지름길을 제거함. ShipStation 자동카운트가 이 리스트와 무관한
+    //   다른 주문들까지 끌어와서 부풀려질 수 있다는 게 실제로 확인됐기 때문에(26건인데
+    //   99건으로 표시), 아무리 숫자가 넘쳐도 항상 사람이 직접 최종 수량을 확인/수정하는
+    //   상세 모달을 거치도록 통일. (모달 열릴 때 입력값은 총 주문수를 넘지 않게 표시)
+    const cappedScanned=Math.min(l.scanned||0,oc);
+    const missed=oc-cappedScanned;
+    setScanInput(cappedScanned);
     setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
     setEndScanModal({id,pgNo:l.pgNo,scanned:l.scanned,oc,missed});
   };
@@ -1621,7 +1635,7 @@ function App(){
   //   눌러 최종 확정(scanEnd)하기 전까지는 대시보드 집계에서 제외.
   //   TikTok CBT(실제 바코드 스캔)와 Reshipment(수동 +1/+5/+10 카운트)는 그 자체가
   //   실측이므로 지금처럼 실시간으로 반영.
-  const AUTO_SYNC_CATS=['Official','Moida & Hola','Seeding'];
+  const AUTO_SYNC_CATS=['Official','Official_Walmart','Moida & Hola','Seeding'];
   const dashScanned=l=>AUTO_SYNC_CATS.includes(l.category)?(getSt(l)==='complete'?l.scanned:0):l.scanned;
   const tScan=activeL.reduce((a,l)=>a+dashScanned(l),0);
   const tDone=activeL.filter(l=>getSt(l)==='complete').length;
@@ -1752,9 +1766,10 @@ function App(){
                       )
                     );
                   }),
-                  // ★ v75 버그 수정: 총 페이지가 이미 다 배정됐는데도 +Add가 계속 떠서
-                  //   총 페이지를 초과하는 배정이 생기던 문제. 남은 페이지가 있을 때만 노출.
-                  !isMgr&&(()=>{
+                  // ★ v79 개선: 이미 Complete(발송 완료)된 리스트는 페이지 배정에 빈 곳이
+                  //   있어도(예: 4페이지 누락) +Add를 더 이상 노출하지 않음 — 발송이 끝난
+                  //   뒤에 페이지 배정을 채우는 건 의미가 없고 혼란만 주므로.
+                  !isMgr&&st!=='complete'&&(()=>{
                     const used=assignsFor(l.pgNo).reduce((s,a)=>s+(a.pages||0),0);
                     const remain=Math.max(0,(l.pages||0)-used);
                     return remain>0&&h('button',{onClick:()=>openAddPicker(l),style:{padding:'5px 10px',borderRadius:8,fontSize:11.5,fontWeight:600,border:'1.5px dashed #AAA',background:'transparent',color:'#888',cursor:'pointer',width:'100%'}},'+ Add');
@@ -1801,7 +1816,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v78'),
+    h('span',{className:'app-ver '+D},'v81'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
