@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v61</title>
+<title>SK B2C Fulfillment v63</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -350,10 +350,15 @@ const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
    - 매칭 안 된 remote 항목만 새로 추가 (단, 오늘 날짜만)
    - dedupeByCategory 완전 제거 (이것이 Official 1 삭제 원인이었음)
 ══════════════════════════════════════════════ */
-const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
+const mergeRemoteIntoLocal=(prev,fetchedList,targetDate,pendingIds)=>{
   const merged=[...prev];
   const nd=d=>{if(!d)return'';if(d instanceof Date){try{return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){}}return String(d).slice(0,10);};
   const rankSt=s=>{const r={'pending':0,'picking':1,'pick done':2,'scanning':3,'complete':4};return r[(s||'').toLowerCase()]??-1;};
+  // ★ v62 버그 수정: 예전엔 loc.worker||remote.worker 로 "로컬에 값이 한 번이라도 있으면 영구 고정"
+  //   되어서, 다른 컴퓨터에서 작업자를 바꿔도 이 화면엔 절대 반영이 안 됐음.
+  //   방금(30초 이내) 이 화면에서 직접 수정한 항목만 "로컬 우선 보호"하고,
+  //   그 시간이 지나면 서버(다른 컴퓨터가 저장한 값 포함)를 신뢰하도록 변경.
+  const isPending=id=>{if(!pendingIds)return false;const t=pendingIds.get(id);return t&&(Date.now()-t)<30000;};
 
   fetchedList.forEach(remote=>{
     // Deleted 상태는 무시
@@ -376,16 +381,16 @@ const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
       const loc=merged[idx];
       const locRank=rankSt(getSt(loc));
       const remRank=rankSt(remote.status);
+      const protect=isPending(loc.id); // 방금 이 화면에서 수정한 항목만 로컬 보호
 
-      // scanned는 더 큰 값 유지
+      // scanned는 항상 더 큰 값 유지 (역행 방지, 보호 여부 무관)
       const newScanned=Math.max(loc.scanned||0, remote.scanned||0);
-      // worker는 로컬 우선 (로컬에 값 있으면 유지)
-      const newWorker=loc.worker||remote.worker||'';
-      // 시간값: 로컬 우선 (로컬에 값 있으면 유지)
-      const newPickStart=loc.pickStart||remote.pickStart||'';
-      const newPickEnd=loc.pickEnd||remote.pickEnd||'';
-      const newScanStart=loc.scanStart||remote.scanStart||'';
-      const newScanEnd=loc.scanEnd||remote.scanEnd||'';
+      // worker/시간값: 30초 이내 로컬 수정이 있으면 로컬 우선, 아니면 서버(다른 기기 포함) 신뢰
+      const newWorker=protect?(loc.worker||remote.worker||''):(remote.worker||loc.worker||'');
+      const newPickStart=protect?(loc.pickStart||remote.pickStart||''):(remote.pickStart||loc.pickStart||'');
+      const newPickEnd=protect?(loc.pickEnd||remote.pickEnd||''):(remote.pickEnd||loc.pickEnd||'');
+      const newScanStart=protect?(loc.scanStart||remote.scanStart||''):(remote.scanStart||loc.scanStart||'');
+      const newScanEnd=protect?(loc.scanEnd||remote.scanEnd||''):(remote.scanEnd||loc.scanEnd||'');
 
       merged[idx]={
         ...loc,                    // ★ 로컬 데이터 기반 (pgNo, id 등 로컬 유지)
@@ -403,8 +408,11 @@ const mergeRemoteIntoLocal=(prev,fetchedList,targetDate)=>{
         workerDurations:loc.workerDurations||remote.workerDurations||'',
       };
     } else {
-      // ── 새 항목: remote에서 추가 (오늘 날짜만, 과거 날짜 추가 안 함) ──
-      if(rDate===targetDate){
+      // ── 새 항목: remote에서 추가 ──
+      // ★ v62 버그 수정: targetDate==='' (전체 동기화) 일 때 rDate===targetDate가
+      //   절대 참이 될 수 없어서 새 레코드가 영원히 추가 안 되던 문제 수정.
+      //   targetDate==='' 이면 모든 날짜의 새 레코드를 추가.
+      if(targetDate===''||rDate===targetDate){
         merged.push({
           id:remote.id||('gs_'+remote.pgNo+'_'+rDate),
           date:rDate,
@@ -926,6 +934,10 @@ function App(){
 
   /* ★ 삭제된 항목 추적 (폴링 복원 방지) — pgNo_date 형태로 저장 */
   const deletedKeys=useRef(new Set());
+  // ★ v62: 메인 리스트(worker/시간필드)도 pickAssigns와 동일한 방식으로
+  //   "방금 로컬에서 수정한 항목(30초)"만 보호 — id -> timestamp
+  const pendingListPatches=useRef(new Map());
+  const touchPending=id=>pendingListPatches.current.set(id,Date.now());
 
   useEffect(()=>lsSet(LS.LISTS,lists),[lists]);
   useEffect(()=>lsSet(LS.LOG,log.slice(0,500)),[log]);
@@ -954,16 +966,21 @@ function App(){
         //   "버전이 바뀌었을 때만" 조건이 무조건 거짓이 되어 최초 데이터 로딩이
         //   영원히 안 일어나던 문제. → 최초 1회는 무조건 가져오도록 수정.
         if(!lastVerRef.current||newVer!==lastVerRef.current){
+          const isFirstLoad=!lastVerRef.current;
           // ★ v61: 버전이 바뀌면(=매니저가 뭔가 저장하면) 픽리스트뿐 아니라
           //   작업자 명단/색상/PIN도 함께 재동기화 — 이제 페이지를 새로고침하지 않아도
           //   이미 열려있는 다른 기기 화면이 30초 내로 자동으로 최신 상태가 됨
-          if(lastVerRef.current){
+          if(!isFirstLoad){
             syncPickerNamesRef.current();
             syncPickerColorsRef.current();
             syncManagerPinRef.current();
           }
-          // 버전 변경 → 오늘 데이터 pull
-          const r2=await fetch(wh+'?op=getLists&date='+today());
+          // ★ v62 버그 수정: 최초 로딩 때는 date='' (전체) 로 가져와서
+          //   "완료 안 된 이전 날짜 리스트"도 이 화면에 자동으로 나타나게 함.
+          //   (기존엔 오늘 날짜만 가져와서, 새 컴퓨터는 어제 미완료 항목을 영원히 못 봤음.
+          //    Settings의 "Sync from Sheets" 수동 버튼을 눌러야만 겨우 보였음)
+          //   이후 폴링(버전 변경 감지)은 효율을 위해 계속 오늘 날짜만 가져옴.
+          const r2=await fetch(wh+'?op=getLists&date='+(isFirstLoad?'':today()));
           const d2=await r2.json();
           if(d2.ok&&d2.lists){
             // 삭제된 항목 필터링
@@ -976,7 +993,7 @@ function App(){
             });
             if(fetched.length>0){
               setLists(prev=>{
-                const merged=mergeRemoteIntoLocal(prev,fetched,today());
+                const merged=mergeRemoteIntoLocal(prev,fetched,isFirstLoad?'':today(),pendingListPatches.current);
                 lsSet(LS.LISTS,merged);
                 return merged;
               });
@@ -1057,7 +1074,7 @@ function App(){
   },[wh]);
 
   /* mutations */
-  const upd=(id,ch)=>setLists(p=>p.map(l=>{if(l.id!==id)return l;const u={...l,...ch};sync('upsertList',{list:u});return u;}));
+  const upd=(id,ch)=>{touchPending(id);setLists(p=>p.map(l=>{if(l.id!==id)return l;const u={...l,...ch};sync('upsertList',{list:u});return u;}));};
   const setWrk=(id,n)=>upd(id,{worker:n});
   const startPick=id=>{
     const l=lists.find(x=>x.id===id);if(!l)return;
@@ -1075,11 +1092,11 @@ function App(){
     setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
     setEndScanModal({id,pgNo:l.pgNo,scanned:l.scanned,oc,missed});
   };
-  const addN=(id,q)=>setLists(prev=>prev.map(l=>{
+  const addN=(id,q)=>{touchPending(id);setLists(prev=>prev.map(l=>{
     if(l.id!==id)return l;const now=ts();const oc=l.orderCount||0;const nc=(l.scanned||0)+q;
     const ch={scanned:nc};if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd)ch.scanEnd=now;
     const u={...l,...ch};sync('upsertList',{list:u});return u;
-  }));
+  }));};
 
   /* scan barcode */
   const handleScan=e=>{
@@ -1090,6 +1107,7 @@ function App(){
     const tgt=lists.find(l=>l.category===d.cat&&l.date===td&&l.scanned<(l.orderCount||0));
     if(!tgt){setSE(d.cat+' — No active pick list');setLS({barcode:b,cat:d.cat,store:d.store,time:fmtT(now),ok:false});ttPlayWarn();ttShowBigAlert('⚠️','NO ACTIVE LIST',d.cat+' — 진행중인 픽리스트 없음','warn');return;}
     let willComplete=false;
+    touchPending(tgt.id);
     setLists(prev=>prev.map(l=>{
       if(l.id!==tgt.id)return l;const nc=l.scanned+1;const oc=l.orderCount||0;const ch={scanned:nc};
       if(!l.scanStart)ch.scanStart=now;if(nc>=oc&&oc>0&&!l.scanEnd){ch.scanEnd=now;willComplete=true;}
@@ -1340,6 +1358,7 @@ function App(){
 
   /* edit save / delete */
   const editSave=updated=>{
+    touchPending(updated.id);
     setLists(p=>p.map(l=>{
       if(l.id===updated.id)return updated;
       if(l.pgNo===updated.pgNo&&l.date===updated.date)return{...updated,id:l.id};
@@ -1377,7 +1396,7 @@ function App(){
       });
       if(fetched.length===0){setSyncMsg('⚠ Google Sheets에 데이터가 없습니다.');return;}
       setLists(prev=>{
-        const merged=mergeRemoteIntoLocal(prev,fetched,'');  // 전체 날짜
+        const merged=mergeRemoteIntoLocal(prev,fetched,'',pendingListPatches.current);  // 전체 날짜
         lsSet(LS.LISTS,merged);
         return merged;
       });
@@ -1479,15 +1498,19 @@ function App(){
   const prevIncomplete=lists.filter(l=>l.date!==today()&&!['complete'].includes(getSt(l)));
   const displayL=showPrev?[...prevIncomplete,...todayL]:todayL;
   const filtL=cat==='All'?displayL:displayL.filter(l=>l.category===cat);
-  const tSKU=todayL.reduce((a,l)=>a+(l.sku||0),0);
-  const tOrd=todayL.reduce((a,l)=>a+(l.orderCount||0),0);
-  const tScan=todayL.reduce((a,l)=>a+l.scanned,0);
-  const tDone=todayL.filter(l=>getSt(l)==='complete').length;
-  const doneSKU=todayL.filter(l=>getSt(l)==='complete').reduce((a,l)=>a+(l.sku||0),0);
-  const actWk=[...new Set(todayL.filter(l=>getSt(l)!=='pending'&&l.worker).map(l=>l.worker))];
+  // ★ v63: 대시보드 통계 카드/카테고리 탭 숫자는 "오늘 것만"이 아니라
+  //   "오늘 + 아직 안 끝난 이전 날짜 항목"을 항상 합산 — 접혀있어도(⚠ Incomplete 안 눌러도)
+  //   실제로 진행 중인 작업량이 화면 맨 위에 바로 보이도록 함
+  const activeL=[...todayL,...prevIncomplete];
+  const tSKU=activeL.reduce((a,l)=>a+(l.sku||0),0);
+  const tOrd=activeL.reduce((a,l)=>a+(l.orderCount||0),0);
+  const tScan=activeL.reduce((a,l)=>a+l.scanned,0);
+  const tDone=activeL.filter(l=>getSt(l)==='complete').length;
+  const doneSKU=activeL.filter(l=>getSt(l)==='complete').reduce((a,l)=>a+(l.sku||0),0);
+  const actWk=[...new Set(activeL.filter(l=>getSt(l)!=='pending'&&l.worker).map(l=>l.worker))];
   const skuPct=tSKU>0?Math.round((doneSKU/tSKU)*100):0;
   const ordPct=tOrd>0?Math.round((tScan/tOrd)*100):0;
-  const jobPct=todayL.length>0?Math.round((tDone/todayL.length)*100):0;
+  const jobPct=activeL.length>0?Math.round((tDone/activeL.length)*100):0;
   const D=isMgr?'dark':'light';
 
   /* Stats Bar */
@@ -1495,7 +1518,7 @@ function App(){
     [{lbl:'Total SKU',big:doneSKU,sub:'/'+tSKU,pct:skuPct,clr:'#6366F1'},
      {lbl:'Total Orders',big:tScan,sub:'/'+tOrd,pct:ordPct,clr:'#10B981'},
      {lbl:'Scan Progress',big:tScan,sub:'/'+tOrd,pct:ordPct,clr:'#F59E0B'},
-     {lbl:'Jobs Complete',big:tDone,sub:'/'+todayL.length,pct:jobPct,clr:'#EC4899'},
+     {lbl:'Jobs Complete',big:tDone,sub:'/'+activeL.length,pct:jobPct,clr:'#EC4899'},
     ].map((c,i)=>h('div',{key:i,className:'stat olive'},
       h('div',{className:'stat-lbl olive'},c.lbl),
       h('div',{className:'stat-row'},
@@ -1527,7 +1550,7 @@ function App(){
 
   /* Category Tabs */
   const CTabs=({actions})=>{
-    const counts=Object.fromEntries(['All',...CATS].map(c=>[c,c==='All'?todayL.length:todayL.filter(l=>l.category===c).length]));
+    const counts=Object.fromEntries(['All',...CATS].map(c=>[c,c==='All'?activeL.length:activeL.filter(l=>l.category===c).length]));
     return h('div',{className:'cat-tabs-row '+D},
       h('div',{className:'cat-tabs'},
         ['All',...CATS].map(c=>{
@@ -1642,7 +1665,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v61'),
+    h('span',{className:'app-ver '+D},'v63'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
