@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v75</title>
+<title>SK B2C Fulfillment v76</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1612,7 +1612,15 @@ function App(){
   const activeL=[...todayL,...prevIncomplete];
   const tSKU=activeL.reduce((a,l)=>a+(l.sku||0),0);
   const tOrd=activeL.reduce((a,l)=>a+(l.orderCount||0),0);
-  const tScan=activeL.reduce((a,l)=>a+l.scanned,0);
+  // ★ v76 버그 수정: ShipStation 자동동기화 채널(Official/Moida & Hola/Seeding)은
+  //   라벨 생성 즉시 scanned 숫자가 올라가는데, 이게 그대로 대시보드 SCAN PROGRESS에
+  //   반영되면 "실제 검수 완료"가 아닌데도 완료된 것처럼 보임 — 매니저가 End Scan을
+  //   눌러 최종 확정(scanEnd)하기 전까지는 대시보드 집계에서 제외.
+  //   TikTok CBT(실제 바코드 스캔)와 Reshipment(수동 +1/+5/+10 카운트)는 그 자체가
+  //   실측이므로 지금처럼 실시간으로 반영.
+  const AUTO_SYNC_CATS=['Official','Moida & Hola','Seeding'];
+  const dashScanned=l=>AUTO_SYNC_CATS.includes(l.category)?(getSt(l)==='complete'?l.scanned:0):l.scanned;
+  const tScan=activeL.reduce((a,l)=>a+dashScanned(l),0);
   const tDone=activeL.filter(l=>getSt(l)==='complete').length;
   const doneSKU=activeL.filter(l=>getSt(l)==='complete').reduce((a,l)=>a+(l.sku||0),0);
   // ★ v64 버그 수정: l.worker가 "이름1, 이름2, 이름3"처럼 여러 명이 콤마로 합쳐진
@@ -1790,7 +1798,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v75'),
+    h('span',{className:'app-ver '+D},'v76'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
