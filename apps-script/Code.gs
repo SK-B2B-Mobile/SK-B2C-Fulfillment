@@ -712,6 +712,12 @@ function detectChannel_(orderNumber) {
   //   과거 날짜 주문이 섞여 들어와서 되돌렸었는데(v77), 이번엔 handleSSWebhook_에서
   //   shipDate가 오늘 날짜가 아니면 아예 처리하지 않도록 막아서 다시 안전하게 켬.
   if (upper.indexOf('SEEDING') >= 0) return { cat: 'Seeding', store: 'Seeding' };
+  // ★ v81: Walmart 주문(200014로 시작)을 별도 "Official_Walmart" 채널로 분리.
+  //   기존엔 다른 스토어와 전부 "Official" 하나로 뭉쳐서, 오늘 Walmart 배치 리스트에
+  //   다른 스토어 주문까지 섞여 카운트가 부풀려지는 문제가 있었음. ShipStation에서도
+  //   Walmart는 별도 스토어로 분리되어 있어서 주문번호 접두사로도 안전하게 분리 가능
+  //   (매니저가 직접 확인: Filter By Walmart → 오늘 날짜 정확히 26건).
+  if (upper.indexOf('200014') === 0) return { cat: 'Official_Walmart', store: 'Walmart' };
   // ★ v50: 채널 판별 단순화 (매니저 확인된 규칙) — 브랜드별로 일일이 등록할 필요 없음
   //   "MD-" 또는 "HOA"로 시작 → Moida & Hola / 그 외 전부 → Official
   //   매장명(store)은 참고용으로만 PREFIX_MAP에서 찾아서 붙여줌(없으면 카테고리명으로 대체)
@@ -1481,7 +1487,7 @@ function updateDailySummary_(date) {
     if (!listsData.ok) return;
     const lists=listsData.lists.filter(l=>l.status!=='Deleted');
     const sh=summarySheet_();
-    const cats=['TikTok CBT','Official','Moida & Hola','Seeding','Reshipment'];
+    const cats=['TikTok CBT','Official','Official_Walmart','Moida & Hola','Seeding','Reshipment'];
 
     const cleanTime=v=>{
       if(!v||v==='')return'';
@@ -1621,7 +1627,7 @@ function debugSummary() {
   const lists = (result.lists || []).filter(l => l.status !== 'Deleted');
   Logger.log('Non-deleted lists: ' + lists.length);
 
-  const cats = ['TikTok CBT','Official','Moida & Hola','Seeding','Reshipment'];
+  const cats = ['TikTok CBT','Official','Official_Walmart','Moida & Hola','Seeding','Reshipment'];
   cats.forEach(cat => {
     const cl = lists.filter(l => l.category === cat);
     if (cl.length > 0) Logger.log('Category ['+cat+']: ' + cl.length + ' lists');
