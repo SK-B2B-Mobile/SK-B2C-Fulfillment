@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v72</title>
+<title>SK B2C Fulfillment v74</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -337,8 +337,16 @@ const dur=(s,e,listDate)=>{
   if(total<=0)return'—';return total<60?total+'m':Math.floor(total/60)+'h '+(total%60)+'m';
 };
 const IGNORE_PREFIXES=['kpopglow'];
-const detect=b=>{const u=b.trim().toUpperCase();if(u.endsWith('-RESHIPMENT'))return{cat:'Reshipment',store:'Reshipment'};for(const ig of IGNORE_PREFIXES)if(u.startsWith(ig.toUpperCase()))return null;const isMoida=u.startsWith('MD-')||u.startsWith('HOA');const cat=isMoida?'Moida & Hola':'Official';const matched=PREFIX_MAP.find(m=>u.startsWith(m.p.toUpperCase()));return{cat,store:matched?matched.store:cat};};
-const getSt=l=>{const oc=l.orderCount||0;if(l.scanEnd)return'complete';if(oc>0&&l.scanned>=oc)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
+const detect=b=>{const u=b.trim().toUpperCase();if(u.endsWith('-RESHIPMENT'))return{cat:'Reshipment',store:'Reshipment'};for(const ig of IGNORE_PREFIXES)if(u.startsWith(ig.toUpperCase()))return null;
+  // ★ v74: 주문번호 어디든 "SEEDING"이 포함되면 Seeding으로 자동 분류 (Reshipment와 동일한 우선순위)
+  //   예: hm-seeding-3668 → ShipStation에서 실제로 이렇게 명명되고 있음을 확인함
+  if(u.indexOf('SEEDING')>=0)return{cat:'Seeding',store:'Seeding'};
+  const isMoida=u.startsWith('MD-')||u.startsWith('HOA');const cat=isMoida?'Moida & Hola':'Official';const matched=PREFIX_MAP.find(m=>u.startsWith(m.p.toUpperCase()));return{cat,store:matched?matched.store:cat};};
+// ★ v73 버그 수정: "scanned>=orderCount"만으로도 자동 Complete 처리하던 규칙 제거.
+//   ShipStation 자동카운트(라벨 생성 수)가 우연히 주문수와 같아져도, 실제 발송 확인
+//   없이는 절대 자동완료되면 안 됨 — 오직 scanEnd(=End Scan 확정 또는 TikTok CBT 실제
+//   스캔 완료 시 백엔드가 설정)가 있을 때만 완료로 인정.
+const getSt=l=>{if(l.scanEnd)return'complete';if(l.scanStart)return'scanning';if(l.pickEnd)return'picked';if(l.pickStart)return'picking';return'pending';};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
@@ -1767,7 +1775,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v72'),
+    h('span',{className:'app-ver '+D},'v74'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
