@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v63</title>
+<title>SK B2C Fulfillment v64</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -350,6 +350,26 @@ const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
    - 매칭 안 된 remote 항목만 새로 추가 (단, 오늘 날짜만)
    - dedupeByCategory 완전 제거 (이것이 Official 1 삭제 원인이었음)
 ══════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════
+   ★ v64 버그 수정: pruneStale
+   - 지금까지 동기화는 "서버 데이터를 로컬에 추가/갱신"만 했고,
+     "서버에서 사라진(직접 시트에서 삭제/Archived) 항목을 로컬에서도 지우는" 처리가 없었음
+   - 그래서 구글시트에서 행을 직접 지워도 브라우저 로컬 캐시엔 영원히 남아있었음
+   - scope(조회 범위) 안에 있는 로컬 항목 중 서버 응답에 없는 것만 제거
+     (scope 밖의 항목은 이번 조회 대상이 아니므로 건드리지 않음)
+   - 방금(30초 이내) 로컬에서 만들었거나 수정한 항목은 서버가 아직 못 따라잡았을 수 있으므로 보호
+════════════════════════════════════════════════ */
+const pruneStale=(list,fetchedList,scope,pendingIds)=>{
+  const fetchedIds=new Set(fetchedList.map(r=>r.id).filter(Boolean));
+  const nd=d=>{if(!d)return'';if(d instanceof Date){try{return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){}}return String(d).slice(0,10);};
+  return list.filter(l=>{
+    if(scope!==''&&nd(l.date)!==scope)return true; // 조회 범위 밖 — 건드리지 않음
+    if(fetchedIds.has(l.id))return true; // 서버에 여전히 존재
+    if(pendingIds){const t=pendingIds.get(l.id);if(t&&(Date.now()-t)<30000)return true;} // 방금 로컬 작업 — 보호
+    return false; // 조회 범위 안인데 서버엔 없음 → 삭제/보관됨 → 로컬에서도 제거
+  });
+};
+
 const mergeRemoteIntoLocal=(prev,fetchedList,targetDate,pendingIds)=>{
   const merged=[...prev];
   const nd=d=>{if(!d)return'';if(d instanceof Date){try{return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){}}return String(d).slice(0,10);};
@@ -991,14 +1011,16 @@ function App(){
               if(deletedKeys.current.has(l.pgNo+'_'+dStr))return false;
               return true;
             });
-            if(fetched.length>0){
-              setLists(prev=>{
-                const merged=mergeRemoteIntoLocal(prev,fetched,isFirstLoad?'':today(),pendingListPatches.current);
-                lsSet(LS.LISTS,merged);
-                return merged;
-              });
-              setSS('↻ '+new Date().toLocaleTimeString());
-            }
+            // ★ v64: fetched가 0개여도 prune은 항상 실행 — 해당 범위의 모든 항목이
+            //   서버에서 사라진 경우(전부 삭제됨)도 로컬에서 정리되도록
+            setLists(prev=>{
+              const scope=isFirstLoad?'':today();
+              const merged=mergeRemoteIntoLocal(prev,fetched,scope,pendingListPatches.current);
+              const pruned=pruneStale(merged,fetched,scope,pendingListPatches.current);
+              lsSet(LS.LISTS,pruned);
+              return pruned;
+            });
+            if(fetched.length>0)setSS('↻ '+new Date().toLocaleTimeString());
           }
         }
         lastVerRef.current=newVer;
@@ -1350,6 +1372,7 @@ function App(){
       scanStart:existing?.scanStart||null,scanEnd:existing?.scanEnd||null,worker:existing?.worker||'',
       date:listDate,memo:mf.memo||''
     };
+    touchPending(nl.id);
     setLists(p=>editId?p.map(x=>x.id===editId?nl:x):[...p,nl]);
     sync('upsertList',{list:nl});
     setMF({pgNo:'',cat:cat!=='All'?cat:'Official',sku:'',orders:'',memo:'',pages:''});
@@ -1397,8 +1420,9 @@ function App(){
       if(fetched.length===0){setSyncMsg('⚠ Google Sheets에 데이터가 없습니다.');return;}
       setLists(prev=>{
         const merged=mergeRemoteIntoLocal(prev,fetched,'',pendingListPatches.current);  // 전체 날짜
-        lsSet(LS.LISTS,merged);
-        return merged;
+        const pruned=pruneStale(merged,fetched,'',pendingListPatches.current); // ★ v64: 시트에서 직접 지운 항목도 로컬에서 정리
+        lsSet(LS.LISTS,pruned);
+        return pruned;
       });
       setSyncMsg('✓ '+fetched.length+'개 항목을 Google Sheets에서 동기화했습니다. ('+new Date().toLocaleTimeString()+')');
     }catch(e){setSyncMsg('⚠ 오류: '+e.message);}
@@ -1483,6 +1507,7 @@ function App(){
       }
     });
     if(newLists.length>0){
+      newLists.forEach(nl=>touchPending(nl.id));
       setLists(p=>{
         const merged=[...p,...newLists.filter(nl=>!p.find(x=>x.id===nl.id))];
         lsSet(LS.LISTS,merged);
@@ -1507,7 +1532,14 @@ function App(){
   const tScan=activeL.reduce((a,l)=>a+l.scanned,0);
   const tDone=activeL.filter(l=>getSt(l)==='complete').length;
   const doneSKU=activeL.filter(l=>getSt(l)==='complete').reduce((a,l)=>a+(l.sku||0),0);
-  const actWk=[...new Set(activeL.filter(l=>getSt(l)!=='pending'&&l.worker).map(l=>l.worker))];
+  // ★ v64 버그 수정: l.worker가 "이름1, 이름2, 이름3"처럼 여러 명이 콤마로 합쳐진
+  //   문자열일 수 있는데, 이걸 쪼개지 않고 "문자열 전체"를 1개로 세고 있었음.
+  //   → "2 pickers"라고 세면서 정작 칩은 4명이 보이는 모순이 발생했던 원인.
+  //   이제 콤마 단위로 쪼개서 실제 개별 인원 수로 정확히 집계.
+  const actWk=[...new Set(
+    activeL.filter(l=>getSt(l)!=='pending'&&l.worker)
+      .flatMap(l=>String(l.worker).split(',').map(s=>s.trim()).filter(Boolean))
+  )];
   const skuPct=tSKU>0?Math.round((doneSKU/tSKU)*100):0;
   const ordPct=tOrd>0?Math.round((tScan/tOrd)*100):0;
   const jobPct=activeL.length>0?Math.round((tDone/activeL.length)*100):0;
@@ -1665,7 +1697,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v63'),
+    h('span',{className:'app-ver '+D},'v64'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
