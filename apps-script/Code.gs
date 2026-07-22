@@ -753,13 +753,19 @@ function logSSFetch_(date, summary) {
 ════════════════════════════════════════ */
 const SHEET_PICK_ASSIGN = 'PickAssign';
 function pickAssignSheet_(){
-  const sh = getOrCreateSheet_(SHEET_PICK_ASSIGN, ['ID','PgNo','Date','Category','Worker','Pages','PickStart','PickEnd','Duration','CreatedAt','UpdatedAt','PageStart','PageEnd']);
+  const sh = getOrCreateSheet_(SHEET_PICK_ASSIGN, ['ID','PgNo','Date','Category','Worker','Pages','PickStart','PickEnd','Duration','CreatedAt','UpdatedAt','PageStart','PageEnd','IssueNote']);
   // ★ v42: 이미 만들어진(구버전) PickAssign 시트에 PageStart/PageEnd 컬럼이 없으면 자동 추가
   const lastCol = sh.getLastColumn();
   if (lastCol < 13) {
     const headers = sh.getRange(1,1,1,lastCol).getValues()[0];
     if (!headers.includes('PageStart')) sh.getRange(1, lastCol+1).setValue('PageStart');
     if (!headers.includes('PageEnd'))   sh.getRange(1, lastCol+2).setValue('PageEnd');
+  }
+  // ★ v70: 피킹 완료 시 지연사유(포크리프트 작업중/Other) 기록용 IssueNote 컬럼 자동 추가
+  const lastCol2 = sh.getLastColumn();
+  if (lastCol2 < 14) {
+    const headers2 = sh.getRange(1,1,1,lastCol2).getValues()[0];
+    if (!headers2.includes('IssueNote')) sh.getRange(1, lastCol2+1).setValue('IssueNote');
   }
   return sh;
 }
@@ -783,7 +789,7 @@ function upsertPickAssign_(a){
       String(a.worker), Number(a.pages)||0,
       fmtTime_(a.pickStart), fmtTime_(a.pickEnd),
       dur_(a.pickStart,a.pickEnd,a.date), createdAt, now,
-      Number(a.pageStart)||0, Number(a.pageEnd)||0
+      Number(a.pageStart)||0, Number(a.pageEnd)||0, String(a.issueNote||'')
     ];
     if(targetRow) sh.getRange(targetRow,1,1,row.length).setValues([row]);
     else sh.appendRow(row);
@@ -820,7 +826,7 @@ function reattachTime_(dateStr, timeVal) {
 function getPickAssigns_(date){
   const sh=pickAssignSheet_(); const lastRow=sh.getLastRow();
   if(lastRow<2) return { ok:true, assigns:[] };
-  const lastCol=Math.max(sh.getLastColumn(),13);
+  const lastCol=Math.max(sh.getLastColumn(),14);
   const data=sh.getRange(2,1,lastRow-1,lastCol).getValues();
   const toDS=v=>{ if(!v) return ''; try{ const d=new Date(v); if(!isNaN(d.getTime())) return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd'); }catch(e){} return String(v).slice(0,10); };
   const assigns=data.filter(r=>!date||toDS(r[2])===date).map(r=>{
@@ -829,7 +835,7 @@ function getPickAssigns_(date){
       id:String(r[0]), pgNo:String(r[1]), date:ds, category:String(r[3]),
       worker:String(r[4]), pages:Number(r[5])||0,
       pickStart:reattachTime_(ds,r[6]), pickEnd:reattachTime_(ds,r[7]), duration:String(r[8]||''),
-      pageStart:Number(r[11])||0, pageEnd:Number(r[12])||0
+      pageStart:Number(r[11])||0, pageEnd:Number(r[12])||0, issueNote:String(r[13]||'')
     };
   });
   return { ok:true, assigns, ver:getVersion_() };
