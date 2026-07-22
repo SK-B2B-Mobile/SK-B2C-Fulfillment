@@ -281,7 +281,7 @@ function processWebhookOrder_(orderNumber, skipSummary) {
     Logger.log('✅ Webhook matched: ' + orderNumber + ' → ' + target.category + ' PG:' + target.pgNo +
       ' date:' + target.date + ' (' + target.scanned + '/' + target.orderCount + ')' +
       ' pickEnd:' + target.pickEnd);
-    return updateScanned_(target, orderNumber, store, skipSummary);
+    return updateScanned_(target, orderNumber, store, skipSummary, false); // ★ v73: 웹훅은 자동완료 금지
 
   } catch(e) {
     Logger.log('processWebhookOrder_ error: ' + e.message);
@@ -290,7 +290,17 @@ function processWebhookOrder_(orderNumber, skipSummary) {
 }
   
 
-function updateScanned_(list, orderNumber, store, skipSummary) {
+// ★ v73 버그 수정: 지금까지 scanned가 orderCount에 도달하면 항상 자동으로 scanEnd를 찍어서
+//   "Complete"로 자동 전환됐음. 이게 TikTok CBT(실제 개별 바코드 스캔)에서는 맞는 동작이지만,
+//   ShipStation 웹훅 자동카운트(Official/Moida & Hola)에서는 문제가 됨 — 이 숫자는 "라벨 생성 수"일
+//   뿐 "실제 발송 확인 수"가 아니라서, 라벨은 다 생성됐는데 실제로 못 나간 주문(OOS 등)이 있어도
+//   숫자만 맞으면 매니저 확인(End Scan) 없이 그냥 완료 처리되어버리는 위험이 있었음.
+//   → autoClose 파라미터 추가: ShipStation 웹훅(processWebhookOrder_)은 false로 호출해서
+//   숫자만 채우고 scanEnd는 절대 자동으로 안 찍음. End Scan 버튼이 그대로 남아있어야
+//   매니저/작업자가 실제 발송 여부를 최종 확인·사유 기록할 수 있음.
+//   TikTok CBT(진짜 개별 스캔 완료)는 기존대로 autoClose=true 유지.
+function updateScanned_(list, orderNumber, store, skipSummary, autoClose) {
+  if (autoClose === undefined) autoClose = true; // 기존 호출부(TikTok 등) 하위호환을 위한 기본값
   const now = nowLocal_();
   const newScanned = (list.scanned || 0) + 1;
   const oc = list.orderCount || 0;
@@ -299,7 +309,7 @@ function updateScanned_(list, orderNumber, store, skipSummary) {
     ...list,
     scanned: newScanned,
     scanStart: list.scanStart || now,
-    scanEnd: (oc > 0 && newScanned >= oc) ? now : (list.scanEnd || null),
+    scanEnd: (autoClose && oc > 0 && newScanned >= oc) ? now : (list.scanEnd || null),
   };
 
   const r = upsertList_(updated, skipSummary);
@@ -682,6 +692,12 @@ function detectChannel_(orderNumber) {
   for (const ig of IGNORE_PREFIXES) {
     if (upper.startsWith(ig.toUpperCase())) return null;
   }
+  // ★ v74: 주문번호 어디든 "SEEDING"이 포함되면 Seeding으로 자동 분류 (Reshipment와 동일한 우선순위)
+  //   예: hm-seeding-3668 — ShipStation에서 실제로 이렇게 명명되고 있음을 매니저가 확인함.
+  //   이제 Seeding도 다른 채널처럼 SHIP_NOTIFY 웹훅으로 자동 카운트되지만, updateScanned_는
+  //   autoClose=false로 호출되므로(웹훅 공통 경로) 라벨 생성 수만 채우고 자동완료는 안 됨 —
+  //   End Scan으로 실제 발송 확인 후 확정해야 하는 건 Official/Moida & Hola와 동일.
+  if (upper.indexOf('SEEDING') >= 0) return { cat: 'Seeding', store: 'Seeding' };
   // ★ v50: 채널 판별 단순화 (매니저 확인된 규칙) — 브랜드별로 일일이 등록할 필요 없음
   //   "MD-" 또는 "HOA"로 시작 → Moida & Hola / 그 외 전부 → Official
   //   매장명(store)은 참고용으로만 PREFIX_MAP에서 찾아서 붙여줌(없으면 카테고리명으로 대체)
