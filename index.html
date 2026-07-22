@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v70</title>
+<title>SK B2C Fulfillment v71</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -963,8 +963,13 @@ function App(){
   const [addPickerFor,setAddPickerFor]=useState(null); // 현재 "+ Add Picker" 모달 대상 list
   const [apWorker,setApWorker]=useState('');
   const [apStart,setApStart]=useState(1);
-  const [apPages,setApPages]=useState('');
+  const [apEnd,setApEnd]=useState(''); // ★ v70: "가져갈 수량"이 아니라 "몇 페이지까지"(종료 페이지)를 직접 입력받음
   const [editAssign,setEditAssign]=useState(null); // 매니저: 기존 배정 범위 수정
+  // ★ v70: 작업자가 피킹 완료(자기 칩 클릭) 시 지연 사유를 선택할 수 있는 팝업
+  const [endPickIssueModal,setEndPickIssueModal]=useState(null); // 완료 처리 대상 assign
+  const [epForklift,setEpForklift]=useState(false);
+  const [epOther,setEpOther]=useState(false);
+  const [epOtherText,setEpOtherText]=useState('');
   const [showStdBackup,setShowStdBackup]=useState(false); // Official/Moida&Hola 백업 수동 스캔 — 평소엔 접어둠 (ShipStation 자동 연동이 기본)
   const [ttWorker,setTtWorker]=useState(()=>localStorage.getItem('b2c18_ttworker')||'');
   const [ttPickingWorker,setTtPickingWorker]=useState(false); // "변경" 눌렀을 때만 true — 취소하면 기존 작업자 유지
@@ -1349,19 +1354,22 @@ function App(){
     const used=assignsFor(l.pgNo).reduce((s,a)=>s+(a.pages||0),0);
     const remain=Math.max(0,(l.pages||0)-used);
     const start=nextStartPage(l.pgNo);
-    setApWorker('');setApStart(start);setApPages(remain>0?String(Math.min(remain,(l.pages||0)-start+1)):'1');setAddPickerFor(l);
+    // ★ v70: 기본값 = 남은 페이지를 다 가져가는 것으로 채워두되(마지막 페이지 번호),
+    //   작업자가 원하면 그 칸에 직접 다른 종료 페이지 번호를 입력해서 줄일 수 있음
+    const defaultEnd=remain>0?Math.min(l.pages||0,start+remain-1):start;
+    setApWorker('');setApStart(start);setApEnd(String(defaultEnd));setAddPickerFor(l);
   };
   const submitAddPicker=()=>{
-    if(!addPickerFor||!apWorker||!(+apPages>0))return;
-    const start=+apStart||1;const cnt=+apPages;const end=start+cnt-1;
+    const start=+apStart||1;const end=Math.max(start,+apEnd||start);const cnt=end-start+1;
+    if(!addPickerFor||!apWorker||!(cnt>0))return;
     const a={id:addPickerFor.pgNo+'_'+uid(),pgNo:addPickerFor.pgNo,date:today(),category:addPickerFor.category,worker:apWorker,pages:cnt,pageStart:start,pageEnd:end,pickStart:ts(),pickEnd:null};
     setPickAssigns(prev=>{const next=[...prev,a];syncListWorkerSummary(addPickerFor.pgNo,next);return next;});
     sync('upsertPickAssign',{assign:a});
     if(!addPickerFor.pickStart)upd(addPickerFor.id,{pickStart:ts()}); // 첫 배정 시 리스트 전체 Picking 시작으로 표시
-    setAddPickerFor(null);setApWorker('');setApPages('');
+    setAddPickerFor(null);setApWorker('');setApEnd('');
   };
-  const endPickAssignFn=a=>{
-    const u={...a,pickEnd:ts()};
+  const endPickAssignFn=(a,issueNote)=>{
+    const u={...a,pickEnd:ts(),issueNote:issueNote!=null?issueNote:(a.issueNote||'')};
     pendingAssignPatches.current.set(a.id,{patch:{pickEnd:u.pickEnd},ts:Date.now()});
     setPickAssigns(prev=>{
       const next=prev.map(x=>x.id===a.id?u:x);
@@ -1377,15 +1385,27 @@ function App(){
     });
     sync('upsertPickAssign',{assign:u});
   };
+  // ★ v70: 작업자가 자기 칩을 눌러 완료 처리하려 할 때, 먼저 지연사유 체크 팝업을 띄움
+  const openEndPickIssue=a=>{
+    setEndPickIssueModal(a);setEpForklift(false);setEpOther(false);setEpOtherText('');
+  };
+  const submitEndPickIssue=()=>{
+    if(!endPickIssueModal)return;
+    const parts=[];
+    if(epForklift)parts.push('포크리프트 작업중');
+    if(epOther)parts.push('Other'+(epOtherText.trim()?': '+epOtherText.trim():''));
+    endPickAssignFn(endPickIssueModal,parts.join(', '));
+    setEndPickIssueModal(null);setEpForklift(false);setEpOther(false);setEpOtherText('');
+  };
   // ★ 매니저: 잘못 배정된 범위/작업자 직접 수정
   const submitEditAssign=()=>{
-    if(!editAssign||!apWorker||!(+apPages>0))return;
-    const start=+apStart||1;const cnt=+apPages;const end=start+cnt-1;
+    if(!editAssign||!apWorker)return;
+    const start=+apStart||1;const end=Math.max(start,+apEnd||start);const cnt=end-start+1;
     const u={...editAssign,worker:apWorker,pages:cnt,pageStart:start,pageEnd:end};
     pendingAssignPatches.current.set(editAssign.id,{patch:{worker:u.worker,pages:u.pages,pageStart:u.pageStart,pageEnd:u.pageEnd},ts:Date.now()});
     setPickAssigns(prev=>{const next=prev.map(x=>x.id===editAssign.id?u:x);syncListWorkerSummary(editAssign.pgNo,next);return next;});
     sync('upsertPickAssign',{assign:u});
-    setEditAssign(null);setApWorker('');setApPages('');
+    setEditAssign(null);setApWorker('');setApEnd('');
   };
   const deleteAssignFn=a=>{
     deletedAssignIds.current.add(a.id);
@@ -1683,15 +1703,15 @@ function App(){
                     return h('div',{key:a.id,style:{display:'flex',flexDirection:'column',gap:1}},
                       h('div',{
                         className:'pk-chip',
-                        onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApPages(String(a.pages||1));}else if(!done){endPickAssignFn(a);}},
-                        'data-tip':a.worker+' · '+timeStr+(durStr?' · '+durStr:''),
+                        onClick:()=>{if(isMgr){setEditAssign(a);setApWorker(a.worker);setApStart(a.pageStart||1);setApEnd(String(a.pageEnd||a.pageStart||1));}else if(!done){openEndPickIssue(a);}},
+                        'data-tip':a.worker+' · '+timeStr+(durStr?' · '+durStr:'')+(a.issueNote?' · ⚠️ '+a.issueNote:''),
                         style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,padding:done?'5px 10px':'4px 9px',borderRadius:8,fontSize:11.5,fontWeight:700,width:'100%',
                           background:done?'#DCF7DC':wc.bg,color:done?wc.tx:wc.tx,
                           border:'1.5px solid '+(done?'#4ADE80':wc.tx),cursor:'pointer',
                           boxShadow:done?'0 1px 3px rgba(0,0,0,0.12)':'none'}
                       },
                         h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}},
-                          done&&h('span',{style:{fontSize:12}},'✅'),shortName(a.worker)
+                          done&&h('span',{style:{fontSize:12}},'✅'),a.issueNote&&h('span',{style:{fontSize:11}},'⚠️'),shortName(a.worker)
                         ),
                         h('span',{style:{flexShrink:0,opacity:.85,display:'flex',alignItems:'center',gap:3}},
                           rangeStr,!done&&h('span',null,'▶'),
@@ -1743,7 +1763,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v70'),
+    h('span',{className:'app-ver '+D},'v71'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -2398,17 +2418,38 @@ function App(){
               : h('div',{style:{padding:'8px 16px',borderRadius:8,background:'#F0EEFF',color:'#5B5EF4',fontWeight:700,fontSize:16}},apStart+'페이지부터'),
             h('span',{style:{fontSize:11,color:'#AAA'}},'(이전 작업자들이 이미 가져간 페이지 다음부터 자동 배정)')
           ),
-          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'가져갈 페이지 수'),
+          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'몇 페이지까지 (마지막 페이지 번호)'),
           h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:6}},
-            h('button',{onClick:()=>setApPages(v=>String(Math.max(1,(+v||1)-1))),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'−'),
-            h('input',{type:'number',min:1,value:apPages,onChange:e=>setApPages(e.target.value),style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'6px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}}),
-            h('button',{onClick:()=>setApPages(v=>String((+v||0)+1)),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'+'),
-            h('span',{style:{fontSize:12,color:'#888'}},'페이지')
+            h('button',{onClick:()=>setApEnd(v=>String(Math.max(+apStart||1,(+v||+apStart||1)-1))),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'−'),
+            h('input',{type:'number',min:+apStart||1,value:apEnd,onChange:e=>setApEnd(e.target.value),style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'6px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}}),
+            h('button',{onClick:()=>setApEnd(v=>String((+v||+apStart||0)+1)),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'+'),
+            h('span',{style:{fontSize:12,color:'#888'}},'페이지까지 · 1페이지만 가져가면 시작 페이지와 같은 숫자를 입력')
           ),
-          h('div',{style:{fontSize:13,fontWeight:700,color:'#5B5EF4',marginBottom:20}},'→ '+apStart+'~'+((+apStart||1)+(+apPages||1)-1)+' 페이지 배정 (총 '+(+apPages||0)+'페이지)'),
+          h('div',{style:{fontSize:13,fontWeight:700,color:'#5B5EF4',marginBottom:20}},'→ '+apStart+'~'+Math.max(+apStart||1,+apEnd||(+apStart||1))+' 페이지 배정 (총 '+(Math.max(+apStart||1,+apEnd||(+apStart||1))-(+apStart||1)+1)+'페이지)'),
           h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
             h('button',{onClick:()=>{setAddPickerFor(null);setEditAssign(null);},style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
-            h('button',{onClick:editAssign?submitEditAssign:submitAddPicker,disabled:!apWorker||!(+apPages>0),style:{padding:'9px 22px',borderRadius:8,border:'none',background:(apWorker&&+apPages>0)?'#5B5EF4':'#CCC',color:'#fff',cursor:(apWorker&&+apPages>0)?'pointer':'not-allowed',fontWeight:700}},editAssign?'저장':'▶ Start Picking')
+            h('button',{onClick:editAssign?submitEditAssign:submitAddPicker,disabled:!apWorker||!(+apEnd>0)||(+apEnd<(+apStart||1)),style:{padding:'9px 22px',borderRadius:8,border:'none',background:(apWorker&&+apEnd>0&&+apEnd>=(+apStart||1))?'#5B5EF4':'#CCC',color:'#fff',cursor:(apWorker&&+apEnd>0&&+apEnd>=(+apStart||1))?'pointer':'not-allowed',fontWeight:700}},editAssign?'저장':'▶ Start Picking')
+          )
+        )
+      ),
+      // ★ v70: 피킹 완료(작업자 본인 칩 클릭) 시 지연사유 선택 팝업 — 아무것도 체크 안 하면 그냥 Complete
+      endPickIssueModal&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget)setEndPickIssueModal(null);}},
+        h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:380,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
+          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2}},'✅ 피킹 완료 — '+endPickIssueModal.worker),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:18}},endPickIssueModal.pgNo+' · '+endPickIssueModal.pageStart+'~'+endPickIssueModal.pageEnd+'페이지'),
+          h('div',{style:{fontSize:12,color:'#999',marginBottom:10,fontWeight:600}},'지연된 이슈가 있었나요? (선택사항 — 없으면 바로 Complete)'),
+          h('label',{style:{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,border:'1.5px solid '+(epForklift?'#5B5EF4':'#DDD'),background:epForklift?'#F0EEFF':'#fff',marginBottom:8,cursor:'pointer'}},
+            h('input',{type:'checkbox',checked:epForklift,onChange:e=>setEpForklift(e.target.checked),style:{width:16,height:16}}),
+            h('span',{style:{fontSize:13,fontWeight:600,color:'#333'}},'🚜 포크리프트 작업중')
+          ),
+          h('label',{style:{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,border:'1.5px solid '+(epOther?'#5B5EF4':'#DDD'),background:epOther?'#F0EEFF':'#fff',marginBottom:epOther?8:18,cursor:'pointer'}},
+            h('input',{type:'checkbox',checked:epOther,onChange:e=>setEpOther(e.target.checked),style:{width:16,height:16}}),
+            h('span',{style:{fontSize:13,fontWeight:600,color:'#333'}},'✏️ Other')
+          ),
+          epOther&&h('input',{type:'text',value:epOtherText,onChange:e=>setEpOtherText(e.target.value),placeholder:'구체적인 사유를 입력하세요…',style:{width:'100%',padding:'9px 12px',border:'1.5px solid #DDD',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',marginBottom:18,boxSizing:'border-box'}}),
+          h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
+            h('button',{onClick:()=>setEndPickIssueModal(null),style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
+            h('button',{onClick:submitEndPickIssue,style:{padding:'9px 22px',borderRadius:8,border:'none',background:'#16A34A',color:'#fff',cursor:'pointer',fontWeight:700}},'✓ Complete')
           )
         )
       )
