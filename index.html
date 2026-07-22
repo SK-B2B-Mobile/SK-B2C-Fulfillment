@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v81</title>
+<title>SK B2C Fulfillment v82</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1483,7 +1483,9 @@ function App(){
       if(l.pgNo===updated.pgNo&&l.date===updated.date)return{...updated,id:l.id};
       return l;
     }));
-    sync('upsertList',{list:updated});
+    // ★ v82: 매니저가 Edit Pick List에서 Scanned를 직접 고친 값은 서버의 "더 큰 값 유지"
+    //   보호를 건너뛰고 그대로 반영되도록 forceScanned 플래그를 함께 전송
+    sync('upsertList',{list:{...updated,forceScanned:true}});
     setEL(null);
   };
   const delItem=id=>{
@@ -1816,7 +1818,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v81'),
+    h('span',{className:'app-ver '+D},'v82'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -2422,7 +2424,7 @@ function App(){
               const missed=endScanModal.oc-scanInput;const totalQty=Object.values(skipQtys).reduce((a,b)=>a+b,0);
               if(missed>0&&totalQty!==missed){alert('Skip reason total ('+totalQty+') must match unscanned count ('+missed+'). Please adjust.');return;}
               const now=ts();const parts=Object.entries(skipQtys).filter(([,v])=>v>0).map(([k,v])=>k+(v>1?' x'+v:''));
-              const skipReason=parts.join(', ');const ch={scanEnd:now,scanned:scanInput};if(skipReason)ch.skipReason=skipReason;
+              const skipReason=parts.join(', ');const ch={scanEnd:now,scanned:scanInput,forceScanned:true};if(skipReason)ch.skipReason=skipReason;
               upd(endScanModal.id,ch);setEndScanModal(null);setScanInput(0);setSkipQtys({OOS:0,'NF (Not Found)':0,'EXP (Expiry Issue)':0,'Customer Cancel':0});
             },style:{padding:'9px 20px',borderRadius:8,border:'none',background:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'#16A34A':'#9CA3AF',color:'#fff',cursor:(scanInput>=endScanModal.oc||Object.values(skipQtys).reduce((a,b)=>a+b,0)===(endScanModal.oc-scanInput))?'pointer':'not-allowed',fontWeight:700}},'Confirm')
           )
