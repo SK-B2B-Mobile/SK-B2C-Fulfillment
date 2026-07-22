@@ -797,10 +797,19 @@ function upsertPickAssign_(a){
 //   1899-12-30을 기준 날짜로 잡아버려서, 진행중(pickEnd 없음) 배정의 소요시간을
 //   "지금(2026)" - "1899"로 계산해 126년 같은 말도 안 되는 값이 나오던 문제.
 //   → 날짜를 다시 정확히 붙여서 완전한 ISO 문자열로 재구성.
+// ★ v65 버그 수정: timeVal이 Date 객체로 들어올 때 String(dateObj)의 형식이
+//   "Mon Dec 30 1899 08:37:44 GMT..." 라서 시작 부분이 숫자가 아니어서 기존 정규식이
+//   매칭 실패하고 원본(1899년 그대로)을 그냥 반환하던 문제. Date 객체는 getHours() 등으로
+//   직접 시:분:초를 뽑아내도록 수정. (getPickAssigns_는 우연히 셀이 문자열이라 안 걸렸지만,
+//   getLists_ 쪽 Pick Start/End 칸은 Date 객체라 이 버그가 그대로 드러났음)
 function reattachTime_(dateStr, timeVal) {
-  if (!timeVal) return '';
+  if (timeVal===null||timeVal===undefined||timeVal==='') return '';
+  const pad = n => String(n).padStart(2,'0');
+  if (timeVal instanceof Date) {
+    return (dateStr||today_()) + 'T' + pad(timeVal.getHours()) + ':' + pad(timeVal.getMinutes()) + ':' + pad(timeVal.getSeconds());
+  }
   const str = String(timeVal).trim();
-  const m = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  const m = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/); // 문자열 어디에 있든 시:분:초 패턴을 찾음
   if (m) {
     const hh = m[1].padStart(2,'0'), mm = m[2], ss = m[3]||'00';
     return (dateStr||today_()) + 'T' + hh + ':' + mm + ':' + ss;
@@ -1384,15 +1393,21 @@ function getLists_(date) {
     // ★ v49: 이제 Archived 컬럼으로 판단 (Status는 더 이상 'Deleted'로 덮어쓰지 않음, 원래 이력 보존)
     const isArchived = String(r[21]).toUpperCase()==='TRUE';
     return !isArchived&&(!date||rowDate===date);
-  }).map(r=>({
-      date:toDS(r[0]),pgNo:String(r[1]),category:normalizeCat_(r[2]),
+  }).map(r=>{
+    const ds=toDS(r[0]);
+    return {
+      date:ds,pgNo:String(r[1]),category:normalizeCat_(r[2]),
       sku:Number(r[3])||0,orderCount:Number(r[4])||0,scanned:Number(r[5])||0,
-      worker:String(r[6]),pickStart:String(r[7]),pickEnd:String(r[8]),
-      scanStart:String(r[9]),scanEnd:String(r[10]),pickDur:String(r[11]),
+      worker:String(r[6]),
+      // ★ v65 버그 수정: pickStart/pickEnd/scanStart/scanEnd에 reattachTime_ 적용
+      //   → Edit Pick List 모달 등에서 "1899-12-30 08:37:44"로 잘못 뜨던 문제 수정
+      pickStart:reattachTime_(ds,r[7]),pickEnd:reattachTime_(ds,r[8]),
+      scanStart:reattachTime_(ds,r[9]),scanEnd:reattachTime_(ds,r[10]),pickDur:String(r[11]),
       scanDur:String(r[12]),status:String(r[13]),memo:String(r[14]),
       skipReason:String(r[15]),createdAt:String(r[16]),updatedAt:String(r[17]),id:String(r[18]),
       pages:Number(r[19])||0, workerDurations:String(r[20]||''),
-    }));
+    };
+  });
   return { ok:true, lists, ver:getVersion_() };
 }
 
