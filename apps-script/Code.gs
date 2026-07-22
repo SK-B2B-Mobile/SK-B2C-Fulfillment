@@ -195,16 +195,29 @@ function handleSSWebhook_(data) {
     const payload = JSON.parse(resp.getContentText());
     const orders = payload.orders || payload.shipments || [];
     let processed = 0;
+    let skippedOldDate = 0;
+    const todayStr = today_();
 
     orders.forEach(order => {
       const orderNum = order.orderNumber || order.order_number || '';
-      if (orderNum) {
-        const r = processWebhookOrder_(orderNum);
-        if (r.ok) processed++;
+      if (!orderNum) return;
+      // ★ v78: resource_url로 한 번에 여러 건이 딸려올 때, 그 배치 안에 오늘 것이 아닌
+      //   과거 주문(예: 다른 날짜에 이미 발송된 것의 재처리/재인쇄 등)이 섞여 들어와서
+      //   오늘 픽리스트 카운트가 끝없이 늘어나는 문제가 실제로 발생함(Seeding 130 → 260 → 294).
+      //   → shipDate(없으면 orderDate)가 오늘 날짜와 정확히 일치하는 것만 처리.
+      const rawDate = order.shipDate || order.orderDate || '';
+      const orderDateStr = rawDate ? Utilities.formatDate(new Date(rawDate), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
+      if (orderDateStr && orderDateStr !== todayStr) {
+        skippedOldDate++;
+        Logger.log('⏸ Webhook 무시(오늘 날짜 아님): ' + orderNum + ' shipDate=' + orderDateStr + ' (오늘=' + todayStr + ')');
+        return;
       }
+      const r = processWebhookOrder_(orderNum);
+      if (r.ok) processed++;
     });
 
-    return { ok:true, processed, message: processed + ' orders scanned via webhook' };
+    if (skippedOldDate > 0) Logger.log('⏸ 오늘 날짜 아니라서 무시된 건수: ' + skippedOldDate);
+    return { ok:true, processed, skippedOldDate, message: processed + ' orders scanned via webhook (' + skippedOldDate + ' skipped, not today)' };
 
   } catch(e) {
     Logger.log('handleSSWebhook_ error: ' + e.message);
@@ -679,6 +692,9 @@ function verifySSOrder_(apiKey, apiSecret, orderNumber) {
   }
 }
 
+// ★ v77: hm-seeding- 주문은 회사 전체에서 수천 건 존재해서(다른 날짜/배치 포함) 웹훅
+// ★ v78: hm-seeding 무시 규칙 제거 — 웹훅 자체(handleSSWebhook_)에 날짜 필터를 넣어서
+//   더 안전하게 다시 자동판별을 사용함
 const IGNORE_PREFIXES = [
   'kpopglow',
 ];
@@ -692,11 +708,9 @@ function detectChannel_(orderNumber) {
   for (const ig of IGNORE_PREFIXES) {
     if (upper.startsWith(ig.toUpperCase())) return null;
   }
-  // ★ v74: 주문번호 어디든 "SEEDING"이 포함되면 Seeding으로 자동 분류 (Reshipment와 동일한 우선순위)
-  //   예: hm-seeding-3668 — ShipStation에서 실제로 이렇게 명명되고 있음을 매니저가 확인함.
-  //   이제 Seeding도 다른 채널처럼 SHIP_NOTIFY 웹훅으로 자동 카운트되지만, updateScanned_는
-  //   autoClose=false로 호출되므로(웹훅 공통 경로) 라벨 생성 수만 채우고 자동완료는 안 됨 —
-  //   End Scan으로 실제 발송 확인 후 확정해야 하는 건 Official/Moida & Hola와 동일.
+  // ★ v78: "SEEDING 포함 시 자동분류" 다시 사용. v74에서 넣었다가, 웹훅 배치 응답에
+  //   과거 날짜 주문이 섞여 들어와서 되돌렸었는데(v77), 이번엔 handleSSWebhook_에서
+  //   shipDate가 오늘 날짜가 아니면 아예 처리하지 않도록 막아서 다시 안전하게 켬.
   if (upper.indexOf('SEEDING') >= 0) return { cat: 'Seeding', store: 'Seeding' };
   // ★ v50: 채널 판별 단순화 (매니저 확인된 규칙) — 브랜드별로 일일이 등록할 필요 없음
   //   "MD-" 또는 "HOA"로 시작 → Moida & Hola / 그 외 전부 → Official
