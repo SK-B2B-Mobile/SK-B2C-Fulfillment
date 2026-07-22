@@ -1291,6 +1291,11 @@ function upsertList_(list, skipSummary) {
     const createdAt = targetRow ? sh.getRange(targetRow,17).getValue() : now;
 
     // ★ v38: active 행 보호 — 기존 scanned > incoming이면 기존 유지, times도 보존
+    // ★ v82 버그 수정: 이 "더 큰 값 유지" 보호 로직이, 매니저가 잘못 부풀려진 scanned를
+    //   직접 낮은 값으로 고치려고 해도 "기존 값이 더 크니까 무시"하고 계속 큰 값을
+    //   유지시켜버려서 "수정이 안 되고 자꾸 되돌아간다"는 문제의 진짜 원인이었음.
+    //   → list.forceScanned가 true면(=사람이 직접 수량을 확정한 경우) 이 보호를 건너뛰고
+    //   입력값을 그대로 신뢰함. (Edit Pick List 저장, End Scan 확정 시에만 이 플래그를 보냄)
     let finalScanned = Number(list.scanned)||0;
     let finalPickStart = list.pickStart, finalPickEnd = list.pickEnd;
     let finalScanStart = list.scanStart, finalScanEnd = list.scanEnd;
@@ -1299,7 +1304,7 @@ function upsertList_(list, skipSummary) {
     if (targetRow) {
       const existingRow = sh.getRange(targetRow, 1, 1, 11).getValues()[0];
       const existingScanned = Number(existingRow[5])||0;
-      if (existingScanned > finalScanned) finalScanned = existingScanned;
+      if (!list.forceScanned && existingScanned > finalScanned) finalScanned = existingScanned;
       if (!finalPickStart  && existingRow[7])  finalPickStart  = existingRow[7];
       if (!finalPickEnd    && existingRow[8])  finalPickEnd    = existingRow[8];
       if (!finalScanStart  && existingRow[9])  finalScanStart  = existingRow[9];
