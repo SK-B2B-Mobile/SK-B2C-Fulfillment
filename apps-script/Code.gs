@@ -1478,6 +1478,13 @@ function getLists_(date) {
    SCAN LOG
 ════════════════════════════════════════ */
 // ★ v89: 오늘 이미 이 주문번호가 ScanLog에 기록되어 있는지 확인 (웹훅 중복 처리 방지)
+// ★ v92 버그 수정: v89에서 이 함수를 처음 넣었을 때, ScanLog의 Date 열에 today_()로
+//   "yyyy-MM-dd" 문자열을 적어넣어도 Google Sheets가 날짜처럼 보이는 문자열을 자동으로
+//   실제 Date 객체로 변환해버려서, getValues()로 다시 읽으면 String(dateObj)가
+//   "Thu Jul 23 2026 00:00:00 GMT+..." 같은 전혀 다른 형식이 되어 날짜 비교가 항상
+//   실패하고 있었음. 그래서 v89의 중복방지가 실제로는 전혀 작동하지 않고 있었던 것으로
+//   보임(모이다 77건인데 152건까지 카운트된 사례로 확인됨) — Date 객체도 안전하게
+//   yyyy-MM-dd로 변환해서 비교하도록 수정.
 function isAlreadyLoggedToday_(orderNumber) {
   const sh = logSheet_();
   const lastRow = sh.getLastRow();
@@ -1485,8 +1492,13 @@ function isAlreadyLoggedToday_(orderNumber) {
   const data = sh.getRange(2, 2, lastRow - 1, 6).getValues(); // Barcode(B)~Date(G) 열만
   const todayStr = today_();
   const target = String(orderNumber);
+  const toDateStr = v => {
+    if (!v) return '';
+    if (v instanceof Date) { try { return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd'); } catch(e){} }
+    return String(v).slice(0,10);
+  };
   for (let i = 0; i < data.length; i++) {
-    if (String(data[i][0]) === target && String(data[i][5]).slice(0,10) === todayStr) return true;
+    if (String(data[i][0]) === target && toDateStr(data[i][5]) === todayStr) return true;
   }
   return false;
 }
