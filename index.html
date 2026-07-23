@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v82</title>
+<title>SK B2C Fulfillment v84</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1818,7 +1818,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v82'),
+    h('span',{className:'app-ver '+D},'v84'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -2466,28 +2466,28 @@ function App(){
               return h('button',{key:p,onClick:()=>setApWorker(p),style:{padding:'7px 13px',borderRadius:100,border:'1.5px solid '+(on?wc.tx:'#DDD'),background:on?wc.bg:'#fff',color:on?wc.tx:'#666',fontWeight:on?700:500,fontSize:12,cursor:'pointer',fontFamily:'inherit'}},p);
             })
           ),
-          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},editAssign?'시작 페이지 (매니저 직접 수정 가능)':'시작 페이지 (자동)'),
-          h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:16}},
-            editAssign
-              ? h('input',{type:'number',min:1,value:apStart,onChange:e=>setApStart(e.target.value),style:{width:70,textAlign:'center',fontSize:18,fontWeight:700,padding:'6px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}})
-              : h('div',{style:{padding:'8px 16px',borderRadius:8,background:'#F0EEFF',color:'#5B5EF4',fontWeight:700,fontSize:16}},apStart+'페이지부터'),
-            h('span',{style:{fontSize:11,color:'#AAA'}},'(이전 작업자들이 이미 가져간 페이지 다음부터 자동 배정)')
-          ),
-          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'몇 페이지까지 (마지막 페이지 번호)'),
+          h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'몇 페이지부터 몇 페이지까지'),
           h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:6}},
-            h('button',{onClick:()=>setApEnd(v=>String(Math.max(+apStart||1,(+v||+apStart||1)-1))),style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'−'),
+            // ★ v83: "시작 페이지"가 자동계산된 텍스트로만 보여서 "칸이 하나뿐"인 것처럼
+            //   보인다는 피드백 — 시작 페이지도 항상 편집 가능한 입력창으로 만들어서
+            //   [시작 칸] ~ [종료 칸] 두 개가 나란히 보이도록 재구성. (기본값은 자동계산되어
+            //   채워지므로, 대부분은 그대로 두고 종료 페이지만 입력하면 됨)
+            h('input',{type:'number',min:1,value:apStart,onChange:e=>{
+              // ★ v84: 시작 페이지를 직접 고치면 종료 페이지도 자동으로 같은 숫자로
+              //   맞춰줘서(=기본 1페이지), "1페이지만 가져갈 땐 시작 칸만 고치면 됨"이
+              //   실제로 그렇게 동작하도록 함. 여러 페이지를 원하면 종료 칸을 따로 넓히면 됨.
+              const v=e.target.value;setApStart(v);setApEnd(v);
+            },style:{width:64,textAlign:'center',fontSize:18,fontWeight:700,padding:'8px 4px',border:'1.5px solid #5B5EF4',borderRadius:8,outline:'none',background:'#F0EEFF',color:'#5B5EF4'}}),
+            h('span',{style:{fontSize:16,fontWeight:700,color:'#AAA'}},'~'),
             h('input',{type:'number',min:+apStart||1,max:(editAssign?lists.find(x=>x.pgNo===editAssign.pgNo&&x.date===today())?.pages:addPickerFor?.pages)||undefined,value:apEnd,onChange:e=>{
               // ★ v75: 총 페이지 수를 넘는 값은 입력 즉시 총 페이지로 잘라냄
               const totalP=(editAssign?lists.find(x=>x.pgNo===editAssign.pgNo&&x.date===today())?.pages:addPickerFor?.pages)||0;
               const v=e.target.value;
               setApEnd(totalP>0&&+v>totalP?String(totalP):v);
-            },style:{width:70,textAlign:'center',fontSize:20,fontWeight:700,padding:'6px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}}),
-            h('button',{onClick:()=>{
-              const totalP=(editAssign?lists.find(x=>x.pgNo===editAssign.pgNo&&x.date===today())?.pages:addPickerFor?.pages)||0;
-              setApEnd(v=>{const n=(+v||+apStart||0)+1;return String(totalP>0?Math.min(n,totalP):n);});
-            },style:{width:34,height:34,borderRadius:8,border:'1px solid #DDD',background:'#fff',fontSize:18,cursor:'pointer'}},'+'),
-            h('span',{style:{fontSize:12,color:'#888'}},'페이지까지 · 1페이지만 가져가면 시작 페이지와 같은 숫자를 입력')
+            },style:{width:64,textAlign:'center',fontSize:18,fontWeight:700,padding:'8px 4px',border:'1.5px solid #DDD',borderRadius:8,outline:'none'}}),
+            h('span',{style:{fontSize:12,color:'#888'}},'페이지')
           ),
+          h('div',{style:{fontSize:11,color:'#AAA',marginBottom:16}},'시작 페이지는 이전 작업자들이 가져간 다음 페이지로 자동 채워집니다 — 필요하면 직접 수정 가능'),
           h('div',{style:{fontSize:13,fontWeight:700,color:'#5B5EF4',marginBottom:20}},'→ '+apStart+'~'+Math.max(+apStart||1,+apEnd||(+apStart||1))+' 페이지 배정 (총 '+(Math.max(+apStart||1,+apEnd||(+apStart||1))-(+apStart||1)+1)+'페이지)'),
           h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
             h('button',{onClick:()=>{setAddPickerFor(null);setEditAssign(null);},style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
