@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v87</title>
+<title>SK B2C Fulfillment v88</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1463,19 +1463,15 @@ function App(){
   };
   const deleteAssignFn=a=>{
     deletedAssignIds.current.add(a.id);
-    let newCoverage=0;
-    setPickAssigns(prev=>{
-      const next=prev.filter(x=>x.id!==a.id);
-      syncListWorkerSummary(a.pgNo,next);
-      // ★ v87 버그 수정: 배정을 지워도 리스트의 pickEnd/scanEnd(=완료 상태)가 전혀
-      //   되돌아가지 않던 문제. 지운 뒤 남은 배정들의 실제 커버 페이지 수를 계산해서
-      //   총 페이지에 못 미치면, 그 페이지들은 "다시 미배정" 상태가 된 것이므로
-      //   리스트도 픽킹/완료 상태에서 되돌려야 함.
-      const set=new Set();
-      next.filter(x=>x.pgNo===a.pgNo).forEach(x=>{for(let p=x.pageStart||0;p<=(x.pageEnd||0);p++)set.add(p);});
-      newCoverage=set.size;
-      return next;
-    });
+    // ★ v88 버그 수정: v87에서 setPickAssigns 콜백 "안에서" newCoverage를 계산해
+    //   바로 다음 줄에서 읽으려 했는데, 그 시점이 보장되지 않아 값이 반영 전이었던 문제.
+    //   → 삭제하기 전, 현재 pickAssigns 상태를 기준으로 미리(동기적으로) 계산.
+    const remaining=assignsFor(a.pgNo).filter(x=>x.id!==a.id);
+    const set=new Set();
+    remaining.forEach(x=>{for(let p=x.pageStart||0;p<=(x.pageEnd||0);p++)set.add(p);});
+    const newCoverage=set.size;
+
+    setPickAssigns(prev=>{const next=prev.filter(x=>x.id!==a.id);syncListWorkerSummary(a.pgNo,next);return next;});
     sync('deletePickAssign',{id:a.id});
     const l=lists.find(x=>x.pgNo===a.pgNo&&x.date===today());
     if(l&&(l.pages||0)>0&&newCoverage<l.pages&&(l.pickEnd||l.scanEnd)){
@@ -1854,7 +1850,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v87'),
+    h('span',{className:'app-ver '+D},'v88'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
