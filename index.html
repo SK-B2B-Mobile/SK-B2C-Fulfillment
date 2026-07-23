@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v85</title>
+<title>SK B2C Fulfillment v86</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1440,7 +1440,7 @@ function App(){
   const submitEndPickIssue=()=>{
     if(!endPickIssueModal)return;
     const parts=[];
-    if(epForklift)parts.push('포크리프트 작업중');
+    if(epForklift)parts.push('Forklift in use');
     if(epOther)parts.push('Other'+(epOtherText.trim()?': '+epOtherText.trim():''));
     endPickAssignFn(endPickIssueModal,parts.join(', '));
     setEndPickIssueModal(null);setEpForklift(false);setEpOther(false);setEpOtherText('');
@@ -1838,7 +1838,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v85'),
+    h('span',{className:'app-ver '+D},'v86'),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -2530,21 +2530,21 @@ function App(){
           )
         )
       ),
-      // ★ v70: 피킹 완료(작업자 본인 칩 클릭) 시 지연사유 선택 팝업 — 아무것도 체크 안 하면 그냥 Complete
+      // ★ v86: 지연사유 선택 팝업 텍스트 영어로 변경 (요청사항)
       endPickIssueModal&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget)setEndPickIssueModal(null);}},
         h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:380,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
-          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2}},'✅ 피킹 완료 — '+endPickIssueModal.worker),
-          h('div',{style:{fontSize:12,color:'#888',marginBottom:18}},endPickIssueModal.pgNo+' · '+endPickIssueModal.pageStart+'~'+endPickIssueModal.pageEnd+'페이지'),
-          h('div',{style:{fontSize:12,color:'#999',marginBottom:10,fontWeight:600}},'지연된 이슈가 있었나요? (선택사항 — 없으면 바로 Complete)'),
+          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2}},'✅ Picking Complete — '+endPickIssueModal.worker),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:18}},endPickIssueModal.pgNo+' · Pages '+endPickIssueModal.pageStart+'~'+endPickIssueModal.pageEnd),
+          h('div',{style:{fontSize:12,color:'#999',marginBottom:10,fontWeight:600}},'Any delays or issues? (Optional — leave blank and Complete if none)'),
           h('label',{style:{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,border:'1.5px solid '+(epForklift?'#5B5EF4':'#DDD'),background:epForklift?'#F0EEFF':'#fff',marginBottom:8,cursor:'pointer'}},
             h('input',{type:'checkbox',checked:epForklift,onChange:e=>setEpForklift(e.target.checked),style:{width:16,height:16}}),
-            h('span',{style:{fontSize:13,fontWeight:600,color:'#333'}},'🚜 포크리프트 작업중')
+            h('span',{style:{fontSize:13,fontWeight:600,color:'#333'}},'🚜 Forklift in use')
           ),
           h('label',{style:{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,border:'1.5px solid '+(epOther?'#5B5EF4':'#DDD'),background:epOther?'#F0EEFF':'#fff',marginBottom:epOther?8:18,cursor:'pointer'}},
             h('input',{type:'checkbox',checked:epOther,onChange:e=>setEpOther(e.target.checked),style:{width:16,height:16}}),
             h('span',{style:{fontSize:13,fontWeight:600,color:'#333'}},'✏️ Other')
           ),
-          epOther&&h('input',{type:'text',value:epOtherText,onChange:e=>setEpOtherText(e.target.value),placeholder:'구체적인 사유를 입력하세요…',style:{width:'100%',padding:'9px 12px',border:'1.5px solid #DDD',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',marginBottom:18,boxSizing:'border-box'}}),
+          epOther&&h('input',{type:'text',value:epOtherText,onChange:e=>setEpOtherText(e.target.value),placeholder:'Please describe the issue…',style:{width:'100%',padding:'9px 12px',border:'1.5px solid #DDD',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',marginBottom:18,boxSizing:'border-box'}}),
           h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
             h('button',{onClick:()=>setEndPickIssueModal(null),style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
             h('button',{onClick:submitEndPickIssue,style:{padding:'9px 22px',borderRadius:8,border:'none',background:'#16A34A',color:'#fff',cursor:'pointer',fontWeight:700}},'✓ Complete')
