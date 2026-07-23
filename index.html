@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v88</title>
+<title>SK B2C Fulfillment v90</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -14,7 +14,14 @@
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('sw.js').then(r=>console.log('SW registered')).catch(e=>console.log('SW error',e));
+    navigator.serviceWorker.register('sw.js').then(r=>{
+      console.log('SW registered');
+      // ★ v89: 등록 직후 + 이후 2분마다 능동적으로 새 버전이 있는지 확인.
+      //   브라우저가 자체적으로 SW 업데이트를 확인하는 주기가 느리거나 불규칙해서
+      //   "새로고침해도 구버전 그대로"인 컴퓨터가 생기던 문제 — 직접 자주 체크하도록 보강.
+      r.update().catch(()=>{});
+      setInterval(()=>{r.update().catch(()=>{});},120000);
+    }).catch(e=>console.log('SW error',e));
   });
   // ★ v61: 새 버전이 백그라운드에 설치되면(=다른 곳에서 업로드함) 화면에 조용한 배너로 알려줌.
   //   스캔 중간에 강제로 새로고침시키면 위험하므로 자동 새로고침은 하지 않고,
@@ -1000,6 +1007,8 @@ function App(){
   const [ttPageSize,setTtPageSize]=useState(10);
   const [ttPage,setTtPage]=useState(0);
   const [ttManualFor,setTtManualFor]=useState(null); // 수동 확인 대상 라인 {sellerSku,productName,remain}
+  // ★ v89: 등록되지 않은 바코드 스캔 시, 자동으로 수동확인(Manual Verify)로 안내하기 위한 상태
+  const [ttPickLineBarcode,setTtPickLineBarcode]=useState(null); // 여러 제품 중 어떤 것인지 고를 때의 바코드값
   const [ttManualQty,setTtManualQty]=useState(1);
   const [ttManualReason,setTtManualReason]=useState('');
   const [ttBigAlert,setTtBigAlert]=useState(null);       // {icon,msg,sub,type}
@@ -1330,7 +1339,23 @@ function App(){
       matchLine=ttCurrentOrder.lines.find(l=>l.barcode&&l.barcode===cand);
       if(matchLine)break;
     }
-    if(!matchLine){ttPlayError();ttShowBigAlert('❓','UNKNOWN','바코드: '+val,'err');setTtAlert({msg:'❓ 등록되지 않은 바코드입니다: '+val,type:'err'});return;}
+    if(!matchLine){
+      ttPlayError();ttShowBigAlert('❓','UNKNOWN','바코드: '+val,'err',1200);
+      setTtAlert({msg:'❓ 등록되지 않은 바코드입니다: '+val,type:'err'});
+      // ★ v89 버그 수정: 여기서 그냥 에러만 띄우고 끝나서, 등록된 바코드가 아닌 실제
+      //   제품(포장이 상해서 바코드가 안 읽히는 경우 등)을 처리할 방법이 없어 스캔이
+      //   막혀버리던 문제. 아직 다 안 채워진 제품 라인으로 자동 안내:
+      //   - 라인이 1개만 남았으면 → 바로 Manual Verify 모달을 열어줌 (사유 자동 채움)
+      //   - 여러 개 남았으면 → 어떤 제품인지 먼저 고르는 선택창을 띄움
+      const remainLines=ttCurrentOrder.lines.filter(l=>l.scanned<l.required);
+      if(remainLines.length===1){
+        openManualVerify(remainLines[0]);
+        setTtManualReason('바코드 인식 불가 ('+val+')');
+      }else if(remainLines.length>1){
+        setTtPickLineBarcode(val);
+      }
+      return;
+    }
     if(matchLine.scanned>=matchLine.required){ttPlayWarn();ttShowBigAlert('⚠️','초과 스캔',matchLine.productName,'warn');setTtAlert({msg:'⚠️ 이미 필요 수량만큼 스캔되었습니다: '+matchLine.productName,type:'warn'});return;}
     matchLine.scanned+=1;
     const updated={...ttCurrentOrder,lines:[...ttCurrentOrder.lines]};
@@ -1828,7 +1853,9 @@ function App(){
                   //   완료 처리되어버려 오배송 방지 목적이 무너짐 — 이 채널은 End Scan을 막고
                   //   반드시 Scan Station에서 실제 스캔으로만 완료되도록 강제 (Manual Verify로 예외처리)
                   !isMgr&&l.pickEnd&&!l.scanEnd&&l.category!=='TikTok CBT'&&h('button',{className:'ab endscan',onClick:()=>endScan(l.id),title:'스캔 완료 또는 OOS·취소 등 미스캔 처리'},'⏹ End Scan'),
-                  !isMgr&&l.pickEnd&&!l.scanEnd&&l.category==='TikTok CBT'&&h('span',{style:{fontSize:10.5,color:'#B45309',fontWeight:600,whiteSpace:'nowrap'}},'Scan Station에서 스캔 필요'),
+                  // ★ v89: "Scan Station에서 스캔 필요" 안내 문구 제거 (요청사항) —
+                  //   완료되면 자동으로 아래 ✓ Complete 배지가 뜨므로 별도 문구 불필요.
+                  //   (End Scan 버튼을 TikTok CBT에서 숨기는 v72 로직 자체는 그대로 유지)
                   !isMgr&&st==='complete'&&h('button',{className:'ab done',style:{cursor:'default',opacity:0.85}},'✓ Complete'),
                   isMgr&&h('button',{className:'ab edit-btn',onClick:()=>setEL(l)},'Edit'),
                   isMgr&&h('button',{className:'ab del-btn',onClick:()=>delFromTable(l.id)},'Del')
@@ -1850,7 +1877,11 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v88'),
+    h('span',{className:'app-ver '+D},'v90'),
+    // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
+    //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
+    //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
+    h('span',{title:'이 컴퓨터가 연결된 Apps Script URL (끝 8자리) — 다른 컴퓨터와 비교해보세요'+(wh&&wh!==DEFAULT_WEBHOOK_URL?' ⚠ 기본값과 다름!':''),style:{fontSize:9,color:(wh&&wh!==DEFAULT_WEBHOOK_URL)?'#F87171':(isMgr?'rgba(255,255,255,0.35)':'rgba(133,79,11,0.5)'),marginLeft:6,fontFamily:'monospace',cursor:'help',fontWeight:(wh&&wh!==DEFAULT_WEBHOOK_URL)?700:400}},'#'+(wh?wh.slice(-8):'미설정')+(wh&&wh!==DEFAULT_WEBHOOK_URL?' ⚠':'')),
     isMgr&&h(Fragment,null,
       h('div',{className:'nav-sep dark'}),
       h('div',{className:'mgr-pill'},
@@ -2463,6 +2494,26 @@ function App(){
         )
       ),
       editL&&h(EditModal,{list:editL,pickers,onSave:editSave,onDel:delItem,onCancel:()=>setEL(null)}),
+      // ★ v89: 여러 제품이 남아있을 때, 등록 안 된 바코드가 어떤 제품인지 먼저 고르는 선택창
+      ttPickLineBarcode&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget)setTtPickLineBarcode(null);}},
+        h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:420,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
+          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2,color:'#B45309'}},'❓ 등록되지 않은 바코드'),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:16}},'스캔값: '+ttPickLineBarcode+' — 실물을 보고 어떤 제품인지 선택해주세요'),
+          h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:16}},
+            (ttCurrentOrder?.lines||[]).filter(l=>l.scanned<l.required).map((l,i)=>h('button',{key:i,onClick:()=>{
+              setTtPickLineBarcode(null);
+              openManualVerify(l);
+              setTtManualReason('바코드 인식 불가 ('+ttPickLineBarcode+')');
+            },style:{textAlign:'left',padding:'10px 12px',borderRadius:8,border:'1.5px solid #DDD',background:'#F9F8F4',cursor:'pointer',fontSize:13}},
+              h('div',{style:{fontWeight:700}},l.productName),
+              h('div',{style:{fontSize:11,color:'#888',marginTop:2}},l.sellerSku+' · '+l.scanned+'/'+l.required+'개 남음')
+            ))
+          ),
+          h('div',{style:{display:'flex',justifyContent:'flex-end'}},
+            h('button',{onClick:()=>setTtPickLineBarcode(null),style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel')
+          )
+        )
+      ),
       ttManualFor&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget)setTtManualFor(null);}},
         h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:400,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
           h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2,color:'#B45309'}},'⚠️ 수동 확인 (Manual Verify)'),
