@@ -233,6 +233,15 @@ function processWebhookOrder_(orderNumber, skipSummary) {
       return { ok:false, error:'Unknown channel: ' + orderNumber };
     }
 
+    // ★ v89 버그 수정: 같은 주문번호가 웹훅으로 여러 번 들어와도(재알림, 배치 재조회 등)
+    //   지금까지는 매번 그냥 카운트를 또 올리고 있었음 — 중복 처리를 막는 로직이 아예
+    //   없었던 게 스캔 숫자가 25→99→235→1193으로 끝없이 폭증하던 진짜 핵심 원인이었음.
+    //   → 오늘 이미 ScanLog에 같은 주문번호가 기록되어 있으면 조용히 건너뜀(카운트 안 함).
+    if (isAlreadyLoggedToday_(orderNumber)) {
+      Logger.log('⏸ Webhook 무시 (오늘 이미 처리된 주문): ' + orderNumber);
+      return { ok:true, skipped:true, reason:'duplicate_today' };
+    }
+
     const cat   = detected.cat;
     const store = detected.store;
     const date  = today_();
@@ -1461,6 +1470,19 @@ function getLists_(date) {
 /* ════════════════════════════════════════
    SCAN LOG
 ════════════════════════════════════════ */
+// ★ v89: 오늘 이미 이 주문번호가 ScanLog에 기록되어 있는지 확인 (웹훅 중복 처리 방지)
+function isAlreadyLoggedToday_(orderNumber) {
+  const sh = logSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return false;
+  const data = sh.getRange(2, 2, lastRow - 1, 6).getValues(); // Barcode(B)~Date(G) 열만
+  const todayStr = today_();
+  const target = String(orderNumber);
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === target && String(data[i][5]).slice(0,10) === todayStr) return true;
+  }
+  return false;
+}
 function addScanLog_(entry) {
   if (!entry||!entry.barcode) return { ok:false, error:'barcode required' };
   const sh=logSheet_();
