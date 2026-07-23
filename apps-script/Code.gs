@@ -1043,6 +1043,12 @@ function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker)
     const sh = ttProgressSheet_(); const lastRow = sh.getLastRow();
     const ids = lastRow>=2 ? sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0])) : [];
     const idx = ids.indexOf(String(orderId));
+    // ★ v91 버그 수정: 이 주문이 이미 이전에 'completed'로 기록되어 있었는지 먼저 확인.
+    //   지금까지는 같은 주문의 완료 이벤트가 재전송/중복 호출되면(네트워크 재시도, 중복
+    //   클릭 등) 매번 scanned를 또 +1 해버려서, TT_Progress 자체는 정확해도 PickList의
+    //   scanned 숫자만 실제 완료 주문 수보다 부풀려지는 문제가 있었음
+    //   (PG00005376: 오더 251개인데 scanned가 계속 올라가던 것과 같은 원인 계열).
+    const wasAlreadyCompleted = idx>=0 && String(sh.getRange(idx+2,2).getValue())==='completed';
     const now = nowLocal_();
     const row = [
       String(orderId), String(status||'in_progress'),
@@ -1056,7 +1062,8 @@ function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker)
     bumpVersion_();
 
     // ★ 완료 시 오늘 날짜 TikTok CBT 픽리스트의 scanned 카운트 자동 반영 (기존 KPI 대시보드 재사용)
-    if (status==='completed') {
+    // ★ v91: 이미 완료 처리됐던 주문의 재전송이면 카운트를 다시 올리지 않음(중복 방지)
+    if (status==='completed' && !wasAlreadyCompleted) {
       const listsData = getLists_(today_());
       if (listsData.ok) {
         const target = listsData.lists.find(l =>
