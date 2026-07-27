@@ -928,31 +928,60 @@ function ttUploadOrders_(orders, date) {
   try {
     const sh = ttOrdersSheet_();
     const lastRow = sh.getLastRow();
-    const existingIds = lastRow>=2 ? sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0])) : [];
     const now = nowLocal_();
     let added=0, merged=0;
+
+    // ★ v104 성능 버그 수정: 기존엔 이미 있는 주문마다 sh.getRange(row,...).getValues()를
+    // 주문 개수만큼 "개별" 호출했음 — 오늘처럼 870건을 통째로 재업로드하면 최대 870번의
+    // 개별 시트 접근이 누적되어 처리 시간이 길어지고, 결국 "Failed to fetch"(연결 끊김/
+    // 타임아웃)로 업로드 자체가 실패하는 원인이 됐음.
+    // → 기존 데이터를 맨 처음 한 번에 통째로 읽고(bulk read), 마지막에 전체를 한 번에
+    //   기록(bulk write)하도록 변경 — 시트 접근 횟수를 주문 수와 무관하게 상수로 고정.
+    const existingIds=[], existingTrack=[], existingItems=[];
+    if (lastRow>=2) {
+      const bulk = sh.getRange(2,1,lastRow-1,4).getValues(); // OrderID, TrackingIDs, Buyer, ItemsJSON
+      bulk.forEach(r=>{
+        existingIds.push(String(r[0]));
+        existingTrack.push(String(r[1]||''));
+        existingItems.push(String(r[3]||'[]'));
+      });
+    }
+    const idIndex={}; existingIds.forEach((id,i)=>{idIndex[id]=i;});
     const newRows=[];
+
     orders.forEach(o=>{
-      const idx = existingIds.indexOf(String(o.orderId));
-      if (idx>=0) {
-        const row = idx+2;
-        const cur = sh.getRange(row,1,1,6).getValues()[0];
-        const curTrack = String(cur[1]||'').split('|').filter(Boolean);
+      const oid=String(o.orderId);
+      const idx = idIndex[oid];
+      if (idx!==undefined) {
+        const curTrack = existingTrack[idx].split('|').filter(Boolean);
         const newTrack = Array.from(new Set([...curTrack, ...(o.trackingIds||[])]));
-        let curItems=[]; try{ curItems=JSON.parse(cur[3]||'[]'); }catch(e){}
+        let curItems=[]; try{ curItems=JSON.parse(existingItems[idx]||'[]'); }catch(e){}
         (o.items||[]).forEach(it=>{
           const ex = curItems.find(x=>x.sellerSku===it.sellerSku);
-          if (ex) ex.qty=(ex.qty||0)+(it.qty||0); else curItems.push(it);
+          // ★ v104 버그 수정: 기존엔 이미 있는 SKU도 qty를 계속 더해서(ex.qty+=it.qty),
+          //   같은 레이블 PDF를 재업로드할 때마다(오늘처럼 파싱 버그 수정 후 재업로드하는
+          //   경우 포함) 이미 정확했던 주문들의 필요수량까지 매번 배로 부풀려지는 위험한
+          //   문제가 있었음. 같은 주문에 같은 SKU는 이미 기록된 수량을 그대로 유지하고
+          //   (재업로드는 있는 그대로 두고, 그 주문에 없던 새 SKU만 추가함).
+          if (!ex) curItems.push(it);
         });
-        sh.getRange(row,2).setValue(newTrack.join('|'));
-        sh.getRange(row,4).setValue(JSON.stringify(curItems));
+        existingTrack[idx]=newTrack.join('|');
+        existingItems[idx]=JSON.stringify(curItems);
         merged++;
       } else {
-        newRows.push([String(o.orderId), (o.trackingIds||[]).join('|'), String(o.buyer||''), JSON.stringify(o.items||[]), date||today_(), now]);
-        existingIds.push(String(o.orderId));
+        newRows.push([oid, (o.trackingIds||[]).join('|'), String(o.buyer||''), JSON.stringify(o.items||[]), date||today_(), now]);
+        idIndex[oid]=existingIds.length;
+        existingIds.push(oid);
+        existingTrack.push('');existingItems.push('[]'); // 인덱스 정합성 유지용(아래 bulk write 대상 아님)
         added++;
       }
     });
+
+    if (lastRow>=2) {
+      const n=lastRow-1;
+      sh.getRange(2,2,n,1).setValues(existingTrack.slice(0,n).map(v=>[v]));
+      sh.getRange(2,4,n,1).setValues(existingItems.slice(0,n).map(v=>[v]));
+    }
     if (newRows.length) sh.getRange(sh.getLastRow()+1,1,newRows.length,6).setValues(newRows);
     bumpVersion_();
     return { ok:true, added, merged };
