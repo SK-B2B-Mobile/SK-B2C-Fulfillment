@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v105</title>
+<title>SK B2C Fulfillment v107</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -748,11 +748,25 @@ function ttParseSkuXlsx(arrayBuffer){
   const wb=XLSX.read(new Uint8Array(arrayBuffer),{type:'array'});
   const clean=v=>(v||'').toString().trim();
   const single=[];
+  const seenSku=new Set(); // ★ v106: 같은 업로드 안에서 Seller SKU 중복 시 먼저 들어온 쪽(Single SKU)이 우선
   const singleSheet=wb.Sheets[wb.SheetNames.find(n=>n.includes('Single'))];
   if(singleSheet){
     XLSX.utils.sheet_to_json(singleSheet,{defval:''}).forEach(r=>{
       const sku=clean(r['Seller SKU']),barcode=clean(r['Barcode']);
-      if(sku&&barcode)single.push({sku,barcode});
+      if(sku&&barcode&&!seenSku.has(sku)){single.push({sku,barcode});seenSku.add(sku);}
+    });
+  }
+  // ★ v106: "Single SKU" 시트에 없는 항목을 "WMS" 시트(로트/유통기한별 재고관리 시트,
+  // A열=SKU, C열=바코드)에서 자동으로 보완해온다. WMS는 같은 SKU가 로트마다 여러 줄
+  // 반복되는 구조라 헤더 행 위치를 장담할 수 없어서, 이름 기반이 아니라 "숫자로만 된
+  // 8~14자리 값"인지로 바코드 열을 판별한다(헤더 텍스트 행은 이 조건에 걸리지 않아
+  // 자연히 건너뛰어짐). Single SKU 시트에 이미 있는 SKU는 그대로 우선(WMS로 덮어쓰지 않음).
+  const wmsSheet=wb.Sheets[wb.SheetNames.find(n=>n.includes('WMS'))];
+  if(wmsSheet){
+    const rows=XLSX.utils.sheet_to_json(wmsSheet,{header:1,defval:''});
+    rows.forEach(r=>{
+      const sku=clean(r[0]),barcode=clean(r[2]);
+      if(sku&&/^\d{8,14}$/.test(barcode)&&!seenSku.has(sku)){single.push({sku,barcode});seenSku.add(sku);}
     });
   }
   const sets=[];
@@ -1403,21 +1417,22 @@ function App(){
     }
   };
 
+  const [ttSkuUploadMsg,setTtSkuUploadMsg]=useState(''); // ★ v107: SKU Master 업로드 결과 전용 (레이블 업로드 메시지와 분리)
   const ttUploadSkuFile=async(file)=>{
     if(!file)return;
-    if(!wh){setTtUploadMsg('⚠ Google Sheets URL을 먼저 설정하세요 (Settings)');return;}
-    setTtUploading(true);setTtUploadMsg('SKU Master 분석 중…');
+    if(!wh){setTtSkuUploadMsg('⚠ Google Sheets URL을 먼저 설정하세요 (Settings)');return;}
+    setTtUploading(true);setTtSkuUploadMsg('SKU Master 분석 중…');
     try{
       const buf=await file.arrayBuffer();
       const{single,sets}=ttParseSkuXlsx(buf);
       const res=await syncDataAwait(wh,'ttUploadSkuMaster',{single,sets});
       setTtUploading(false);
       if(res&&res.ok){
-        setTtUploadMsg('✓ SKU Master 업로드 완료 — 단품 '+res.addedSingle+'개, 세트 '+res.addedSet+'개 신규 추가 (기존 데이터 유지)');
+        setTtSkuUploadMsg('✓ SKU Master 업로드 완료 — 단품 '+res.addedSingle+'개, 세트 '+res.addedSet+'개 신규 추가 (기존 데이터 유지)');
       }else{
-        setTtUploadMsg('⚠ 서버 저장 실패: '+((res&&res.error)||'unknown'));
+        setTtSkuUploadMsg('⚠ 서버 저장 실패: '+((res&&res.error)||'unknown'));
       }
-    }catch(err){setTtUploading(false);setTtUploadMsg('⚠ 파싱 실패: '+err.message);}
+    }catch(err){setTtUploading(false);setTtSkuUploadMsg('⚠ 파싱 실패: '+err.message);}
   };
 
   /* ── 1단계: 라벨(Tracking) 스캔 ── */
@@ -2029,7 +2044,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v105'),
+    h('span',{className:'app-ver '+D},'v107'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -2501,7 +2516,8 @@ function App(){
           h('div',{style:{fontSize:12,fontWeight:700,color:'#A0C8F0',marginBottom:6}},'② 제품 마스터 (SKU Master .xlsx) — 한 번 올리면 계속 누적'),
           h('p',{style:{fontSize:12,color:'#7070A0',marginBottom:10}},'"#1. Single SKU"(Seller SKU/Barcode), "#2. Set SKU"(Set SKU/Component Seller SKU/Component Qty/Set Product Name/Status) 시트 형식 그대로 업로드하세요.'),
           h('input',{type:'file',accept:'.xlsx',disabled:ttUploading,onChange:e=>ttUploadSkuFile(e.target.files[0]),style:{color:'#CCC',fontSize:13}}),
-          h('div',{style:{marginTop:10,fontSize:12,color:'#8888C0'}},'저장된 SKU: 단품 '+skuSingleCount+'개 · 세트 '+skuSetCount+'개')
+          h('div',{style:{marginTop:10,fontSize:12,color:'#8888C0'}},'저장된 SKU: 단품 '+skuSingleCount+'개 · 세트 '+skuSetCount+'개'),
+          ttSkuUploadMsg&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:8,fontSize:12,fontWeight:600,background:ttSkuUploadMsg.startsWith('✓')?'rgba(134,239,172,0.1)':'rgba(248,113,113,0.1)',color:ttSkuUploadMsg.startsWith('✓')?'#86EFAC':'#F87171'}},ttSkuUploadMsg)
         ),
         h('div',{style:card},
           h('div',{style:{fontSize:12,fontWeight:700,color:'#6060A0',marginBottom:12}},'오늘의 주문 현황'),
