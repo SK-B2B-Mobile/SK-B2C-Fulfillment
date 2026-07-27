@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v102</title>
+<title>SK B2C Fulfillment v103</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -331,7 +331,10 @@ const fmtT=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'2-dig
 const fmtS=iso=>!iso?'—':new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
 const fmtDurMin=ms=>{if(!ms||ms<0||ms>1000*60*60*20)return'';const mins=Math.round(ms/60000);if(mins<60)return mins+'m';return Math.floor(mins/60)+'h '+(mins%60)+'m';};
 // ★ 피커 칩이 좁아서 긴 이름(성+이름)이 잘리는 문제 — 길면 이름(첫 단어)만 표시
-const shortName=n=>{if(!n)return n;const parts=String(n).trim().split(/\s+/);return parts.length>1&&n.length>9?parts[0]:n;};
+// ★ v103: 칩 크기를 그대로 유지하면서도 모든 작업자 이름을 동일한 형식으로 통일 —
+// 이름이 짧으면 풀네임, 길면 성만 보이는 식으로 제각각이던 것을, 길이에 상관없이
+// 항상 "이름 + 성 이니셜"(예: Jisun L.)로 통일해서 성이 항상 보이면서 폭도 일정하게 유지.
+const shortName=n=>{if(!n)return n;const parts=String(n).trim().split(/\s+/);if(parts.length<2)return n;return parts[0]+' '+parts[parts.length-1][0]+'.';};
 const dur=(s,e,listDate)=>{
   if(!s)return'—';
   const parseTime=(val,baseDate)=>{
@@ -1942,8 +1945,8 @@ function App(){
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.sku||0),
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333'}},l.orderCount||0),
               h('td',{className:D+' c',style:{fontWeight:700,fontSize:15,color:st==='complete'?(isMgr?'#86EFAC':'#1A6A08'):(isMgr?'#fff':'#111')}},l.scanned),
-              h('td',{className:D,style:{minWidth:360}},
-                h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,minmax(180px,1fr))',gap:'6px 7px',alignItems:'start'}},
+              h('td',{className:D,style:{minWidth:280}},
+                h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,minmax(132px,1fr))',gap:'6px 7px',alignItems:'start'}},
                   assignsFor(l.pgNo).map(a=>{
                     const wc=pkC(a.worker);const done=!!a.pickEnd;
                     const rangeStr=(a.pageStart&&a.pageEnd)?(a.pageStart+'~'+a.pageEnd+'p'):(a.pages+'p');
@@ -2026,7 +2029,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v102'),
+    h('span',{className:'app-ver '+D},'v103'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
