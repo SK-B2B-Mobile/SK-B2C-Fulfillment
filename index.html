@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v108</title>
+<title>SK B2C Fulfillment v109</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1406,10 +1406,29 @@ function App(){
     }
     const orderList=Object.values(ordersAcc);
     if(orderList.length===0){setTtUploading(false);setTtUploadMsg('⚠ 인식된 주문이 없습니다. 패킹슬립이 포함된 PDF인지 확인하세요.');return;}
-    const res=await syncDataAwait(wh,'ttUploadOrders',{orders:orderList,date:today()});
+    // ★ v108 버그 수정: 870건 전체를 한 요청으로 통째로 보내다가 네트워크 지연/일시적 서버
+    // 응답 지연으로 "Failed to fetch"가 뜨면 업로드 전체가 실패해버렸음(재시도도 없었음).
+    // → 작은 묶음으로 나눠 순차 전송하고, 묶음 하나가 실패하면 그 묶음만 최대 3회 자동
+    // 재시도. 일부만 실패해도 나머지는 이미 서버에 반영되고, 어느 만큼 실패했는지 알려줌.
+    const CHUNK_SIZE=150;
+    const chunks=[];
+    for(let i=0;i<orderList.length;i+=CHUNK_SIZE)chunks.push(orderList.slice(i,i+CHUNK_SIZE));
+    let totalAdded=0,totalMerged=0,failedChunks=0,doneCount=0;
+    for(const chunk of chunks){
+      setTtUploadMsg('서버 업로드 중… ('+doneCount+'/'+orderList.length+'건)');
+      let res=null;
+      for(let attempt=0;attempt<3;attempt++){
+        res=await syncDataAwait(wh,'ttUploadOrders',{orders:chunk,date:today()});
+        if(res&&res.ok)break;
+        if(attempt<2)await new Promise(r=>setTimeout(r,1500)); // 재시도 전 잠깐 대기
+      }
+      if(res&&res.ok){totalAdded+=res.added;totalMerged+=res.merged;}
+      else{failedChunks++;}
+      doneCount+=chunk.length;
+    }
     setTtUploading(false);
-    if(res&&res.ok){
-      setTtUploadMsg('✓ 주문 '+orderList.length+'건 업로드 완료 (신규 '+res.added+', 병합 '+res.merged+')');
+    if(failedChunks===0){
+      setTtUploadMsg('✓ 주문 '+orderList.length+'건 업로드 완료 (신규 '+totalAdded+', 병합 '+totalMerged+')');
       setTtCbtCount(orderList.length);lsSet('tt_cbt_count',orderList.length);
       // 즉시 화면 반영을 위해 로컬 상태도 업데이트 (다음 폴링에서 서버값으로 재확인됨)
       setTtOrders(prev=>{
@@ -1418,7 +1437,7 @@ function App(){
         return Object.values(map);
       });
     }else{
-      setTtUploadMsg('⚠ 서버 저장 실패: '+((res&&res.error)||'unknown'));
+      setTtUploadMsg('⚠ 일부 저장 실패 ('+failedChunks+'/'+chunks.length+'묶음, 각 3회 재시도 후에도 실패) — 신규 '+totalAdded+', 병합 '+totalMerged+'건은 이미 반영됨. 잠시 후 다시 업로드하면 나머지가 재시도됩니다.');
     }
   };
 
@@ -2049,7 +2068,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v108'),
+    h('span',{className:'app-ver '+D},'v109'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
