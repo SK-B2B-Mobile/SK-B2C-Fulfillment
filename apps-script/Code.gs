@@ -953,20 +953,16 @@ function ttUploadOrders_(orders, date) {
       const oid=String(o.orderId);
       const idx = idIndex[oid];
       if (idx!==undefined) {
-        const curTrack = existingTrack[idx].split('|').filter(Boolean);
-        const newTrack = Array.from(new Set([...curTrack, ...(o.trackingIds||[])]));
-        let curItems=[]; try{ curItems=JSON.parse(existingItems[idx]||'[]'); }catch(e){}
-        (o.items||[]).forEach(it=>{
-          const ex = curItems.find(x=>x.sellerSku===it.sellerSku);
-          // ★ v104 버그 수정: 기존엔 이미 있는 SKU도 qty를 계속 더해서(ex.qty+=it.qty),
-          //   같은 레이블 PDF를 재업로드할 때마다(오늘처럼 파싱 버그 수정 후 재업로드하는
-          //   경우 포함) 이미 정확했던 주문들의 필요수량까지 매번 배로 부풀려지는 위험한
-          //   문제가 있었음. 같은 주문에 같은 SKU는 이미 기록된 수량을 그대로 유지하고
-          //   (재업로드는 있는 그대로 두고, 그 주문에 없던 새 SKU만 추가함).
-          if (!ex) curItems.push(it);
-        });
-        existingTrack[idx]=newTrack.join('|');
-        existingItems[idx]=JSON.stringify(curItems);
+        // ★ v105 버그 수정: v104까지는 "병합"(기존 SKU는 유지 + 없던 SKU만 추가) 방식이었는데,
+        //   이렇게 하면 v104 이전(재업로드 시 수량을 계속 더하던 구버전)에 이미 두 배로
+        //   부풀려진 값이 서버에 남아있을 경우 v104로도 그 오염값을 되돌리지 못하는 문제가
+        //   있었음(실사례로 확인: 라벨 원본엔 전부 qty 1인데 화면엔 전부 X/2로 나옴).
+        //   → 지금은 파싱 로직 자체가 실제 라벨 870건 전체로 검증된 상태이므로, 재업로드된
+        //   최신 파싱 결과(o.items/trackingIds)를 있는 그대로 신뢰해서 완전히 교체한다.
+        //   (스캔 진행상황은 TT_Progress 시트에 별도 저장되어 있어 영향 없음 — 이미 스캔한
+        //   개수는 그대로 유지되고, 필요수량만 정확한 값으로 바로잡힌다.)
+        if ((o.trackingIds||[]).length) existingTrack[idx]=o.trackingIds.join('|');
+        if ((o.items||[]).length) existingItems[idx]=JSON.stringify(o.items);
         merged++;
       } else {
         newRows.push([oid, (o.trackingIds||[]).join('|'), String(o.buyer||''), JSON.stringify(o.items||[]), date||today_(), now]);
