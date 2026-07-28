@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v109</title>
+<title>SK B2C Fulfillment v110</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -611,6 +611,9 @@ function ttTryCaptureLabelName_(pageText, lines, out){
     }
   }
   if(!name)return;
+  // ★ v110: 실명에도 동일하게 깨진 폰트 글리프 정리 적용
+  name=name.replace(/[\uE000-\uF8FF\uFFFD\uFFFE\uFFFF\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/\s{2,}/g,' ').trim();
+  if(!name)return;
   let trackingRaw=null;
   const m2=pageText.match(/Tracking\s*Number:?\s*([A-Za-z0-9]+)/i);
   if(m2)trackingRaw=m2[1];
@@ -666,7 +669,11 @@ async function ttParsePdfFile(file, ordersAcc){
     const trackMatch=pageText.match(/Tracking number:\s*([\s\S]*?)(?:\n(?:Product Name|Order ID:|Buyer ID:|SKU Price|SKU Seller SKU)|$)/);
     if(trackMatch){const t=trackMatch[1].replace(/\s+/g,'');if(t)curTrackingSet.add(t);}
     const buyerMatch=pageText.match(/Buyer Nickname:\s*(.+)/);
-    if(buyerMatch&&!curBuyer)curBuyer=buyerMatch[1].trim();
+    // ★ v110 버그 수정: 일부 라벨 PDF가 이모지 등 특수문자를 폰트에 제대로 매핑 못 해서,
+    // 텍스트 추출 시 깨진 글리프(유니코드 사설영역 문자 등)가 그대로 섞여 들어와 이름이
+    // "lore□□♥ □□"처럼 깨져 보이는 문제. PDF 폰트 자체의 한계라 원래 문자 복원은 불가능
+    // 하지만, 최소한 깨진 문자는 걸러내서 지저분하게 보이지 않도록 정리.
+    if(buyerMatch&&!curBuyer)curBuyer=buyerMatch[1].replace(/[\uE000-\uF8FF\uFFFD\uFFFE\uFFFF\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/\s{2,}/g,' ').trim();
 
     // ★ v101: 방금 데이터행(SKU+수량)을 찾아 만든 아이템 참조. 실제 레이블 원본으로 확인해보니
     //   SKU/가격/수량은 상품명 블록의 "첫 줄"에 있고, 줄바꿈된 나머지 설명은 그 아래로
@@ -2068,7 +2075,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v109'),
+    h('span',{className:'app-ver '+D},'v110'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
