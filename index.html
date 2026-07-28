@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v110</title>
+<title>SK B2C Fulfillment v111</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1517,6 +1517,19 @@ function App(){
   const ttLogManualVerify=(orderId,sellerSku,productName,qty,reason)=>{
     syncDataAwait(wh,'ttManualVerify',{orderId,sellerSku,productName,qty,worker:ttWorker,reason});
   };
+  // ★ v111: 레이블 파싱 오류로 제품 정보가 0개인 주문(v99 안전장치로 취소만 가능했던 케이스)을
+  // 실물이 이미 출고 확인된 경우 강제로 완료 처리할 수 있게 함. 감사 로그(ttManualVerify)에
+  // 사유를 남겨서 나중에 어떤 주문이 이렇게 처리됐는지 추적 가능.
+  const ttForceCompleteEmptyOrder=()=>{
+    if(!ttCurrentOrder||ttCurrentOrder.lines.length>0)return;
+    const orderId=ttCurrentOrder.orderId;
+    ttLogManualVerify(orderId,'(제품정보없음)','레이블 파싱 오류로 제품정보 없음',0,'실물 출고 확인 후 강제 완료 처리');
+    syncDataAwait(wh,'ttScanUpdate',{orderId,lineScanned:{},scannedTrackingIds:Array.from(ttCurrentOrder.scannedTrackingIds),status:'completed',worker:ttWorker});
+    pendingTtProgressRef.current.set(orderId,Date.now());
+    setTtProgress(p=>({...p,[orderId]:{status:'completed',lineScanned:{},scannedTrackingIds:Array.from(ttCurrentOrder.scannedTrackingIds),completedBy:ttWorker,completedTime:ts()}}));
+    ttPlayComplete();ttShowToast('✅ 주문 #'+orderId+' 강제 완료 처리됨','제품 정보 없이 수동 완료 (실물 출고 확인됨)',1200);
+    setTtCurrentOrder(null);
+  };
 
   const ttHandleItemScan=e=>{
     if(e.key!=='Enter')return;const val=(ttItemIn||'').trim();setTtItemIn('');if(!val||!ttCurrentOrder)return;
@@ -2075,7 +2088,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v110'),
+    h('span',{className:'app-ver '+D},'v111'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -2237,7 +2250,8 @@ function App(){
           // ★ v99: lines가 0개면(=레이블 파싱 시 이 주문의 제품 정보가 통째로 누락된 경우)
           //   Manual 버튼도 뜰 곳이 없어 스캔이 막혀버리므로, 원인을 바로 알려주고 취소를 유도.
           ttCurrentOrder.lines.length===0&&h('div',{style:{background:'#FFF6E8',border:'1px solid #F5C070',borderRadius:10,padding:'12px 14px',marginBottom:12,fontSize:12.5,color:'#8A5C00'}},
-            '⚠ 이 주문은 제품 정보를 인식하지 못했습니다 (레이블 파싱 오류 가능성). 위 "✕ 취소"로 빠져나온 뒤, 오늘자 CBT 레이블 PDF를 Settings에서 다시 업로드하거나 매니저에게 알려주세요.'
+            h('div',{style:{marginBottom:8}},'⚠ 이 주문은 제품 정보를 인식하지 못했습니다 (레이블 파싱 오류 가능성). 오늘자 CBT 레이블 PDF를 Settings에서 다시 업로드하면 대부분 해결됩니다.'),
+            h('button',{onClick:ttForceCompleteEmptyOrder,title:'실물을 이미 출고 확인한 경우에만 사용',style:{fontSize:11.5,padding:'6px 12px',borderRadius:7,border:'1px solid #D97706',background:'#fff',color:'#B45309',cursor:'pointer',fontWeight:700}},'✓ 이미 출고됨 — 강제 완료 처리')
           ),
           h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:13,marginBottom:14}},
             h('thead',null,h('tr',null,
