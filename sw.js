@@ -1,7 +1,7 @@
 // ★ v30 버그 수정: CACHE_NAME이 'v19'에서 한 번도 안 바뀌어서 브라우저가 계속 옛날
 //   index.html을 캐시에서 꺼내 쓰던 문제. 앞으로 코드를 업데이트할 때마다
 //   이 CACHE_NAME 숫자를 올려주면(예: v31, v32...) 브라우저가 확실히 새로 받아갑니다.
-const CACHE_NAME = 'sk-b2c-v116';
+const CACHE_NAME = 'sk-b2c-v117';
 const urlsToCache = [
   '/SK-B2C-Fulfillment/',
   '/SK-B2C-Fulfillment/index.html',
@@ -45,6 +45,17 @@ self.addEventListener('fetch', event => {
   }
 
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    // ★ v117 버그 수정: fetch가 실패했을 때(네트워크 불안정 등) caches.match()가
+    //   캐시에 없는 요청(예: Apps Script API 호출)에 대해 undefined를 반환하면,
+    //   respondWith(undefined)가 브라우저 콘솔에 "Failed to convert value to
+    //   'Response'"라는 별개의(원인과 무관한) 에러를 추가로 띄워서 진짜 원인(네트워크
+    //   문제)을 파악하기 더 어렵게 만들고 있었음. 캐시에 없으면 명확한 503 응답을
+    //   만들어서 돌려주고, 페이지 쪽 fetch()는 정상적으로 reject되어 앱 자체의
+    //   재시도 로직(v116)이 그대로 동작하도록 함.
+    fetch(event.request).catch(() =>
+      caches.match(event.request).then(cached =>
+        cached || new Response('', { status: 503, statusText: 'Network unavailable' })
+      )
+    )
   );
 });
