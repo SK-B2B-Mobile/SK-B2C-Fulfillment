@@ -1,5 +1,12 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v50
+ * SK B2C Fulfillment — Google Apps Script v115
+ * v115 핵심 수정:
+ *   - ttScanUpdate_: 제품 2개 이상인 주문에서 "완료"로 떴다가 한참 뒤 다시
+ *     "진행중"으로 되돌아가는 버그 수정 — 라인별 스캔마다 개별 네트워크 요청이
+ *     날아가는데, 늦게 도착한 이전 라인의 "진행중" 요청이 이미 저장된 "완료"
+ *     상태를 덮어써버리던 경쟁 조건(race condition). 이미 completed인 주문에는
+ *     completed가 아닌 요청을 무시하고, 스캔 개수가 더 적은(오래된) 진행상황
+ *     요청도 무시하도록 방어 로직 추가.
  * v50 핵심 수정:
  *   - detectChannel_ 단순화: 브랜드별 개별 등록 대신, "MD-"/"HOA"로 시작하면
  *     Moida & Hola, 나머지 전부 Official로 규칙 통일 (매니저 확인된 규칙)
@@ -1074,6 +1081,33 @@ function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker)
     //   scanned 숫자만 실제 완료 주문 수보다 부풀려지는 문제가 있었음
     //   (PG00005376: 오더 251개인데 scanned가 계속 올라가던 것과 같은 원인 계열).
     const wasAlreadyCompleted = idx>=0 && String(sh.getRange(idx+2,2).getValue())==='completed';
+
+    // ★ v115 버그 수정(작업자 피드백: 제품 2개 이상인 주문만 "완료" 됐다가 한참 뒤 다시
+    //   "진행중"으로 돌아가는 현상): 제품이 여러 개인 주문은 바코드를 한 개 스캔할 때마다
+    //   (await 없이) 개별 네트워크 요청이 따로 날아감. 마지막 제품을 스캔한 "완료" 요청이
+    //   먼저 서버에 도착해 처리된 뒤, 그 직전 제품을 스캔했을 때 보낸 "진행중" 요청이
+    //   네트워크 지연/Apps Script 락 대기로 뒤늦게 도착하면, 이 늦은 요청이 방금 저장된
+    //   "완료" 상태를 그대로 덮어써버렸음(요청 도착 순서를 전혀 검증하지 않았기 때문).
+    //   제품 1개짜리 주문은 요청이 딱 1번만 가므로 이 경합 자체가 발생할 수 없어서
+    //   "2개 이상 제품 주문만" 겪는다는 작업자 관찰과 정확히 일치함.
+    //   → 이미 completed로 저장돼 있으면, completed가 아닌 요청은 무시(더 늦게 도착한
+    //   오래된 진행상황으로 되돌리지 않음). completed끼리도 아니고 진행중 요청끼리도,
+    //   스캔된 총 개수가 기존 저장값보다 적으면(=더 오래된 스냅샷) 마찬가지로 무시해서
+    //   더 최신 진행상황이 뒤늦은 요청에 덮어써지는 일이 없도록 방어.
+    if (idx>=0 && status!=='completed') {
+      const sumScanned_=obj=>{ try{ return Object.values(obj||{}).reduce((a,b)=>a+(Number(b)||0),0); }catch(e){ return 0; } };
+      if (wasAlreadyCompleted) {
+        Logger.log('⏸ ttScanUpdate 무시(이미 완료된 주문 — 지연된 진행중 요청): ' + orderId);
+        return { ok:true, ignored:true, reason:'already_completed' };
+      }
+      let existingLineScanned={};
+      try{ existingLineScanned=JSON.parse(sh.getRange(idx+2,3).getValue()||'{}'); }catch(e){}
+      if (sumScanned_(lineScanned) < sumScanned_(existingLineScanned)) {
+        Logger.log('⏸ ttScanUpdate 무시(더 오래된 진행상황 요청 — 최신 값 유지): ' + orderId);
+        return { ok:true, ignored:true, reason:'stale_progress' };
+      }
+    }
+
     const now = nowLocal_();
     const row = [
       String(orderId), String(status||'in_progress'),
