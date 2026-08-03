@@ -828,11 +828,26 @@ function upsertPickAssign_(a){
   try{
     const sh=pickAssignSheet_(); const lastRow=sh.getLastRow();
     const id=a.id || (a.pgNo+'_'+a.worker+'_'+(a.date||today_()));
+    const pStart=Number(a.pageStart)||0, pEnd=Number(a.pageEnd)||0;
     let targetRow=0;
+    // ★ v122 버그 수정(서버측): 클라이언트의 findOverlap은 그 브라우저가 그 순간 들고 있던
+    // 로컬 데이터 기준으로만 검사함 — 다른 컴퓨터가 방금 배정한 게 아직 폴링(15초 주기)으로
+    // 안 따라잡힌 상태거나, 탭을 오래 띄워놔서 로컬 상태가 서버와 어긋난 상태에서 제출하면
+    // 그대로 통과돼버려 같은 페이지 구간이 두 번 배정되는 실사례가 확인됨(PG00005434,
+    // Jisun L. 13~16p 중복). 서버가 최종 소스이므로 여기서도 동일한 겹침 검사를 한 번 더
+    // 해서, 클라이언트 체크가 우회되더라도 저장 단계에서 확실히 막는다.
     if(lastRow>=2){
-      const ids=sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0]));
-      const idx=ids.indexOf(id);
-      if(idx>=0) targetRow=idx+2;
+      const existing=sh.getRange(2,1,lastRow-1,13).getValues(); // ID..PageEnd
+      for(let i=0;i<existing.length;i++){
+        const r=existing[i];
+        if(String(r[0])===id){targetRow=i+2;continue;} // 자기 자신(수정)이면 겹침 검사 제외
+        if(pStart>0&&pEnd>0&&String(r[1])===String(a.pgNo)){
+          const exStart=Number(r[11])||0, exEnd=Number(r[12])||0;
+          if(exStart>0&&exEnd>0&&!(pEnd<exStart||pStart>exEnd)){
+            return { ok:false, error:'페이지 '+pStart+'~'+pEnd+'가 이미 '+r[4]+'님에게 배정되어 있습니다 ('+exStart+'~'+exEnd+')', overlap:true };
+          }
+        }
+      }
     }
     const now=nowLocal_();
     const createdAt=targetRow ? sh.getRange(targetRow,10).getValue() : now;
