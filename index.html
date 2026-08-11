@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v128</title>
+<title>SK B2C Fulfillment v129</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -577,11 +577,11 @@ const TT_NOISE_RE=[
 // 하나로 합쳐져서 "AGE-MECUS05-GTR"이라는 존재하지 않는 SKU로 잘못 인식되는 부작용을
 // 낳았음(AGE-R GLUTATHIONE GLOW TONER 실사례로 발견). 실제 SKU는 하이픈 앞뒤에 공백이
 // 전혀 없음이 870건 전수 검증에서 확인되어, 공백 허용을 제거함.
-// ★ v128 버그 수정: SKU 첫 글자가 대문자([A-Z])여야만 인식되던 문제 — 실제로 "goodal"
+// ★ v129 버그 수정: SKU 첫 글자가 대문자([A-Z])여야만 인식되던 문제 — 실제로 "goodal"
 // 브랜드 Seller SKU(goodalS06-CUS, goodalSM08-HFSC 등)는 소문자로 시작해서 매번
 // 인식 실패("제품 정보를 인식하지 못했습니다") 원인이었음(주문 577507103290593818로 확인).
 // 줄 끝 수량 숫자 요구조건(안전장치)은 그대로 유지되므로 오탐 위험은 늘지 않음.
-// ★ v128 버그 수정: SKU 허용 문자에 밑줄(_)이 빠져있어서 "US_ESTHT01-L", "US_CTS12-CU" 같은
+// ★ v129 버그 수정: SKU 허용 문자에 밑줄(_)이 빠져있어서 "US_ESTHT01-L", "US_CTS12-CU" 같은
 // 밑줄 포함 SKU가 통째로 매칭 실패했음. 특히 정규식의 \b(단어경계)는 밑줄을 일반 문자로
 // 취급하기 때문에, 밑줄 앞뒤로는 애초에 경계 자체가 생기지 않아 어느 시작 위치에서도
 // 매칭이 불가능했음(단순 "허용 문자 부족" 이상 — 이 SKU들은 전혀 매칭될 방법이 없었음).
@@ -590,9 +590,9 @@ const TT_NOISE_RE=[
 // (577517530780176811, 577516855016788619 실사례로 확인 — 둘 다 US_CTS12-CU 구성품만
 // 빠짐). 인수인계서에 오래전부터 "다음에 확인할 것 1번"으로 남아있던 미해결 항목.
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
-// ★ v128 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
+// ★ v129 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v128';
+const APP_VERSION='v129';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1057,7 +1057,7 @@ function App(){
   const [tab,setTab]=useState('records');
   const [isMgr,setMgr]=useState(false);
   const [cat,setCat]=useState('All');
-  // ★ v128 추가: 서비스워커 이중 캐시 때문에 새 배포가 올라가도 브라우저가 계속 옛날
+  // ★ v129 추가: 서비스워커 이중 캐시 때문에 새 배포가 올라가도 브라우저가 계속 옛날
   // 버전을 붙잡고 있는 문제가 이번 세션 내내 반복됨(v121→v125 착각 사례 등). 3분마다
   // 배포된 index.html의 버전을 직접 확인해서, 지금 실행 중인 버전과 다르면 배너로 알리고
   // 클릭 한 번으로 서비스워커/캐시까지 강제로 지우고 새로고침하도록 함.
@@ -1224,6 +1224,10 @@ function App(){
     setTtAlert({msg:'⚠️ 주문 #'+orderId+' 서버 저장 실패 — 자동으로 계속 재시도 중입니다 (인터넷 확인)',type:'err'});
   };
   const [ttUploading,setTtUploading]=useState(false);
+  // ★ v129 추가: 레이블 PDF / SKU Master 업로드 영역에 드래그앤드롭 지원.
+  // 파일 선택창을 여는 대신 탐색기에서 파일을 끌어다 놓을 수 있게 함. 시각적 피드백용 상태.
+  const [ttDragLabel,setTtDragLabel]=useState(false);
+  const [ttDragSku,setTtDragSku]=useState(false);
   const [ttUploadMsg,setTtUploadMsg]=useState('');
   const [ttCurrentOrder,setTtCurrentOrder]=useState(null); // 현재 검수 중인 주문 (라벨 스캔 후)
   const [ttLabelIn,setTtLabelIn]=useState('');
@@ -1280,7 +1284,7 @@ function App(){
   const pendingListPatches=useRef(new Map());
   const touchPending=id=>pendingListPatches.current.set(id,Date.now());
 
-  // ★ v128 버그 수정: mSave(리스트 생성)가 쓰는 sync()는 지금까지 실패해도 그냥 '⚠' 표시만
+  // ★ v129 버그 수정: mSave(리스트 생성)가 쓰는 sync()는 지금까지 실패해도 그냥 '⚠' 표시만
   //   하고 끝(재시도 없음)이었음. 반면 pruneStale은 로컬에서 방금(30초 이내) 만든 항목만
   //   보호하고, 그 뒤엔 "서버 응답에 없으면 삭제된 것"으로 간주해 지워버림. 그래서 생성 시점에
   //   네트워크/Apps Script가 잠깐이라도 불안정해서 upsertList가 실패하면, 화면엔 리스트가 계속
@@ -1324,7 +1328,7 @@ function App(){
     if(!wh)return;
     const poll=async()=>{
       try{
-        // ★ v128 버그 수정: Google Apps Script는 스크립트가 한동안 안 쓰이다 다시 깨어날 때
+        // ★ v129 버그 수정: Google Apps Script는 스크립트가 한동안 안 쓰이다 다시 깨어날 때
         // (콜드스타트) exec URL이 script.googleusercontent.com/macros/echo?...로 302
         // 리다이렉트되는데, 이 리다이렉트 응답엔 CORS 허용 헤더가 없어서 fetch()가 그냥
         // 막혀버림(주소창에 직접 치면 브라우저가 리다이렉트를 알아서 따라가서 정상으로
@@ -1431,12 +1435,12 @@ function App(){
   /* ── 페이지 기준 작업자 배정 폴링 ── */
   const deletedAssignIds=useRef(new Set());
   const pendingAssignPatches=useRef(new Map()); // id -> {patch:{...}, ts} — 서버가 따라잡을 때까지 로컬 변경(완료 처리 등) 보호
-  const paFirstLoadDone=useRef(false); // ★ v128: 리스트 로딩(1270번대)과 동일한 패턴 — 최초 1회만 전체(date='')
+  const paFirstLoadDone=useRef(false); // ★ v129: 리스트 로딩(1270번대)과 동일한 패턴 — 최초 1회만 전체(date='')
   useEffect(()=>{
     if(!wh)return;
     const pollPA=async()=>{
       try{
-        // ★ v128 버그 수정: 여기가 항상 date=today()만 요청해서, 새로고침/새 브라우저에서는
+        // ★ v129 버그 수정: 여기가 항상 date=today()만 요청해서, 새로고침/새 브라우저에서는
         //   어제 배정 데이터가 서버에서부터 아예 안 내려와 화면단(assignsFor) 수정만으로는
         //   해결되지 않았음. 리스트 로딩과 동일하게 최초 1회는 전체를 가져오도록 수정.
         const isFirst=!paFirstLoadDone.current;
@@ -1473,7 +1477,7 @@ function App(){
     if(!wh)return;
     syncData(wh,action,payload).then(()=>setSS('✓ '+new Date().toLocaleTimeString())).catch(()=>{
       setSS('⚠');
-      // ★ v128: 실패한 요청을 버리지 않고 재시도 큐에 등록 (위 listFailedSyncsRef 참고)
+      // ★ v129: 실패한 요청을 버리지 않고 재시도 큐에 등록 (위 listFailedSyncsRef 참고)
       const id=(payload&&payload.list&&payload.list.id)||(payload&&payload.pgNo)||(action+'_'+Date.now());
       touchPending(id);
       listFailedSyncsRef.current.set(id,{action,payload});
@@ -1483,7 +1487,7 @@ function App(){
 
   /* mutations */
   const upd=(id,ch)=>{touchPending(id);setLists(p=>p.map(l=>{if(l.id!==id)return l;const u={...l,...ch};sync('upsertList',{list:u});return u;}));};
-  // ★ v128 추가: endPickAssignFn의 doneSum 날짜조건 버그로 이미 갇혀버린 과거 리스트들
+  // ★ v129 추가: endPickAssignFn의 doneSum 날짜조건 버그로 이미 갇혀버린 과거 리스트들
   // (모든 피커가 체크됐는데도 Pick End가 영원히 안 찍힌 경우)를 화면 로드/데이터 갱신 시마다
   // 스스로 재검사해서 뒤늦게라도 복구. upd()가 pickEnd를 채우고 나면 조건(!l.pickEnd)이
   // 꺼지므로 반복 실행되지 않음(자연 종료).
@@ -1761,7 +1765,7 @@ function App(){
   /* ══════════════════════════════════════════
      페이지 기준 다중 작업자 배정 (Records → Add Picker)
   ══════════════════════════════════════════ */
-  // ★ v128 버그 수정: 날짜가 바뀌면(자정 경과) 어제 배정한 작업자들이 date!==today()라서
+  // ★ v129 버그 수정: 날짜가 바뀌면(자정 경과) 어제 배정한 작업자들이 date!==today()라서
   // 전부 걸러져 PICKERS 칸이 빈 채로 보이던 문제. pgNo는 순차 발급되어 재사용되지 않는
   // 유일값이므로(v113에서 이미 검증된 원칙) date 조건 없이 pgNo만으로 매칭.
   const assignsFor=pgNo=>pickAssigns.filter(a=>a.pgNo===pgNo);
@@ -1793,7 +1797,7 @@ function App(){
     // pgNo는 사실상 유일값이므로(순차 발급, 재사용 안 됨) date 조건 없이 pgNo만으로 매칭.
     const l=lists.find(x=>x.pgNo===pgNo);
     if(!l)return;
-    // ★ v128: 여기도 v113 원칙(pgNo만 매칭)이 누락돼 있었음 — 날짜 넘어간 리스트를 오늘
+    // ★ v129: 여기도 v113 원칙(pgNo만 매칭)이 누락돼 있었음 — 날짜 넘어간 리스트를 오늘
     // 이어서 작업할 때 어제 배정한 작업자가 구글시트 Worker 요약에서 누락되던 잔여 버그.
     const relevant=(assignsSnapshot||pickAssigns).filter(a=>a.pgNo===pgNo);
     const names=[...new Set(relevant.map(a=>a.worker))];
@@ -1827,7 +1831,7 @@ function App(){
     const ov=findOverlap(addPickerFor.pgNo,start,end);
     if(ov){alert('⚠ '+start+'~'+end+'페이지 중 일부가 이미 '+ov.worker+'님에게 배정되어 있습니다 ('+ov.pageStart+'~'+ov.pageEnd+'페이지).\n다른 페이지 범위를 입력해주세요.');return;}
     const a={id:addPickerFor.pgNo+'_'+uid(),pgNo:addPickerFor.pgNo,date:today(),category:addPickerFor.category,worker:apWorker,pages:cnt,pageStart:start,pageEnd:end,pickStart:ts(),pickEnd:null};
-    // ★ v128 버그 수정: 위 findOverlap은 이 브라우저가 그 순간 들고 있던 로컬 데이터만 보므로,
+    // ★ v129 버그 수정: 위 findOverlap은 이 브라우저가 그 순간 들고 있던 로컬 데이터만 보므로,
     // 다른 컴퓨터가 방금 같은 페이지를 배정했는데 폴링(15초)이 아직 못 따라잡은 순간이면
     // 그냥 통과되어 중복 배정이 만들어짐(PG00005434 Jisun L. 13~16p 중복 실사례). 기존
     // sync()는 no-cors라 서버 응답을 아예 읽을 수 없어 서버가 거부해도 조용히 무시됐음.
@@ -1861,7 +1865,7 @@ function App(){
       // 전체 Pick End가 절대 자동으로 안 찍히던 버그(→ Scan Station 자동 전환도 안 됨).
       // pgNo만으로 매칭하도록 수정(pgNo는 순차 발급되어 사실상 유일값).
       // pgNo만으로 매칭하도록 수정(pgNo는 순차 발급되어 사실상 유일값).
-      // ★ v128 버그 수정: 위 l 매칭은 v113에서 이미 pgNo만으로 고쳤는데, 바로 아래 doneSum
+      // ★ v129 버그 수정: 위 l 매칭은 v113에서 이미 pgNo만으로 고쳤는데, 바로 아래 doneSum
       // 계산에는 여전히 &&x.date===a.date 조건이 남아있었음. 리스트가 여러 날짜에 걸쳐
       // 나눠 피킹된 경우(예: 8/4에 일부, 8/6에 나머지) 마지막으로 체크한 배정의 date만
       // 기준으로 합산해서 다른 날짜에 완료된 배정의 페이지가 누락됨 → 전부 체크됐는데도
@@ -1900,7 +1904,7 @@ function App(){
     const ov=findOverlap(editAssign.pgNo,start,end,editAssign.id);
     if(ov){alert('⚠ '+start+'~'+end+'페이지 중 일부가 이미 '+ov.worker+'님에게 배정되어 있습니다 ('+ov.pageStart+'~'+ov.pageEnd+'페이지).\n다른 페이지 범위를 입력해주세요.');return;}
     const u={...editAssign,worker:apWorker,pages:cnt,pageStart:start,pageEnd:end};
-    // ★ v128: submitAddPicker와 동일 이유로 서버 겹침 응답을 실제로 확인
+    // ★ v129: submitAddPicker와 동일 이유로 서버 겹침 응답을 실제로 확인
     if(wh){
       const r=await syncDataAwait(wh,'upsertPickAssign',{assign:u});
       if(r&&r.overlap){alert('⚠ '+(r.error||'이미 배정된 페이지와 겹칩니다.')+'\n(다른 컴퓨터에서 방금 배정됨 — 화면이 갱신되었습니다)');return;}
@@ -2021,7 +2025,7 @@ function App(){
     setLists(p=>p.filter(l=>!(l.date===today()&&getSt(l)==='complete')));
     completed.forEach(l=>sync('deleteList',{pgNo:l.pgNo,date:l.date}));
   };
-  // ★ v128 추가: 자정 자동정리(00:00~01:00 사이 아무 때나 실행됨)를 기다리지 않고,
+  // ★ v129 추가: 자정 자동정리(00:00~01:00 사이 아무 때나 실행됨)를 기다리지 않고,
   //   이전 날짜(오늘 아닌) 완료 항목을 매니저가 바로 일괄 삭제할 수 있게. delCompleted와
   //   동일 패턴(date===today() 대신 date!==today())이며 실제 삭제 방식(deleteList, 시트엔
   //   그대로 보존)도 동일.
@@ -2328,7 +2332,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v128'),
+    h('span',{className:'app-ver '+D},'v129'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -2798,14 +2802,42 @@ function App(){
         ),
         h('div',{style:card},
           h('div',{style:{fontSize:12,fontWeight:700,color:'#F0A0C8',marginBottom:10}},'① 오늘의 CBT 레이블 PDF (배송라벨+패킹슬립 합본, 여러 파일 가능)'),
-          h('input',{type:'file',accept:'.pdf',multiple:true,disabled:ttUploading,onChange:e=>ttUploadLabelFiles(e.target.files),style:{color:'#CCC',fontSize:13}}),
+          h('div',{
+            onDragOver:e=>{e.preventDefault();if(!ttUploading)setTtDragLabel(true);},
+            onDragLeave:e=>{e.preventDefault();setTtDragLabel(false);},
+            onDrop:e=>{
+              e.preventDefault();setTtDragLabel(false);
+              if(ttUploading)return;
+              const files=[...e.dataTransfer.files].filter(f=>f.name.toLowerCase().endsWith('.pdf'));
+              if(files.length)ttUploadLabelFiles(files);
+              else alert('PDF 파일만 올릴 수 있습니다.');
+            },
+            style:{border:'2px dashed '+(ttDragLabel?'#F0A0C8':'rgba(255,255,255,0.15)'),borderRadius:10,padding:'16px',textAlign:'center',background:ttDragLabel?'rgba(240,160,200,0.08)':'transparent',transition:'all .15s'}
+          },
+            h('input',{type:'file',accept:'.pdf',multiple:true,disabled:ttUploading,onChange:e=>ttUploadLabelFiles(e.target.files),style:{color:'#CCC',fontSize:13}}),
+            h('div',{style:{marginTop:8,fontSize:12,color:'#7070A0'}},'또는 여기에 PDF 파일을 끌어다 놓으세요')
+          ),
           h('div',{style:{marginTop:10,fontSize:12,color:'#8888C0'}},'현재 로드된 오늘자 주문: '+ttOrders.length+'건 · 완료 '+completedCount+'건'),
           ttUploadMsg&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:8,fontSize:12,fontWeight:600,background:ttUploadMsg.startsWith('✓')?'rgba(134,239,172,0.1)':'rgba(248,113,113,0.1)',color:ttUploadMsg.startsWith('✓')?'#86EFAC':'#F87171'}},ttUploadMsg)
         ),
         h('div',{style:card},
           h('div',{style:{fontSize:12,fontWeight:700,color:'#A0C8F0',marginBottom:6}},'② 제품 마스터 (SKU Master .xlsx) — 한 번 올리면 계속 누적'),
           h('p',{style:{fontSize:12,color:'#7070A0',marginBottom:10}},'"#1. Single SKU"(Seller SKU/Barcode), "#2. Set SKU"(Set SKU/Component Seller SKU/Component Qty/Set Product Name/Status) 시트 형식 그대로 업로드하세요.'),
-          h('input',{type:'file',accept:'.xlsx',disabled:ttUploading,onChange:e=>ttUploadSkuFile(e.target.files[0]),style:{color:'#CCC',fontSize:13}}),
+          h('div',{
+            onDragOver:e=>{e.preventDefault();if(!ttUploading)setTtDragSku(true);},
+            onDragLeave:e=>{e.preventDefault();setTtDragSku(false);},
+            onDrop:e=>{
+              e.preventDefault();setTtDragSku(false);
+              if(ttUploading)return;
+              const f=[...e.dataTransfer.files].find(f=>/\.xlsx$/i.test(f.name));
+              if(f)ttUploadSkuFile(f);
+              else alert('.xlsx 파일만 올릴 수 있습니다.');
+            },
+            style:{border:'2px dashed '+(ttDragSku?'#A0C8F0':'rgba(255,255,255,0.15)'),borderRadius:10,padding:'16px',textAlign:'center',background:ttDragSku?'rgba(160,200,240,0.08)':'transparent',transition:'all .15s'}
+          },
+            h('input',{type:'file',accept:'.xlsx',disabled:ttUploading,onChange:e=>ttUploadSkuFile(e.target.files[0]),style:{color:'#CCC',fontSize:13}}),
+            h('div',{style:{marginTop:8,fontSize:12,color:'#7070A0'}},'또는 여기에 .xlsx 파일을 끌어다 놓으세요')
+          ),
           h('div',{style:{marginTop:10,fontSize:12,color:'#8888C0'}},'저장된 SKU: 단품 '+skuSingleCount+'개 · 세트 '+skuSetCount+'개'),
           ttSkuUploadMsg&&h('div',{style:{marginTop:10,padding:'10px 14px',borderRadius:8,fontSize:12,fontWeight:600,background:ttSkuUploadMsg.startsWith('✓')?'rgba(134,239,172,0.1)':'rgba(248,113,113,0.1)',color:ttSkuUploadMsg.startsWith('✓')?'#86EFAC':'#F87171'}},ttSkuUploadMsg)
         ),
