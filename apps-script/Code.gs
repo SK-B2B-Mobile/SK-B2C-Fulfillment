@@ -1,7 +1,17 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v132
+ * SK B2C Fulfillment — Google Apps Script v133
  *
- * ★ v132 핵심 수정 (TikTok CBT 스캔이 저장됐다가 다시 미완료로 돌아가는 버그의 근본 원인):
+ * ★ v133 수정:
+ *   1) [성능] ttScanUpdate_가 v132에서 시트 전체를 7열씩 읽던 것을 A열만 훑도록 되돌림.
+ *      TT_Progress에 주문이 7,000건 넘게 누적된 상태라 스캔 1회마다 5만 셀을 읽어
+ *      처리가 느려지고 동시 스캔 시 락 대기가 길어지는 문제가 있었다.
+ *   2) ttArchiveOldProgress() 신규 — 오래된 진행상황을 TT_Progress_Archive로 옮겨
+ *      현재 시트를 가볍게 유지한다(편집기에서 수동 실행). 데이터는 삭제되지 않는다.
+ *   ※ v132에서 기대했던 "중복 행" 문제는 실측 결과 0건이었다(7,164개 주문, 중복 0행).
+ *      따라서 락 조기 해제가 스캔 되돌림의 원인은 아니었던 것으로 보인다. 다만 락 중첩
+ *      구조 자체는 위험하므로 v132의 구조 개선은 그대로 유지한다.
+ *
+ * ★ v132 수정 (락 중첩 구조 개선 — 되돌림 원인은 아니었으나 구조상 위험해 유지):
  *   [원인 1] 락이 임계구역 한복판에서 풀림
  *     ttScanUpdate_는 LockService.getDocumentLock()을 잡고 시작하는데, 그 임계구역
  *     안에서 updateScanned_ → upsertList_ 를 호출한다. 그런데 upsertList_도 "같은"
@@ -1150,17 +1160,22 @@ function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker)
     };
 
     // ── 이 주문의 행 전부 찾기 (중복 포함) ──
+    // ★ v133 성능 수정: v132는 여기서 시트 전체를 7열씩 통째로 읽었다. TT_Progress에
+    //   주문이 7,000건 넘게 누적된 상태라 스캔 1회마다 5만 셀을 읽게 되어 처리가 느려지고
+    //   동시 스캔 시 락 대기가 길어진다. → 원본처럼 A열(주문번호)만 훑어서 해당 행을 찾고,
+    //   실제 내용은 매칭된 행(보통 1개)만 읽는다.
     const matchRows = [];
-    let all = [];
     if (lastRow >= 2) {
-      all = sh.getRange(2, 1, lastRow - 1, 7).getValues();
-      all.forEach((r, i) => { if (norm(r[0]) === oid) matchRows.push(i + 2); });
+      const idCol = sh.getRange(2, 1, lastRow - 1, 1).getValues();
+      idCol.forEach((r, i) => { if (norm(r[0]) === oid) matchRows.push(i + 2); });
     }
+    const rowCache = {};
+    matchRows.forEach(rw => { rowCache[rw] = sh.getRange(rw, 1, 1, 7).getValues()[0]; });
 
     // ── 중복 행 병합: 하나라도 completed면 completed, 라인 수량은 최댓값 ──
     let mergedStatus = '', mergedLine = {}, mergedTrack = [], mergedBy = '', mergedTime = '';
     matchRows.forEach(rw => {
-      const c = all[rw - 2];
+      const c = rowCache[rw];
       const st = String(c[1] || '');
       let ls = {}, tk = [];
       try { ls = JSON.parse(c[2] || '{}'); } catch (e) {}
@@ -3538,4 +3553,62 @@ function testFetchVerifiedV40() {
 
   Logger.log('=== testFetchVerifiedV40 완료 ===');
   Logger.log('결과가 웹브라우저 픽리스트 Orders 수량과 일치하면 적용 OK!');
+}
+
+/* ════════════════════════════════════════
+   ★ v133 신규: ttArchiveOldProgress
+   ────────────────────────────────────────
+   TT_Progress가 계속 누적되어 7,000건을 넘어선 상태다. 이 시트는 스캔할 때마다,
+   그리고 모든 작업자 화면이 15초마다 통째로 읽어가므로 커질수록 전체가 느려진다.
+   → 지정한 일수(기본 7일)보다 오래된 행을 TT_Progress_Archive 시트로 옮긴다.
+     데이터는 삭제되지 않고 그대로 보존된다.
+   Apps Script 편집기에서 함수 선택 → ▶ 실행. 필요하면 주기적으로 돌리면 된다.
+   ⚠ 오늘 작업 중에는 실행하지 말 것 (작업 종료 후 실행 권장).
+════════════════════════════════════════ */
+function ttArchiveOldProgress() {
+  const KEEP_DAYS = 7;   // 최근 며칠치를 TT_Progress에 남길지
+
+  const sh  = ttProgressSheet_();
+  const arc = getOrCreateSheet_('TT_Progress_Archive',
+    ['OrderID','Status','LineScannedJSON','ScannedTrackingJSON','CompletedBy','CompletedTime','UpdatedAt']);
+
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) { Logger.log('TT_Progress 비어 있음'); return; }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(60000);
+  try {
+    const data = sh.getRange(2, 1, lastRow - 1, 7).getValues();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - KEEP_DAYS);
+    const cutoffStr = Utilities.formatDate(cutoff, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+    const keep = [], move = [];
+    data.forEach(r => {
+      const upd = String(r[6] || '').slice(0, 10);   // UpdatedAt 'yyyy-MM-dd ...'
+      // UpdatedAt이 비어있거나 형식이 이상하면 안전하게 남긴다
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(upd) || upd >= cutoffStr) keep.push(r);
+      else move.push(r);
+    });
+
+    if (move.length === 0) {
+      Logger.log('옮길 대상 없음 (최근 ' + KEEP_DAYS + '일치만 존재)');
+      SpreadsheetApp.getActiveSpreadsheet().toast('옮길 대상 없음', 'TT_Progress', 4);
+      return;
+    }
+
+    arc.getRange(arc.getLastRow() + 1, 1, move.length, 7).setValues(move);
+    sh.getRange(2, 1, lastRow - 1, 7).clearContent();
+    if (keep.length) {
+      sh.getRange(2, 1, keep.length, 1).setNumberFormat('@');
+      sh.getRange(2, 1, keep.length, 7).setValues(keep);
+    }
+    bumpVersion_();
+
+    Logger.log('✅ TT_Progress 정리: ' + move.length + '건을 Archive로 이동, ' + keep.length + '건 유지 (기준 ' + cutoffStr + ' 이전)');
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      move.length + '건 보관 이동 / ' + keep.length + '건 유지', '✅ TT_Progress 정리', 6);
+  } finally {
+    lock.releaseLock();
+  }
 }
