@@ -1,5 +1,11 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v133
+ * SK B2C Fulfillment — Google Apps Script v134
+ *
+ * ★ v134 수정:
+ *   - setupTTArchiveTrigger() / removeTTArchiveTrigger() 신규 추가.
+ *     ttArchiveOldProgress()를 매일 새벽 3시 자동 실행하는 트리거. 편집기에서
+ *     setupTTArchiveTrigger를 1회 실행하면 이후 수동 실행 없이 매일 자동으로
+ *     TT_Progress의 7일 지난 완료 기록이 TT_Progress_Archive로 이동된다.
  *
  * ★ v133 수정:
  *   1) [성능] ttScanUpdate_가 v132에서 시트 전체를 7열씩 읽던 것을 A열만 훑도록 되돌림.
@@ -3611,4 +3617,53 @@ function ttArchiveOldProgress() {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * ★ v134 신규: ttArchiveOldProgress 매일 새벽 자동 실행 트리거 등록
+ * ────────────────────────────────────────
+ * 매일 새벽 3시경(아무도 스캔하지 않는 시간대), TT_Progress에서 7일보다 오래된
+ * 완료 기록을 TT_Progress_Archive로 자동으로 옮긴다. 데이터는 삭제되지 않는다.
+ * 새벽 시간대로 잡은 이유: 이 함수가 도는 동안 스캔이 들어오면 잠깐 락 대기가
+ * 생길 수 있어서, 실제 작업 시간대와 절대 겹치지 않게 하기 위함.
+ * ────────────────────────────────────────
+ * ★ 설정 방법 (최초 1회, Apps Script 에디터에서 직접 실행 필요):
+ *   함수 목록에서 setupTTArchiveTrigger 선택 → ▶ 실행
+ * (installMidnightCleanupTrigger와 동일한 패턴)
+ */
+function setupTTArchiveTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'ttArchiveOldProgress') {
+      ScriptApp.deleteTrigger(t);
+      Logger.log('기존 ttArchiveOldProgress 트리거 삭제');
+    }
+  });
+
+  ScriptApp.newTrigger('ttArchiveOldProgress')
+    .timeBased()
+    .atHour(3)
+    .everyDays(1)
+    .create();
+
+  Logger.log('✅ ttArchiveOldProgress 트리거 등록 완료: 매일 새벽 3시경 자동 실행');
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    '매일 새벽 3시 TT_Progress 자동 정리 설정 완료!', '✅ Trigger Set', 5
+  );
+}
+
+/**
+ * ★ v134 신규: 위 자동 정리 트리거 삭제 (다시 수동으로만 돌리고 싶을 때)
+ */
+function removeTTArchiveTrigger() {
+  let count = 0;
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'ttArchiveOldProgress') {
+      ScriptApp.deleteTrigger(t);
+      count++;
+    }
+  });
+  Logger.log('Removed ' + count + ' trigger(s)');
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    count + '개 자동 정리 트리거 삭제 완료', '✅ Done', 3
+  );
 }
