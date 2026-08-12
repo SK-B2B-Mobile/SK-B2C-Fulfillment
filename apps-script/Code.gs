@@ -1,5 +1,38 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v115
+ * SK B2C Fulfillment — Google Apps Script v132
+ *
+ * ★ v132 핵심 수정 (TikTok CBT 스캔이 저장됐다가 다시 미완료로 돌아가는 버그의 근본 원인):
+ *   [원인 1] 락이 임계구역 한복판에서 풀림
+ *     ttScanUpdate_는 LockService.getDocumentLock()을 잡고 시작하는데, 그 임계구역
+ *     안에서 updateScanned_ → upsertList_ 를 호출한다. 그런데 upsertList_도 "같은"
+ *     document lock을 잡고, 끝나면서 finally { lock.releaseLock(); } 로 풀어버린다.
+ *     Apps Script의 Lock은 실행 단위로 공유되므로 이 안쪽 release가 바깥
+ *     ttScanUpdate_의 임계구역까지 통째로 열어버린다.
+ *   [원인 2] 그 틈으로 같은 주문의 요청 2개가 동시에 들어오면 둘 다 indexOf()==-1로
+ *     판단해 각자 appendRow → 한 주문에 행이 2개 이상 생긴다. ttGetProgress_는
+ *     progress[orderId]를 위에서부터 덮어쓰므로 "마지막 행"이 이긴다. 늦게 붙은
+ *     in_progress 행이 completed 행보다 아래면 서버는 그 주문을 영원히 미완료로 응답.
+ *     → 화면엔 "스캔 저장됐다가 다시 미입력으로 돌아감"으로 보인다.
+ *     → 제품 1개짜리 주문은 요청이 1번뿐이라 이 경합이 아예 안 생긴다. 제품 2~3개짜리
+ *       (세트상품 등)만 걸리는 이유가 이것. v115의 순서 방어는 idx 조회가 첫 행만 보기
+ *       때문에 행이 갈라진 뒤엔 무력화된다.
+ *   [수정]
+ *     1) TT_Progress는 ScriptLock으로 분리하고, PickLists를 건드리는 updateScanned_
+ *        호출은 락을 "푼 뒤에" 실행 → 중첩 release 제거.
+ *        (락 안에서 getOrCreateSheet_가 또 ScriptLock을 잡지 않도록 시트 핸들은
+ *         락을 잡기 전에 미리 확보한다 — 같은 함정이 여기에도 있음)
+ *     2) 같은 주문 행이 여러 개면 읽을 때 병합(completed 우선, 라인 수량 최댓값)하고
+ *        쓸 때 1행으로 정리한다.
+ *     3) ttGetProgress_도 중복 행이 남아 있어도 completed가 지지 않도록 병합 응답
+ *        → 이미 꼬인 데이터도 스스로 복구된다.
+ *     4) OrderID 열을 텍스트 서식으로 고정. 19자리 주문번호가 숫자로 저장되면 유효자릿수
+ *        (15자리)를 넘겨 뒷자리가 0으로 뭉개지고, 그러면 indexOf가 영영 실패해 계속
+ *        새 행이 쌓인다.
+ *     5) ttRepairDuplicateProgress() 신규 — 이미 쌓인 중복 행을 주문당 1행으로 병합
+ *        (편집기에서 1회 수동 실행).
+ *   ⚠ 유지보수 원칙: 락을 잡은 구간 안에서 "자체적으로 락을 잡는 함수"
+ *     (upsertList_, getOrCreateSheet_, updateScanned_ 등)를 호출하지 말 것.
+ *
  * v115 핵심 수정:
  *   - ttScanUpdate_: 제품 2개 이상인 주문에서 "완료"로 떴다가 한참 뒤 다시
  *     "진행중"으로 되돌아가는 버그 수정 — 라인별 스캔마다 개별 네트워크 요청이
@@ -47,21 +80,11 @@
  *   - 기존 PickAssign 시트도 자동 마이그레이션(컬럼 없으면 추가)
  * v41 핵심 수정:
  *   - ShipStation Webhook(SHIP_NOTIFY) 자동 등록 기능 추가
- *     → Settings에서 버튼 클릭 한 번으로 이 웹앱 URL을 ShipStation에
- *       webhook target으로 등록 → 배송 라벨 생성 시 자동 스캔 카운트 반영
- *     → 이전에는 handleSSWebhook_ 수신 로직만 있고 등록 절차가 없어서
- *       실제로는 작동하지 않고 있었음 (이번에 등록 기능 추가로 해결)
  * v40 핵심 수정:
  *   - PickAssign 시트 추가: 페이지 수 기준 다중 작업자 배정
- *     (PG 1개 = 총 페이지 수, 여러 작업자가 나눠서 Start/End)
  *   - PickLists 시트에 Pages 컬럼 추가
  * v39 핵심 수정:
  *   - TikTok CBT 서버 동기화 추가 (TT_Orders/TT_Progress/TT_SkuSingle/TT_SkuSet 시트)
- *     → 매니저가 매일 아침 레이블 PDF를 업로드하면 주문/트래킹/제품 정보가
- *       서버에 저장되고, 여러 작업자가 각자 기기에서 동시에 2단계 스캔
- *       (라벨→상품 바코드) 가능
- *     → 주문 완료 시 오늘자 TikTok CBT 픽리스트 scanned 카운트에 자동 반영
- *       (updateScanned_ 재사용 — 기존 KPI/DailySummary 로직 그대로 활용)
  *   - doGet: ttOrders / ttSkuMaster / ttProgress 조회 op 추가
  *   - doPost: ttUploadOrders / ttUploadSkuMaster / ttScanUpdate action 추가
  * v38 핵심 수정:
@@ -69,33 +92,17 @@
  *   - upsertList_: active 행 보호 (scanned/times 덮어쓰기 방지)
  * v37 핵심 수정:
  *   - autoScanPoll: pollTikTokOrders_ 자동 호출 제거
- *     → TikTok CBT는 웹앱 Scan Station 수동 바코드 스캔으로 카운트
- *     → TT-5773... 자동 ScanLog 기록 문제 완전 해결
  * v36 핵심 수정:
  *   - fetchTikTokAwaitingOrders_: total_count probe 방식으로 재작성
- *     → AWAITING_SHIPMENT total_count 확인 후 정확한 페이지 수만 조회
- *     → fulfillment_type=FULFILLMENT_BY_SELLER 필터로 CBT만 카운트
  * v35 핵심 수정:
  *   - processWebhookOrder_: pickEnd gate 추가
- *     → pickEnd 없으면 (픽킹 미완료) Webhook 스캔 무시
- *     → pickEnd 있으면 (픽킹 완료) 정상 카운트
- *     → 오전 레이블 출력 시 자동 스캔 문제 완전 해결
- *
  * v34 핵심 수정:
  *   - fetchTikTokAwaitingOrders_ 복원 (v32에서 잘못 제거됨)
- *   - fetchSSOrders_에 TikTok CBT 집계 재통합
- *   - Fetch Orders 버튼 클릭 시 TikTok CBT 주문수 정상 표시
  * v32 핵심 수정:
  *   - 5773(ShipStation TikTok 채널) = TikTok CBT로 올바르게 매핑
- *   - fetchTikTokAwaitingOrders_ 제거 (불필요: 5773 주문은 ShipStation으로 집계)
- *   - Fetch Orders = ShipStation만 조회 (TikTok Shop API 별도 호출 불필요)
  * v25 핵심 수정:
  *   TikTok 공식 서명 규칙 완전 준수:
  *   sign = secret + path + ALL_query_params(정렬,sign/access_token 제외) + body(POST만) + secret
- *   → shop_cipher도 반드시 sign에 포함 (URL에 있는 모든 파라미터)
- *   → POST body도 sign에 포함
- *   시도 이력: v22(shop_cipher O, body X), v23(shop_cipher X, body X),
- *              v24(shop_cipher X, body O), v25(shop_cipher O, body O) ← 정답
  ******************************************************/
 
 const SS_ID = '19uCCGp93QhcE24V9U8Pxj5kb2nDDAuBwY8XDe61qAqM';
@@ -317,7 +324,7 @@ function processWebhookOrder_(orderNumber, skipSummary) {
     return { ok:false, error: e.message };
   }
 }
-  
+
 
 // ★ v73 버그 수정: 지금까지 scanned가 orderCount에 도달하면 항상 자동으로 scanEnd를 찍어서
 //   "Complete"로 자동 전환됐음. 이게 TikTok CBT(실제 개별 바코드 스캔)에서는 맞는 동작이지만,
@@ -328,6 +335,8 @@ function processWebhookOrder_(orderNumber, skipSummary) {
 //   숫자만 채우고 scanEnd는 절대 자동으로 안 찍음. End Scan 버튼이 그대로 남아있어야
 //   매니저/작업자가 실제 발송 여부를 최종 확인·사유 기록할 수 있음.
 //   TikTok CBT(진짜 개별 스캔 완료)는 기존대로 autoClose=true 유지.
+// ⚠ v132 주의: 이 함수는 내부에서 upsertList_(document lock)를 호출한다.
+//   따라서 다른 락을 잡은 임계구역 안에서 호출하면 안 된다(락이 조기 해제됨).
 function updateScanned_(list, orderNumber, store, skipSummary, autoClose) {
   if (autoClose === undefined) autoClose = true; // 기존 호출부(TikTok 등) 하위호환을 위한 기본값
   const now = nowLocal_();
@@ -824,9 +833,12 @@ function pickAssignSheet_(){
 
 function upsertPickAssign_(a){
   if(!a||!a.pgNo||!a.worker) return { ok:false, error:'pgNo and worker required' };
+  // ★ v132: 시트 핸들을 락 밖에서 먼저 확보 (getOrCreateSheet_가 내부에서 ScriptLock을
+  //   잡았다 풀기 때문에, 락 안에서 부르면 락이 조기 해제될 수 있음)
+  const sh=pickAssignSheet_();
   const lock=LockService.getDocumentLock(); lock.waitLock(15000);
   try{
-    const sh=pickAssignSheet_(); const lastRow=sh.getLastRow();
+    const lastRow=sh.getLastRow();
     const id=a.id || (a.pgNo+'_'+a.worker+'_'+(a.date||today_()));
     const pStart=Number(a.pageStart)||0, pEnd=Number(a.pageEnd)||0;
     let targetRow=0;
@@ -873,8 +885,7 @@ function upsertPickAssign_(a){
 // ★ v65 버그 수정: timeVal이 Date 객체로 들어올 때 String(dateObj)의 형식이
 //   "Mon Dec 30 1899 08:37:44 GMT..." 라서 시작 부분이 숫자가 아니어서 기존 정규식이
 //   매칭 실패하고 원본(1899년 그대로)을 그냥 반환하던 문제. Date 객체는 getHours() 등으로
-//   직접 시:분:초를 뽑아내도록 수정. (getPickAssigns_는 우연히 셀이 문자열이라 안 걸렸지만,
-//   getLists_ 쪽 Pick Start/End 칸은 Date 객체라 이 버그가 그대로 드러났음)
+//   직접 시:분:초를 뽑아내도록 수정.
 function reattachTime_(dateStr, timeVal) {
   if (timeVal===null||timeVal===undefined||timeVal==='') return '';
   const pad = n => String(n).padStart(2,'0');
@@ -939,16 +950,28 @@ const SHEET_TT_SKU_SINGLE = 'TT_SkuSingle';
 const SHEET_TT_SKU_SET    = 'TT_SkuSet';
 
 function ttOrdersSheet_()   { return getOrCreateSheet_(SHEET_TT_ORDERS,   ['OrderID','TrackingIDs','Buyer','ItemsJSON','Date','CreatedAt']); }
-function ttProgressSheet_() { return getOrCreateSheet_(SHEET_TT_PROGRESS, ['OrderID','Status','LineScannedJSON','ScannedTrackingJSON','CompletedBy','CompletedTime','UpdatedAt']); }
 function ttSkuSingleSheet_(){ return getOrCreateSheet_(SHEET_TT_SKU_SINGLE, ['SellerSKU','Barcode']); }
 function ttSkuSetSheet_()   { return getOrCreateSheet_(SHEET_TT_SKU_SET,    ['SetSKU','ComponentSKU','Qty','ProductName','Status']); }
+
+/* ── ★ v132 교체: TT_Progress 시트 — OrderID 열 텍스트 서식 고정 ── */
+function ttProgressSheet_() {
+  const sh = getOrCreateSheet_(SHEET_TT_PROGRESS,
+    ['OrderID','Status','LineScannedJSON','ScannedTrackingJSON','CompletedBy','CompletedTime','UpdatedAt']);
+  // ★ v132: 19자리 TikTok 주문번호가 숫자로 저장되면 뒷자리가 뭉개져서(부동소수점
+  //   유효자릿수 15자리 한계) 다음 요청이 같은 주문을 못 찾고 계속 새 행을 만든다.
+  //   A열 전체를 텍스트 서식으로 고정해서 원본 문자열이 그대로 보존되게 한다.
+  try { sh.getRange(1, 1, sh.getMaxRows(), 1).setNumberFormat('@'); } catch (e) {}
+  return sh;
+}
 
 /* ── 주문 업로드 (레이블 PDF 파싱 결과) — 같은 Order ID면 트래킹/아이템 병합 ── */
 function ttUploadOrders_(orders, date) {
   if (!Array.isArray(orders) || orders.length===0) return { ok:false, error:'orders required' };
+  // ★ v132: 시트 핸들을 락 밖에서 먼저 확보 (getOrCreateSheet_의 내부 ScriptLock이
+  //   우리 락을 조기 해제하는 것을 방지)
+  const sh = ttOrdersSheet_();
   const lock = LockService.getDocumentLock(); lock.waitLock(15000);
   try {
-    const sh = ttOrdersSheet_();
     const lastRow = sh.getLastRow();
     const now = nowLocal_();
     let added=0, merged=0;
@@ -1023,11 +1046,14 @@ function ttGetOrders_(date) {
 
 /* ── SKU 마스터 — append-only merge (검색 실패 시에만 보완, 기존 값은 절대 덮어쓰지 않음) ── */
 function ttUploadSkuMaster_(single, sets) {
+  // ★ v132: 시트 핸들을 락 밖에서 먼저 확보
+  const shSingle = ttSkuSingleSheet_();
+  const shSet    = ttSkuSetSheet_();
   const lock = LockService.getDocumentLock(); lock.waitLock(15000);
   try {
     let addedSingle=0, addedSet=0;
     if (Array.isArray(single) && single.length>0) {
-      const sh = ttSkuSingleSheet_(); const lastRow=sh.getLastRow();
+      const sh = shSingle; const lastRow=sh.getLastRow();
       const existing = lastRow>=2 ? sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0])) : [];
       const rows=[];
       single.forEach(s=>{
@@ -1037,7 +1063,7 @@ function ttUploadSkuMaster_(single, sets) {
       if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,2).setValues(rows);
     }
     if (Array.isArray(sets) && sets.length>0) {
-      const sh = ttSkuSetSheet_(); const lastRow=sh.getLastRow();
+      const sh = shSet; const lastRow=sh.getLastRow();
       const existing = lastRow>=2 ? sh.getRange(2,1,lastRow-1,2).getValues().map(r=>r[0]+'|'+r[1]) : [];
       const rows=[];
       sets.forEach(s=>{
@@ -1082,88 +1108,275 @@ function ttLogManualVerify_(orderId, sellerSku, productName, qty, worker, reason
   }catch(e){ return { ok:false, error:e.message }; }
 }
 
-/* ── 스캔 진행상황 (라벨 스캔 → 상품 바코드 스캔, 실시간 서버 동기화) ── */
+/* ════════════════════════════════════════
+   ★ v132 전면 교체: ttScanUpdate_
+   스캔 진행상황 (라벨 스캔 → 상품 바코드 스캔, 실시간 서버 동기화)
+   ────────────────────────────────────────
+   v131까지의 치명적 문제:
+     document lock을 잡은 임계구역 안에서 updateScanned_ → upsertList_ 를 불렀고,
+     upsertList_가 "같은" document lock을 finally로 풀어버려서 바깥 임계구역까지
+     통째로 열렸다. 그 틈으로 같은 주문의 요청 2개가 동시에 들어오면 둘 다
+     indexOf()==-1 로 판단해 각자 appendRow → 한 주문에 행이 2개 이상 생기고,
+     ttGetProgress_는 마지막 행이 이기므로 늦게 붙은 in_progress가 completed를
+     덮어써서 "완료가 미완료로 되돌아가는" 현상이 발생했다.
+   수정:
+     - TT_Progress는 ScriptLock으로 분리, 시트 핸들은 락 밖에서 확보
+     - 픽리스트 카운트 반영(updateScanned_)은 락을 푼 뒤에 실행
+     - 같은 주문 행이 여러 개면 병합(completed 우선/수량 최댓값)하고 1행으로 정리
+════════════════════════════════════════ */
 function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker) {
   if (!orderId) return { ok:false, error:'orderId required' };
-  const lock = LockService.getDocumentLock(); lock.waitLock(15000);
-  try {
-    const sh = ttProgressSheet_(); const lastRow = sh.getLastRow();
-    const ids = lastRow>=2 ? sh.getRange(2,1,lastRow-1,1).getValues().map(r=>String(r[0])) : [];
-    const idx = ids.indexOf(String(orderId));
-    // ★ v91 버그 수정: 이 주문이 이미 이전에 'completed'로 기록되어 있었는지 먼저 확인.
-    //   지금까지는 같은 주문의 완료 이벤트가 재전송/중복 호출되면(네트워크 재시도, 중복
-    //   클릭 등) 매번 scanned를 또 +1 해버려서, TT_Progress 자체는 정확해도 PickList의
-    //   scanned 숫자만 실제 완료 주문 수보다 부풀려지는 문제가 있었음
-    //   (PG00005376: 오더 251개인데 scanned가 계속 올라가던 것과 같은 원인 계열).
-    const wasAlreadyCompleted = idx>=0 && String(sh.getRange(idx+2,2).getValue())==='completed';
 
-    // ★ v115 버그 수정(작업자 피드백: 제품 2개 이상인 주문만 "완료" 됐다가 한참 뒤 다시
-    //   "진행중"으로 돌아가는 현상): 제품이 여러 개인 주문은 바코드를 한 개 스캔할 때마다
-    //   (await 없이) 개별 네트워크 요청이 따로 날아감. 마지막 제품을 스캔한 "완료" 요청이
-    //   먼저 서버에 도착해 처리된 뒤, 그 직전 제품을 스캔했을 때 보낸 "진행중" 요청이
-    //   네트워크 지연/Apps Script 락 대기로 뒤늦게 도착하면, 이 늦은 요청이 방금 저장된
-    //   "완료" 상태를 그대로 덮어써버렸음(요청 도착 순서를 전혀 검증하지 않았기 때문).
-    //   제품 1개짜리 주문은 요청이 딱 1번만 가므로 이 경합 자체가 발생할 수 없어서
-    //   "2개 이상 제품 주문만" 겪는다는 작업자 관찰과 정확히 일치함.
-    //   → 이미 completed로 저장돼 있으면, completed가 아닌 요청은 무시(더 늦게 도착한
-    //   오래된 진행상황으로 되돌리지 않음). completed끼리도 아니고 진행중 요청끼리도,
-    //   스캔된 총 개수가 기존 저장값보다 적으면(=더 오래된 스냅샷) 마찬가지로 무시해서
-    //   더 최신 진행상황이 뒤늦은 요청에 덮어써지는 일이 없도록 방어.
-    if (idx>=0 && status!=='completed') {
-      const sumScanned_=obj=>{ try{ return Object.values(obj||{}).reduce((a,b)=>a+(Number(b)||0),0); }catch(e){ return 0; } };
-      if (wasAlreadyCompleted) {
-        Logger.log('⏸ ttScanUpdate 무시(이미 완료된 주문 — 지연된 진행중 요청): ' + orderId);
-        return { ok:true, ignored:true, reason:'already_completed' };
+  const oid = String(orderId).trim();
+  const incomingStatus = String(status || 'in_progress');
+
+  // ★ v132: 시트 핸들은 반드시 락을 잡기 전에 확보한다.
+  //   getOrCreateSheet_가 내부에서 ScriptLock을 잡았다가 finally로 풀기 때문에,
+  //   락 안에서 호출하면 우리 락까지 같이 풀려버린다(이번 버그와 동일한 함정).
+  const sh = ttProgressSheet_();
+
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); }
+  catch (e) { return { ok:false, error:'lock timeout — 잠시 후 자동 재시도됩니다' }; }
+
+  let justCompleted = false;
+
+  try {
+    const lastRow = sh.getLastRow();
+    const norm = v => {
+      if (v === null || v === undefined) return '';
+      if (typeof v === 'number') return v.toFixed(0);   // 숫자로 저장된 과거 데이터 방어
+      return String(v).trim();
+    };
+
+    // ── 이 주문의 행 전부 찾기 (중복 포함) ──
+    const matchRows = [];
+    let all = [];
+    if (lastRow >= 2) {
+      all = sh.getRange(2, 1, lastRow - 1, 7).getValues();
+      all.forEach((r, i) => { if (norm(r[0]) === oid) matchRows.push(i + 2); });
+    }
+
+    // ── 중복 행 병합: 하나라도 completed면 completed, 라인 수량은 최댓값 ──
+    let mergedStatus = '', mergedLine = {}, mergedTrack = [], mergedBy = '', mergedTime = '';
+    matchRows.forEach(rw => {
+      const c = all[rw - 2];
+      const st = String(c[1] || '');
+      let ls = {}, tk = [];
+      try { ls = JSON.parse(c[2] || '{}'); } catch (e) {}
+      try { tk = JSON.parse(c[3] || '[]'); } catch (e) {}
+      if (st === 'completed') {
+        mergedStatus = 'completed';
+        if (!mergedBy)   mergedBy   = String(c[4] || '');
+        if (!mergedTime) mergedTime = String(c[5] || '');
+      } else if (mergedStatus !== 'completed') {
+        mergedStatus = st || mergedStatus;
       }
-      let existingLineScanned={};
-      try{ existingLineScanned=JSON.parse(sh.getRange(idx+2,3).getValue()||'{}'); }catch(e){}
-      if (sumScanned_(lineScanned) < sumScanned_(existingLineScanned)) {
-        Logger.log('⏸ ttScanUpdate 무시(더 오래된 진행상황 요청 — 최신 값 유지): ' + orderId);
-        return { ok:true, ignored:true, reason:'stale_progress' };
+      Object.keys(ls).forEach(k => {
+        mergedLine[k] = Math.max(Number(mergedLine[k] || 0), Number(ls[k] || 0));
+      });
+      tk.forEach(t => { if (t && mergedTrack.indexOf(t) < 0) mergedTrack.push(t); });
+    });
+
+    const wasAlreadyCompleted = (mergedStatus === 'completed');
+    const sumOf = obj => {
+      try { return Object.keys(obj || {}).reduce((a, k) => a + (Number(obj[k]) || 0), 0); }
+      catch (e) { return 0; }
+    };
+
+    // ── v115 방어 유지: 뒤늦게 도착한 오래된 진행상황이 최신 값을 덮지 않도록 ──
+    if (matchRows.length > 0 && incomingStatus !== 'completed') {
+      if (wasAlreadyCompleted) {
+        Logger.log('⏸ ttScanUpdate 무시(이미 완료된 주문 — 지연된 진행중 요청): ' + oid);
+        return { ok:true, ignored:true, reason:'already_completed', serverStatus:'completed' };
+      }
+      if (sumOf(lineScanned) < sumOf(mergedLine)) {
+        Logger.log('⏸ ttScanUpdate 무시(더 오래된 진행상황 요청 — 최신 값 유지): ' + oid);
+        return { ok:true, ignored:true, reason:'stale_progress', serverLineScanned:mergedLine };
       }
     }
 
+    // ── 최종 저장값 = 서버에 있던 값과 이번 요청의 최댓값 병합 ──
+    const finalLine = {};
+    Object.keys(mergedLine).forEach(k => { finalLine[k] = Number(mergedLine[k]) || 0; });
+    Object.keys(lineScanned || {}).forEach(k => {
+      finalLine[k] = Math.max(Number(finalLine[k] || 0), Number(lineScanned[k]) || 0);
+    });
+    const finalTrack = mergedTrack.slice();
+    (scannedTrackingIds || []).forEach(t => { if (t && finalTrack.indexOf(t) < 0) finalTrack.push(t); });
+
+    const finalStatus = (incomingStatus === 'completed' || wasAlreadyCompleted) ? 'completed' : incomingStatus;
     const now = nowLocal_();
     const row = [
-      String(orderId), String(status||'in_progress'),
-      JSON.stringify(lineScanned||{}), JSON.stringify(scannedTrackingIds||[]),
-      status==='completed' ? String(worker||'') : '',
-      status==='completed' ? now : '',
+      oid, finalStatus,
+      JSON.stringify(finalLine), JSON.stringify(finalTrack),
+      finalStatus === 'completed' ? (mergedBy   || String(worker || '')) : '',
+      finalStatus === 'completed' ? (mergedTime || now) : '',
       now
     ];
-    if (idx>=0) sh.getRange(idx+2,1,1,7).setValues([row]);
-    else sh.appendRow(row);
+
+    // ── 중복 행 정리: 아래쪽부터 지워야 위쪽 행 번호가 밀리지 않는다 ──
+    for (let i = matchRows.length - 1; i >= 1; i--) {
+      sh.deleteRow(matchRows[i]);
+      Logger.log('🧹 중복 진행상황 행 삭제: ' + oid + ' row ' + matchRows[i]);
+    }
+
+    const targetRow = matchRows.length > 0 ? matchRows[0] : (sh.getLastRow() + 1);
+    sh.getRange(targetRow, 1).setNumberFormat('@'); // 주문번호가 숫자로 변환되는 것 방지
+    sh.getRange(targetRow, 1, 1, 7).setValues([row]);
+
+    justCompleted = (finalStatus === 'completed' && !wasAlreadyCompleted);
     bumpVersion_();
 
-    // ★ 완료 시 오늘 날짜 TikTok CBT 픽리스트의 scanned 카운트 자동 반영 (기존 KPI 대시보드 재사용)
-    // ★ v91: 이미 완료 처리됐던 주문의 재전송이면 카운트를 다시 올리지 않음(중복 방지)
-    if (status==='completed' && !wasAlreadyCompleted) {
+  } catch(e) {
+    return { ok:false, error:e.message };
+  } finally {
+    lock.releaseLock();   // ★ 픽리스트 반영 전에 확실히 해제
+  }
+
+  // ── ★ v132 핵심: 픽리스트 카운트 반영은 반드시 락을 "푼 뒤에" 실행한다.
+  //    upsertList_가 자기 락을 잡았다 풀면서 우리 임계구역까지 열어버리던
+  //    구조를 여기서 끊는다. (이 아래가 실패해도 TT_Progress는 이미 확정됨)
+  //    ★ v91: 이미 완료 처리됐던 주문의 재전송이면 카운트를 다시 올리지 않음(중복 방지)
+  if (justCompleted) {
+    try {
       const listsData = getLists_(today_());
       if (listsData.ok) {
         const target = listsData.lists.find(l =>
           l.category==='TikTok CBT' && l.status!=='Complete' && l.status!=='Deleted' &&
           l.pickEnd && (l.scanned||0) < (l.orderCount||0)
         );
-        if (target) updateScanned_(target, orderId, 'TikTok CBT', false);
+        if (target) updateScanned_(target, oid, 'TikTok CBT', false);
       }
+    } catch(e) {
+      Logger.log('⚠ 픽리스트 카운트 반영 실패(진행상황은 정상 저장됨): ' + e.message);
     }
-    return { ok:true };
-  } catch(e){ return { ok:false, error:e.message }; }
-  finally { lock.releaseLock(); }
+  }
+
+  return { ok:true };
 }
 
+/* ════════════════════════════════════════
+   ★ v132 전면 교체: ttGetProgress_
+   중복 행이 남아 있어도 completed가 지지 않도록 병합해서 응답
+   → 이미 꼬여 있는 데이터도 조회 단계에서 스스로 복구된다.
+════════════════════════════════════════ */
 function ttGetProgress_() {
-  const sh = ttProgressSheet_(); const lastRow = sh.getLastRow();
-  if (lastRow<2) return { ok:true, progress:{}, ver:getVersion_() };
-  const data = sh.getRange(2,1,lastRow-1,7).getValues();
+  const sh = ttProgressSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return { ok:true, progress:{}, ver:getVersion_() };
+
+  const data = sh.getRange(2, 1, lastRow - 1, 7).getValues();
+  const norm = v => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'number') return v.toFixed(0);
+    return String(v).trim();
+  };
+
   const progress = {};
-  data.forEach(r=>{
-    let lineScanned={}, scannedTracking=[];
-    try{ lineScanned=JSON.parse(r[2]||'{}'); }catch(e){}
-    try{ scannedTracking=JSON.parse(r[3]||'[]'); }catch(e){}
-    progress[String(r[0])] = { status:String(r[1]), lineScanned, scannedTrackingIds:scannedTracking, completedBy:String(r[4]||''), completedTime:String(r[5]||''), updatedAt:String(r[6]||'') };
+  data.forEach(r => {
+    const id = norm(r[0]);
+    if (!id) return;
+    let lineScanned = {}, scannedTracking = [];
+    try { lineScanned     = JSON.parse(r[2] || '{}'); } catch (e) {}
+    try { scannedTracking = JSON.parse(r[3] || '[]'); } catch (e) {}
+    const cur = {
+      status: String(r[1]), lineScanned, scannedTrackingIds: scannedTracking,
+      completedBy: String(r[4] || ''), completedTime: String(r[5] || ''), updatedAt: String(r[6] || '')
+    };
+    const prev = progress[id];
+    if (!prev) { progress[id] = cur; return; }
+
+    // ★ v132: 같은 주문 행이 여러 개면 "나중 행이 무조건 이기는" 기존 방식 때문에
+    //   늦게 붙은 in_progress 행이 completed를 덮어써서 완료가 되돌아갔다.
+    //   → completed 우선, 라인별 스캔수는 최댓값으로 병합해서 응답한다.
+    const merged = {
+      status: (prev.status === 'completed' || cur.status === 'completed') ? 'completed'
+                                                                         : (cur.status || prev.status),
+      lineScanned: {},
+      scannedTrackingIds: prev.scannedTrackingIds.slice(),
+      completedBy:   prev.completedBy   || cur.completedBy,
+      completedTime: prev.completedTime || cur.completedTime,
+      updatedAt:     cur.updatedAt      || prev.updatedAt
+    };
+    Object.keys(prev.lineScanned).forEach(k => { merged.lineScanned[k] = Number(prev.lineScanned[k]) || 0; });
+    Object.keys(cur.lineScanned).forEach(k => {
+      merged.lineScanned[k] = Math.max(Number(merged.lineScanned[k] || 0), Number(cur.lineScanned[k]) || 0);
+    });
+    cur.scannedTrackingIds.forEach(t => {
+      if (t && merged.scannedTrackingIds.indexOf(t) < 0) merged.scannedTrackingIds.push(t);
+    });
+    progress[id] = merged;
   });
+
   return { ok:true, progress, ver:getVersion_() };
+}
+
+/* ════════════════════════════════════════
+   ★ v132 신규: ttRepairDuplicateProgress
+   ────────────────────────────────────────
+   이미 쌓여 있는 중복 행을 병합해서 주문당 1행으로 정리한다.
+   (completed 우선, 라인별 스캔수 최댓값, 트래킹 합집합)
+   Apps Script 편집기에서 함수 선택 → ▶ 실행 (1회면 충분)
+   실행 로그에 "중복 N행 병합"이 찍힌다.
+════════════════════════════════════════ */
+function ttRepairDuplicateProgress() {
+  const sh = ttProgressSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) { Logger.log('TT_Progress 비어 있음'); return; }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(60000);
+  try {
+    const data = sh.getRange(2, 1, lastRow - 1, 7).getValues();
+    const norm = v => {
+      if (v === null || v === undefined) return '';
+      if (typeof v === 'number') return v.toFixed(0);
+      return String(v).trim();
+    };
+
+    const byId = {};      // id -> 병합 결과
+    const order = [];     // 최초 등장 순서 유지
+    data.forEach(r => {
+      const id = norm(r[0]);
+      if (!id) return;
+      let ls = {}, tk = [];
+      try { ls = JSON.parse(r[2] || '{}'); } catch (e) {}
+      try { tk = JSON.parse(r[3] || '[]'); } catch (e) {}
+      if (!byId[id]) {
+        byId[id] = { status:String(r[1]), line:{}, track:[], by:String(r[4]||''), time:String(r[5]||''), updated:String(r[6]||'') };
+        order.push(id);
+      }
+      const m = byId[id];
+      if (String(r[1]) === 'completed') {
+        m.status = 'completed';
+        if (!m.by)   m.by   = String(r[4] || '');
+        if (!m.time) m.time = String(r[5] || '');
+      }
+      Object.keys(ls).forEach(k => { m.line[k] = Math.max(Number(m.line[k] || 0), Number(ls[k]) || 0); });
+      tk.forEach(t => { if (t && m.track.indexOf(t) < 0) m.track.push(t); });
+      if (String(r[6] || '') > m.updated) m.updated = String(r[6] || '');
+    });
+
+    const rows = order.map(id => {
+      const m = byId[id];
+      return [id, m.status, JSON.stringify(m.line), JSON.stringify(m.track), m.by, m.time, m.updated];
+    });
+
+    const dupCount = (lastRow - 1) - rows.length;
+    sh.getRange(2, 1, lastRow - 1, 7).clearContent();
+    if (rows.length) {
+      sh.getRange(2, 1, rows.length, 1).setNumberFormat('@');
+      sh.getRange(2, 1, rows.length, 7).setValues(rows);
+    }
+    bumpVersion_();
+
+    Logger.log('✅ TT_Progress 정리 완료: ' + rows.length + '개 주문 (중복 ' + dupCount + '행 병합)');
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      rows.length + '개 주문으로 정리 (중복 ' + dupCount + '행 병합)', '✅ TT_Progress 복구', 6);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function ss_() { return SpreadsheetApp.openById(SS_ID); }
@@ -1175,6 +1388,9 @@ function getOrCreateSheet_(name, headers) {
   // ★ v42 버그 수정: 동시에 여러 요청이 몰리면(폴링 여러 개가 동시 실행) 시트가 없는 걸
   //   각자 확인하고 동시에 insertSheet를 호출해서 "이름_conflict12345" 같은 중복 시트가
   //   생기는 문제가 있었음. 락으로 직렬화 + 락 안에서 한 번 더 확인(double-checked locking).
+  // ⚠ v132 주의: 이 함수는 ScriptLock을 잡았다 finally로 푼다. 따라서 다른 코드에서
+  //   ScriptLock을 잡은 임계구역 안에서 이 함수를 호출하면 그 락이 조기 해제된다.
+  //   → 시트 핸들은 항상 락을 잡기 전에 미리 확보할 것.
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -1353,14 +1569,20 @@ function getSt_(l) {
 /* ════════════════════════════════════════
    PICKLISTS CRUD
 ════════════════════════════════════════ */
+// ⚠ v132 주의: 이 함수는 document lock을 잡았다 finally로 푼다.
+//   다른 락을 잡은 임계구역 안에서 호출하면 그 락이 조기 해제된다.
+//   (ttScanUpdate_에서 이 문제가 실제 버그로 드러나 v132에서 호출 위치를 락 밖으로 옮김)
 function upsertList_(list, skipSummary) {
   if (!list || !list.pgNo) return { ok:false, error:'pgNo required' };
+  // ★ v132: 시트 준비/마이그레이션은 락 밖에서 먼저 처리 (내부에서 ScriptLock을 쓰는
+  //   getOrCreateSheet_가 락 안에서 불리지 않도록)
+  ensurePagesColumn_();
+  ensureWorkerDurationsColumn_();
+  const sh = listsSheet_();
+
   const lock = LockService.getDocumentLock();
   lock.waitLock(15000);
   try {
-    ensurePagesColumn_();
-    ensureWorkerDurationsColumn_();
-    const sh = listsSheet_();
     const lastRow = sh.getLastRow();
     const date = list.date || today_();
     let targetRow = 0;
@@ -1819,7 +2041,7 @@ function autoScanPoll() {
         const d = detectChannel_(String(s.orderNumber));
         return d ? d.cat : null;
       }).filter(Boolean))];
-      
+
       cats.forEach(cat => {
         const picking = allLists.lists.filter(l =>
           l.category === cat &&
@@ -2105,12 +2327,10 @@ function fetchTikTokAwaitingOrders_() {
 
 /**
  * ★ 알고 있는 CBT 주문의 모든 필드 확인
- * 577325665620365636 = TikTok Shipping (Upgraded) CBT 확인된 주문
  */
 function debugSpecificCBTOrder() {
   Logger.log('=== CBT 주문 필드 상세 확인 ===');
 
-  // FULFILLMENT_BY_SELLER 전체 조회 후 알려진 CBT 주문 찾기
   const body = {
     order_status:     'AWAITING_SHIPMENT',
     fulfillment_type: 'FULFILLMENT_BY_SELLER',
@@ -2125,7 +2345,6 @@ function debugSpecificCBTOrder() {
   const orders = r.data.orders || [];
   Logger.log('조회된 FULFILLMENT_BY_SELLER 주문: ' + orders.length + '건');
 
-  // 모든 주문의 shipping 관련 필드 분포
   const fields = ['shipping_type','shipping_provider','delivery_option_name',
                   'delivery_option_id','delivery_type','payment_method_name'];
 
@@ -2138,7 +2357,6 @@ function debugSpecificCBTOrder() {
     Logger.log(f + ' 분포: ' + JSON.stringify(dist));
   });
 
-  // packages 필드 확인
   if (orders.length > 0) {
     Logger.log('--- 첫 주문 packages 필드 ---');
     Logger.log(JSON.stringify((orders[0].packages || []).slice(0,1)));
@@ -2146,13 +2364,13 @@ function debugSpecificCBTOrder() {
 
   SpreadsheetApp.getActiveSpreadsheet().toast('Execution log 확인!', '✅ Debug', 5);
 }
+
 /**
  * 결과 = 21건과 다르면 이 함수로 실제 필드값 분포 확인
  */
 function debugTikTokShippingFields() {
   Logger.log('=== debugTikTokShippingFields ===');
 
-  // 전체 50건 조회 (1페이지)
   const body = {
     order_status: 'AWAITING_SHIPMENT',
     page_size:    50,
@@ -2166,7 +2384,6 @@ function debugTikTokShippingFields() {
   const orders = r.data.orders || r.data.order_list || [];
   Logger.log('조회된 주문 수: ' + orders.length);
 
-  // 각 필드별 분포 집계
   const distSP   = {}; // shipping_provider
   const distDON  = {}; // delivery_option_name
   const distDT   = {}; // delivery_type
@@ -2186,7 +2403,6 @@ function debugTikTokShippingFields() {
     distFT[ft]   = (distFT[ft]   || 0) + 1;
     distWH[wh]   = (distWH[wh]   || 0) + 1;
 
-    // 처음 5건 상세 출력
     if (i < 5) {
       Logger.log('--- 주문 ' + (i+1) + ' (id:' + (o.id||o.order_id) + ') ---');
       Logger.log('  shipping_provider: '   + o.shipping_provider);
@@ -2226,7 +2442,6 @@ function setupTikTokCredentials() {
 
 /**
  * ★ v34 디버그: TikTok 주문 상태별 카운트 확인
- * Run → Execution log에서 각 상태별 주문 수 확인
  */
 function testTikTokOrderStatus() {
   Logger.log('=== TikTok Order Status Test ===');
@@ -2260,12 +2475,10 @@ function testTikTokOrderStatus() {
 
 /**
  * ★ v36: TikTok CBT 주문 수 조회 테스트 (FBT 제외 확인용)
- * Run → Execution log에서 FBT/CBT 분포 확인
  */
 function testFetchTikTok() {
   Logger.log('=== testFetchTikTok (v36) ===');
 
-  // 토큰 먼저 확인
   const tokenOk = checkTikTokToken();
   if (!tokenOk) {
     Logger.log('❌ 토큰 만료 → saveTikTokAccessToken() 실행 후 재시도');
@@ -2293,7 +2506,6 @@ function testFetchTikTok() {
  * ★ shop_cipher 강제 재저장 (연결 오류 시 실행)
  */
 function resetTikTokShopCipher() {
-  // API Testing Tool에서 확인한 최신 shop_cipher
   const CIPHER = 'TTP_vpjPSAAAAACt576hEbNPzCY1J2oQ_2fD';
   PROP.setProperty('TT_SHOP_CIPHER', CIPHER);
   Logger.log('✅ shop_cipher 재저장 완료: ' + CIPHER);
@@ -2317,8 +2529,6 @@ function saveTikTokAccessToken() {
 
 /**
  * ★ v29: Refresh Token 저장 (최초 1회)
- * partner.tiktokshop.com → API Testing Tool
- * → Get shop authorization → 응답 JSON에서 refresh_token 복사
  */
 function saveRefreshToken() {
   // ★ 여기에 refresh_token 붙여넣기
@@ -2341,8 +2551,6 @@ function saveRefreshToken() {
 
 /**
  * ★ v29: TikTok Access Token 자동 갱신
- * refresh_token으로 새 access_token 발급
- * → 3.5시간마다 자동 실행 (setupTikTokTokenRefreshTrigger로 등록)
  */
 function autoRefreshTikTokToken() {
   const appKey      = PROP.getProperty('TT_APP_KEY')      || '';
@@ -2385,12 +2593,11 @@ function autoRefreshTikTokToken() {
 
     if (data.code !== 0 || !data.data) {
       Logger.log('❌ Token refresh failed: ' + (data.message || 'code:' + data.code));
-      // 갱신 실패 시 이메일 알림 (선택적)
       return { ok: false, error: data.message || 'code:' + data.code };
     }
 
     const newAccessToken  = data.data.access_token;
-    const newRefreshToken = data.data.refresh_token || refreshToken; // refresh_token도 갱신될 수 있음
+    const newRefreshToken = data.data.refresh_token || refreshToken;
 
     PROP.setProperty('TT_ACCESS_TOKEN',  newAccessToken);
     PROP.setProperty('TT_TOKEN_TIME',    String(Date.now()));
@@ -2407,11 +2614,9 @@ function autoRefreshTikTokToken() {
 }
 
 /**
- * ★ v29: 토큰 자동 갱신 트리거 등록 (3.5시간마다)
- * 최초 1회 실행하면 이후 자동 갱신됨
+ * ★ v29: 토큰 자동 갱신 트리거 등록 (2시간마다)
  */
 function setupTikTokTokenRefreshTrigger() {
-  // 기존 트리거 삭제
   ScriptApp.getProjectTriggers().forEach(t => {
     if (t.getHandlerFunction() === 'autoRefreshTikTokToken') {
       ScriptApp.deleteTrigger(t);
@@ -2419,8 +2624,6 @@ function setupTikTokTokenRefreshTrigger() {
     }
   });
 
-  // 새 트리거: 3.5시간(210분)마다 실행
-  // GAS는 정확히 210분을 지원 안 하므로 120분(2시간)으로 설정 (더 안전)
   ScriptApp.newTrigger('autoRefreshTikTokToken')
     .timeBased()
     .everyMinutes(120)  // 2시간마다 (4시간 만료 전에 갱신)
@@ -2449,7 +2652,6 @@ function removeTikTokTokenRefreshTrigger() {
 
 /**
  * ★ v24 핵심 수정: TikTok Shop API HMAC-SHA256 서명
- * POST 요청은 body(JSON 문자열)도 sign에 포함해야 함!
  *   GET:  secret + path + sorted_params + secret
  *   POST: secret + path + sorted_params + body_json + secret
  */
@@ -2518,7 +2720,6 @@ function getTikTokShopCipher_() {
 
 /**
  * TikTok Shop API 호출 (POST) - v202309
- * shop_cipher를 동적으로 가져와서 sign에 포함
  */
 function callTikTokAPI_(path, body) {
   const appKey      = PROP.getProperty('TT_APP_KEY')      || '';
@@ -2530,7 +2731,6 @@ function callTikTokAPI_(path, body) {
   }
 
   // ★ v31 fix: 저장된 shop_cipher 직접 사용 (동적 조회 제거)
-  // GET /authorization/202309/shops 가 불안정하므로 Script Properties 값 사용
   const shopCipher = PROP.getProperty('TT_SHOP_CIPHER') || '';
   if (!shopCipher) {
     return { ok:false, error:'shop_cipher not set. resetTikTokShopCipher() 실행 필요' };
@@ -2540,11 +2740,9 @@ function callTikTokAPI_(path, body) {
   const timestamp = String(Math.floor(Date.now() / 1000));
 
   // ★ v27 수정: page_size, cursor는 URL 쿼리 파라미터로 이동
-  // TikTok POST: 페이지네이션 파라미터는 URL에, 필터 파라미터는 body에
   const pageSize = body.page_size || 50;
   const cursor   = body.cursor    || '';
 
-  // sign 계산용 params (URL에 들어가는 모든 파라미터 포함)
   const signParamsBase = {
     app_key:     appKey,
     shop_cipher: shopCipher,
@@ -2553,12 +2751,10 @@ function callTikTokAPI_(path, body) {
   };
   if (cursor) signParamsBase.cursor = cursor;
 
-  // body에서 페이지네이션 제거, 필터만 남김
   const bodyFilters = Object.assign({}, body);
   delete bodyFilters.page_size;
   delete bodyFilters.cursor;
 
-  // order_status는 string으로 (TikTok API 요구)
   if (bodyFilters.order_status !== undefined) {
     bodyFilters.order_status = String(bodyFilters.order_status);
   }
@@ -2604,7 +2800,6 @@ function callTikTokAPI_(path, body) {
       const refreshResult = autoRefreshTikTokToken();
       if (refreshResult.ok) {
         Logger.log('✅ 토큰 갱신 성공, API 재시도...');
-        // 재귀 호출 대신 간단히 에러 반환 (다음 폴링 때 새 토큰으로 자동 성공)
         return { ok:false, error:'TOKEN_REFRESHED_RETRY_NEXT', code: data.code };
       }
       return { ok:false, error:'TOKEN_EXPIRED', code: data.code };
@@ -2656,14 +2851,12 @@ function debugTikTokSign() {
 
 /**
  * ★ v22 신규: POST sign 전용 디버그
- * 방법 A (shop_cipher 포함) vs 방법 B (shop_cipher 제외) 동시 테스트
- * → 어떤 방식이 맞는지 확인
  */
 function debugTikTokSignPost() {
   const appKey      = PROP.getProperty('TT_APP_KEY')      || '';
   const appSecret   = PROP.getProperty('TT_APP_SECRET')   || '';
   const accessToken = PROP.getProperty('TT_ACCESS_TOKEN') || '';
-  const shopCipher  = getTikTokShopCipher_();  // 최신 cipher 가져오기
+  const shopCipher  = getTikTokShopCipher_();
 
   Logger.log('=== TikTok POST Sign Debug (v22) ===');
   Logger.log('App Key    : ' + appKey);
@@ -2698,14 +2891,14 @@ function debugTikTokSignPost() {
   });
   Logger.log('응답 A: ' + respA.getContentText().slice(0, 400));
 
-  // ─── 방법 B: shop_cipher 제외 (sign에서만 제외, URL에는 포함) ───
-  Utilities.sleep(1000); // timestamp 겹치지 않도록
+  // ─── 방법 B: shop_cipher 서명 제외 ───
+  Utilities.sleep(1000);
   const tsB = String(Math.floor(Date.now() / 1000));
-  const signParamsB = { app_key: appKey, timestamp: tsB };  // shop_cipher 없이 서명
+  const signParamsB = { app_key: appKey, timestamp: tsB };
   const signB = signTikTokRequest_(path, signParamsB, appSecret, JSON.stringify(body));
   const queryB = [
     'app_key='      + encodeURIComponent(appKey),
-    'shop_cipher='  + encodeURIComponent(shopCipher),  // URL에는 포함
+    'shop_cipher='  + encodeURIComponent(shopCipher),
     'timestamp='    + encodeURIComponent(tsB),
     'access_token=' + encodeURIComponent(accessToken),
     'sign='         + encodeURIComponent(signB),
@@ -2859,13 +3052,6 @@ function pollTikTokOrders_(date) {
 }
 
 /**
- * TikTok 연결 테스트 (수동 실행)
- */
-/**
- * TikTok 토큰 만료 여부 확인
- * Run → log에서 토큰 상태 확인
- */
-/**
  * TikTok 토큰 만료 여부 확인 + 만료 30분 전 이메일 알림
  */
 function checkTikTokToken() {
@@ -2884,7 +3070,6 @@ function checkTikTokToken() {
   Logger.log('Elapsed : ' + elapsedH + '시간 (남은시간: ' + remainMin + '분)');
 
   if (elapsedMs > EXPIRE_MS) {
-    // ★ 만료됨 → 이메일 알림
     Logger.log('⚠️ 토큰 만료!');
     sendTokenAlertEmail_('만료', 0);
     SpreadsheetApp.getActiveSpreadsheet().toast(
@@ -2894,7 +3079,6 @@ function checkTikTokToken() {
     return false;
 
   } else if (elapsedMs > WARN_MS) {
-    // ★ 만료 30분 전 → 경고 이메일
     Logger.log('⚠️ 토큰 만료 ' + remainMin + '분 전! 미리 갱신 권장');
     sendTokenAlertEmail_('경고', remainMin);
     SpreadsheetApp.getActiveSpreadsheet().toast(
@@ -2938,7 +3122,6 @@ function sendTokenAlertEmail_(type, remainMin) {
 
 /**
  * ★ 토큰 만료 체크 트리거 설정 (30분마다 자동 체크)
- * 최초 1회 실행하면 이후 자동으로 만료 전 이메일 알림
  */
 function setupTokenCheckTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => {
@@ -2959,7 +3142,6 @@ function setupTokenCheckTrigger() {
 function testTikTokConnection() {
   Logger.log('=== testTikTokConnection (v32) ===');
 
-  // ★ 먼저 토큰 만료 확인
   const tokenOk = checkTikTokToken();
   if (!tokenOk) {
     Logger.log('❌ 토큰 만료로 테스트 중단. saveTikTokAccessToken() 실행 후 재시도');
@@ -2984,16 +3166,9 @@ function testTikTokConnection() {
 }
 
 /**
- * ★ CBT 필드 분포 완전 진단 — 필터 없이 AWAITING_SHIPMENT 전체 조회
- * fulfillment_type, delivery_option_name 분포 확인 → 214건 식별 기준 찾기
+ * ★ CBT 필드 분포 완전 진단
  */
 function testCBTFieldDistribution() {
-  const appKey      = PROP.getProperty('TT_APP_KEY')      || '';
-  const appSecret   = PROP.getProperty('TT_APP_SECRET')   || '';
-  const accessToken = PROP.getProperty('TT_ACCESS_TOKEN') || '';
-  const shopCipher  = PROP.getProperty('TT_SHOP_CIPHER')  || '';
-
-  // page_size를 body에 포함 (기존 callTikTokAPI_ 방식과 동일하게)
   const body = {
     order_status: 'AWAITING_SHIPMENT',
     page_size:    50,
@@ -3034,18 +3209,16 @@ function testCBTFieldDistribution() {
 
 /**
  * ★ PickLists 중복 행 정리
- * 같은 pgNo+date 조합이 여러 행 있으면 마지막 행만 남기고 나머지 삭제
- * GAS 에디터에서 수동 실행
+ * 같은 pgNo+date 조합이 여러 행 있으면 마지막 행만 남기고 나머지 Archived 처리
  */
 function deduplicatePickLists() {
   const sh = listsSheet_();
   const lastRow = sh.getLastRow();
   if (lastRow < 2) { Logger.log('No data'); return; }
-  
+
   const data = sh.getRange(2, 1, lastRow-1, 19).getValues();
   const seen = {}; // pgNo_date → last row index
-  
-  // 마지막 등장 위치 기록
+
   data.forEach((row, i) => {
     const pgNo = String(row[1]);
     const rawDate = row[0];
@@ -3057,8 +3230,7 @@ function deduplicatePickLists() {
       seen[pgNo + '_' + date] = i;
     }
   });
-  
-  // 중복 행 Archived 처리 (v49: Status는 안 건드리고 Archived만 표시)
+
   ensureArchivedColumns_();
   const archivedCol = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].indexOf('Archived') + 1;
   let count = 0;
@@ -3072,7 +3244,6 @@ function deduplicatePickLists() {
     if (pgNo && status !== 'Deleted') {
       const key = pgNo + '_' + date;
       if (seen[key] !== i) {
-        // 마지막 행이 아니면 Deleted 처리
         sh.getRange(2+i, archivedCol).setValue('TRUE');
         sh.getRange(2+i, archivedCol).setBackground('#FFE8CC').setFontColor('#7A3A00');
         count++;
@@ -3080,7 +3251,7 @@ function deduplicatePickLists() {
       }
     }
   });
-  
+
   bumpVersion_();
   SpreadsheetApp.getActiveSpreadsheet().toast(
     count + '개 중복 행 정리 완료!', '✅ 중복 정리', 5
@@ -3089,13 +3260,12 @@ function deduplicatePickLists() {
 }
 
 function testWebhookSimulate() {
-  // ShipStation이 보내는 형식 그대로 시뮬레이션
   const fakePayload = {
     resource_type: 'SHIP_NOTIFY',
     resource_url: '',
     orderNumber: 'MD-2026-152074'  // 실제 오늘 주문번호로 변경
   };
-  
+
   const result = handleSSWebhook_(fakePayload);
   Logger.log('결과: ' + JSON.stringify(result));
 }
@@ -3108,7 +3278,6 @@ function testScanToVerifyAPI() {
 
   Logger.log('=== Scan to Verify API 테스트 시작: ' + today + ' ===');
 
-  // ① shipDate 기준 (기존 방식) - 오늘 ship된 것
   const url1 = 'https://ssapi.shipstation.com/shipments'
     + '?shipDateStart=' + today + '%2000%3A00%3A00'
     + '&shipDateEnd='   + today + '%2023%3A59%3A59'
@@ -3122,7 +3291,6 @@ function testScanToVerifyAPI() {
   const d1 = JSON.parse(r1.getContentText());
   Logger.log('① shipDate 기준 오늘: ' + (d1.total || 0) + '건');
 
-  // ② 어제 shipDate + 오늘 voided 아닌 것 (어제 라벨, 오늘 스캔 케이스)
   const yesterday = getYesterday_();
   const url2 = 'https://ssapi.shipstation.com/shipments'
     + '?shipDateStart=' + yesterday + '%2000%3A00%3A00'
@@ -3137,18 +3305,16 @@ function testScanToVerifyAPI() {
   const d2 = JSON.parse(r2.getContentText());
   Logger.log('② shipDate 기준 어제: ' + (d2.total || 0) + '건');
 
-  // 어제 shipment 첫 번째 항목의 모든 필드 확인
   if (d2.shipments && d2.shipments.length > 0) {
     const s = d2.shipments[0];
     Logger.log('--- 어제 shipment 샘플 필드 ---');
     Logger.log('orderNumber: '    + s.orderNumber);
     Logger.log('shipDate: '       + s.shipDate);
     Logger.log('createDate: '     + s.createDate);
-    Logger.log('modifyDate: '     + s.modifyDate);    // ★ 수정날짜 = 스캔날짜?
+    Logger.log('modifyDate: '     + s.modifyDate);
     Logger.log('voided: '         + s.voided);
     Logger.log('trackingNumber: ' + s.trackingNumber);
 
-    // ★ 핵심: modifyDate가 오늘이면 = 오늘 스캔된 것
     const modDate = s.modifyDate ? String(s.modifyDate).slice(0,10) : '';
     Logger.log('modifyDate 날짜 부분: ' + modDate + ' (오늘: ' + today + ')');
     if (modDate === today) {
@@ -3162,7 +3328,6 @@ function testScanToVerifyAPI() {
 
 /* ────────────────────────────────────────
    테스트 2: modifyDate 기준으로 오늘 스캔된 주문 조회
-   → Scan to Verify 시점 = modifyDate 인지 확인
 ──────────────────────────────────────── */
 function testModifyDateFilter() {
   const key    = PROP.getProperty('SS_API_KEY')    || '';
@@ -3172,7 +3337,6 @@ function testModifyDateFilter() {
 
   Logger.log('=== modifyDate 기준 테스트: ' + today + ' ===');
 
-  // modifyDate 기준으로 오늘 수정된 shipments 조회
   const url = 'https://ssapi.shipstation.com/shipments'
     + '?modifyDateStart=' + today + '%2000%3A00%3A00'
     + '&modifyDateEnd='   + today + '%2023%3A59%3A59'
@@ -3188,7 +3352,6 @@ function testModifyDateFilter() {
   Logger.log('modifyDate 기준 오늘 수정된 shipments: ' + (data.total || 0) + '건');
 
   if (data.shipments && data.shipments.length > 0) {
-    // 채널별 카운트
     const catCount = {};
     data.shipments.forEach(s => {
       if (s.voided) return; // voided 제외
@@ -3202,7 +3365,6 @@ function testModifyDateFilter() {
       Logger.log(cat + ': ' + cnt + '건');
     });
 
-    // 첫 번째 항목 상세
     const s0 = data.shipments[0];
     Logger.log('--- 첫 번째 샘플 ---');
     Logger.log('orderNumber: ' + s0.orderNumber);
@@ -3217,7 +3379,6 @@ function testModifyDateFilter() {
 
 /* ────────────────────────────────────────
    테스트 3: Orders API - lastModified 기준
-   → 오늘 상태가 변경된 주문 조회 (Scan to Verify 시)
 ──────────────────────────────────────── */
 function testOrderModifyDate() {
   const key    = PROP.getProperty('SS_API_KEY')    || '';
@@ -3255,7 +3416,6 @@ function testOrderModifyDate() {
       Logger.log(cat + ': ' + cnt + '건');
     });
 
-    // 첫 번째 항목
     const o0 = data.orders[0];
     Logger.log('--- 첫 번째 샘플 ---');
     Logger.log('orderNumber: ' + o0.orderNumber);
@@ -3268,9 +3428,7 @@ function testOrderModifyDate() {
 }
 
 /* ────────────────────────────────────────
-   ★ v50 진단용: /shipments API 원본 응답에서 "Scan To Verify" 관련
-   필드가 실제로 존재하는지 직접 확인. GAS 에디터에서 이 함수를 실행하고
-   Execution log 전체를 복사해서 확인하면 됨 (필드명을 추측하지 않고 직접 확인).
+   ★ v50 진단용: /shipments API 원본 응답 확인
 ──────────────────────────────────────── */
 function testShipmentVerifiedField() {
   const key    = PROP.getProperty('SS_API_KEY')    || '';
@@ -3343,7 +3501,6 @@ function testFetchVerifiedV40() {
 
   Logger.log('✅ 총 조회: ' + result.shipments.length + '건');
 
-  // 채널별 카운트
   const catCount = {};
   result.shipments.forEach(s => {
     const detected = detectChannel_(String(s.orderNumber));
@@ -3356,7 +3513,6 @@ function testFetchVerifiedV40() {
     Logger.log(cat + ': ' + cnt + '건');
   });
 
-  // 이미 스캔 로그에 있는 것 확인
   const logData = getScanLog_(date);
   const alreadyScanned = new Set(
     (logData.entries || []).map(e => String(e.barcode))
@@ -3368,7 +3524,6 @@ function testFetchVerifiedV40() {
   );
   Logger.log('신규 처리 필요: ' + newOrders.length + '건');
 
-  // 채널별 신규 카운트
   const newCatCount = {};
   newOrders.forEach(s => {
     const detected = detectChannel_(String(s.orderNumber));
