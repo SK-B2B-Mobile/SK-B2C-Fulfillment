@@ -1,5 +1,17 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v134
+ * SK B2C Fulfillment — Google Apps Script v135
+ *
+ * ★ v135 핵심 수정 (Scan Station과 Records의 스캔 숫자가 어긋나는 버그):
+ *   여러 작업자가 거의 동시에 스캔을 완료하면, updateScanned_가 "+1"을 락을 잡기 전에
+ *   미리 계산해서 upsertList_로 넘기고 있었다. 이 +1은 몇 초 전에 읽은 스냅샷(list.scanned)
+ *   기준이라, 동시에 완료된 여러 건이 전부 같은 오래된 값에서 +1을 계산해 서로의 증가분을
+ *   덮어썼다(lost update). 개별 주문의 완료 여부(TT_Progress, Scan Station)는 항상 정확했지만,
+ *   PickLists의 Scanned 누적 합계만 실제보다 적게 집계되는 원인이 이것이었다
+ *   (예: 313개 전부 스캔 완료인데 Records엔 289로 표시).
+ *   → updateScanned_는 이제 "scanIncrement:1"이라는 증분 요청만 보내고, upsertList_가
+ *   document lock 안에서 그 순간 시트에 저장된 최신 scanned 값을 직접 읽어 더한다. 여러 건이
+ *   동시에 몰려도 락으로 완전히 직렬화되므로 유실 없이 전부 반영된다. autoClose(자동완료)
+ *   판정도 같은 이유로 증분 반영 후의 최종값 기준으로 옮겼다.
  *
  * ★ v134 수정:
  *   - setupTTArchiveTrigger() / removeTTArchiveTrigger() 신규 추가.
@@ -356,17 +368,31 @@ function processWebhookOrder_(orderNumber, skipSummary) {
 function updateScanned_(list, orderNumber, store, skipSummary, autoClose) {
   if (autoClose === undefined) autoClose = true; // 기존 호출부(TikTok 등) 하위호환을 위한 기본값
   const now = nowLocal_();
-  const newScanned = (list.scanned || 0) + 1;
-  const oc = list.orderCount || 0;
 
+  // ★ v135 버그 수정 (레이스 컨디션 — 동시 완료 시 카운트 유실):
+  //   기존엔 여기서 newScanned = list.scanned+1 을 "락을 잡기도 전에" 미리 계산했다.
+  //   list.scanned는 몇 초 전에 읽은 스냅샷(getLists_)이라서, 여러 주문이 거의 동시에
+  //   완료되면(예: TikTok CBT를 여러 작업자가 동시에 스캔) 각 호출이 전부 같은 "오래된"
+  //   scanned 값을 기준으로 +1을 계산해 똑같은 결과를 만들었다. upsertList_는 "더 큰 값을
+  //   유지"하는 보호만 있었지 "값을 더하는" 로직이 아니었기 때문에, 나중에 락을 획득한
+  //   호출들의 +1은 실제로 반영되지 않고 조용히 사라졌다(lost update).
+  //   스캔 자체는 TT_Progress에 전부 정확히 기록되므로 Scan Station 진행률(개별 주문 기준)은
+  //   맞는데, Records의 PickLists Scanned 합계(누적 카운터)만 실제보다 적게 나오는 현상이
+  //   바로 이것이었다 (예: 313개 전부 스캔 완료됐는데 Records엔 289로 표시).
+  //   → 이제 "+1"이라는 증분값만 넘긴다. 실제 최신값을 읽어 더하는 것은 upsertList_가
+  //   document lock 안에서(다른 동시 호출과 완전히 직렬화된 상태로) 수행하므로 몇 건이
+  //   동시에 몰려도 유실 없이 전부 반영된다.
   const updated = {
     ...list,
-    scanned: newScanned,
+    scanIncrement: 1,
+    autoCloseIfFull: autoClose,
+    scanEndTime: now,
     scanStart: list.scanStart || now,
-    scanEnd: (autoClose && oc > 0 && newScanned >= oc) ? now : (list.scanEnd || null),
   };
 
   const r = upsertList_(updated, skipSummary);
+  const newScanned = (r && r.ok && r.scanned != null) ? r.scanned : ((list.scanned||0)+1);
+  const oc = list.orderCount || 0;
 
   addScanLog_({
     barcode: orderNumber,
@@ -1637,14 +1663,38 @@ function upsertList_(list, skipSummary) {
     if (targetRow) {
       const existingRow = sh.getRange(targetRow, 1, 1, 11).getValues()[0];
       const existingScanned = Number(existingRow[5])||0;
-      if (!list.forceScanned && existingScanned > finalScanned) finalScanned = existingScanned;
+      // ★ v135 버그 수정 (레이스 컨디션): updateScanned_는 "+1" 증분만 요청하고, 실제
+      //   기준값은 여기서 락을 잡은 뒤 시트에서 방금 읽은 existingScanned로 삼는다.
+      //   전에는 호출자가 몇 초 전 스냅샷(getLists_)의 scanned에 자기가 미리 +1을 계산해서
+      //   보냈는데, 동시에 여러 주문이 완료되면 다들 같은 "오래된" 값에서 +1을 계산해 결국
+      //   같은 숫자를 만들었고, 이후 "더 큰 값만 유지"하는 보호 로직 때문에 나중 호출들의
+      //   증가분이 조용히 사라졌다(lost update). TikTok CBT처럼 여러 작업자가 동시에 스캔을
+      //   완료하는 상황에서 Scan Station(개별 주문 기준, 정확)과 Records의 Scanned 합계
+      //   (누적 카운터, 유실 가능)가 어긋나는 원인이 바로 이것이었다.
+      //   → 이제 "+1"이라는 증분값만 넘기면, 각 호출이 락 안에서 자기 차례에 최신값을 읽어
+      //   더하므로 동시에 몇 건이 몰려도 유실 없이 전부 반영된다.
+      if (list.scanIncrement) {
+        finalScanned = existingScanned + Number(list.scanIncrement);
+      } else if (!list.forceScanned && existingScanned > finalScanned) {
+        finalScanned = existingScanned;
+      }
       if (!finalPickStart  && existingRow[7])  finalPickStart  = existingRow[7];
       if (!finalPickEnd    && existingRow[8])  finalPickEnd    = existingRow[8];
       if (!finalScanStart  && existingRow[9])  finalScanStart  = existingRow[9];
       if (!finalScanEnd    && existingRow[10]) finalScanEnd    = existingRow[10];
       if (!finalPages) { const existingPages = Number(sh.getRange(targetRow,20).getValue())||0; if (existingPages) finalPages = existingPages; }
       if (finalWorkerDur==null) { finalWorkerDur = sh.getRange(targetRow,21).getValue()||''; }
+    } else if (list.scanIncrement) {
+      finalScanned = Number(list.scanIncrement); // 신규 행에서의 증분 호출(정상 흐름에선 발생하지 않음)
     }
+    // ★ v135: 자동완료(scanEnd) 판정도 "증분이 반영된 최종 값" 기준으로 한다. 기존엔 호출 전에
+    //   미리 계산한(스냅샷 기반) 값으로 판정해서 동시 완료 상황에서 scanEnd 시점이 부정확할
+    //   수 있었다.
+    if (list.autoCloseIfFull && !finalScanEnd) {
+      const oc = Number(list.orderCount)||0;
+      if (oc > 0 && finalScanned >= oc) finalScanEnd = list.scanEndTime || nowLocal_();
+    }
+    const finalListForStatus = {...list,scanned:finalScanned,pickStart:finalPickStart,pickEnd:finalPickEnd,scanStart:finalScanStart,scanEnd:finalScanEnd};
 
     const rowData = [
       date, String(list.pgNo||''), String(list.category||''),
@@ -1653,7 +1703,7 @@ function upsertList_(list, skipSummary) {
       fmtTime_(finalPickStart), fmtTime_(finalPickEnd),
       fmtTime_(finalScanStart), fmtTime_(finalScanEnd),
       dur_(finalPickStart,finalPickEnd,date), dur_(finalScanStart,finalScanEnd,date),
-      getSt_({...list,scanned:finalScanned,pickStart:finalPickStart,pickEnd:finalPickEnd,scanStart:finalScanStart,scanEnd:finalScanEnd}),
+      getSt_(finalListForStatus),
       String(list.memo||''), String(list.skipReason||''), createdAt, now, String(list.id||''), finalPages,
       String(finalWorkerDur||'')
     ];
@@ -1670,12 +1720,13 @@ function upsertList_(list, skipSummary) {
       'Pending':   {bg:'#F2F2F2', tx:'#595959'},
       'Deleted':   {bg:'#FFCCCC', tx:'#9C0006'},
     };
-    const sc = statusColors[getSt_(list)] || {bg:null, tx:null};
+    // ★ v135: 색상 판정도 스냅샷(list)이 아닌 finalListForStatus(락 안에서 확정된 값)로 통일
+    const sc = statusColors[getSt_(finalListForStatus)] || {bg:null, tx:null};
     sh.getRange(row,1,1,18).setBackground(null).setFontColor(null);
     sh.getRange(row,14).setBackground(sc.bg).setFontColor(sc.tx).setFontWeight('bold');
     bumpVersion_();
     if (!skipSummary) updateDailySummary_(date);
-    return { ok:true, row };
+    return { ok:true, row, scanned: finalScanned };
   } catch(e) { return { ok:false, error:e.message }; }
   finally { lock.releaseLock(); }
 }
