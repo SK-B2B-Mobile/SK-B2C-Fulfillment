@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v138</title>
+<title>SK B2C Fulfillment v139</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -592,7 +592,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v138';
+const APP_VERSION='v139';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1392,6 +1392,7 @@ function App(){
   const [ttPageSize,setTtPageSize]=useState(10);
   const [ttPage,setTtPage]=useState(0);
   const [ttManualFor,setTtManualFor]=useState(null); // 수동 확인 대상 라인 {sellerSku,productName,remain}
+  const [ttManualLineIdx,setTtManualLineIdx]=useState(null); // ★ v139: 정확히 클릭한 줄의 인덱스(동일 SKU 여러 줄 대비)
   // ★ v89: 등록되지 않은 바코드 스캔 시, 자동으로 수동확인(Manual Verify)로 안내하기 위한 상태
   const [ttPickLineBarcode,setTtPickLineBarcode]=useState(null); // 여러 제품 중 어떤 것인지 고를 때의 바코드값
   const [ttManualQty,setTtManualQty]=useState(1);
@@ -1816,15 +1817,30 @@ function App(){
 
   /* ── 2단계: 상품 바코드 스캔 ── */
   /* ── 수동 확인 (바코드 불일치 등, 제품은 맞지만 등록된 바코드와 다를 때) ── */
-  const openManualVerify=line=>{
+  // ★ v139 버그 수정 (치명적): 같은 Seller SKU가 두 줄 이상 있는 주문(예: 라벨 중복 인쇄로
+  // 아직 병합 전인 주문, 또는 정상적으로 같은 부품이 다른 세트에 또 쓰이는 경우)에서
+  // Manual 버튼을 누르면, 실제로 클릭한 줄이 아니라 "그 SKU로 처음 찾아지는 줄"에
+  // 수량이 잘못 적용되고 있었다 — openManualVerify(line)이 줄 객체만 저장하고,
+  // submitManualVerify가 그 객체의 sellerSku로 다시 lines.findIndex(...)해서 위치를
+  // "다시 찾다 보니" 첫 번째로 일치하는 줄(이미 완료된 줄일 수도 있음)을 가리켜버렸다.
+  // 실사례: 3번째 줄(0/1 Pending)에서 Manual을 눌렀는데 1번째 줄(이미 1/1 Done)이
+  // 2/1로 바뀌고 정작 3번째 줄은 그대로 0/1로 남음.
+  // → 클릭한 줄의 "인덱스"를 그 자리에서 바로 기억해서, 나중에 이름으로 다시 찾지 않고
+  //   그 인덱스를 그대로 사용한다.
+  const openManualVerify=(line,lineIdx)=>{
     const remain=Math.max(0,line.required-line.scanned);
-    setTtManualFor(line);setTtManualQty(remain>0?remain:1);setTtManualReason('');
+    setTtManualFor(line);setTtManualLineIdx(lineIdx);setTtManualQty(remain>0?remain:1);setTtManualReason('');
   };
   const submitManualVerify=()=>{
     if(!ttManualFor||!ttManualReason.trim()||!(+ttManualQty>0)||!ttCurrentOrder)return;
     const qty=Math.min(+ttManualQty,ttManualFor.required-ttManualFor.scanned);
-    if(qty<=0){setTtManualFor(null);return;}
-    const lineIdx=ttCurrentOrder.lines.findIndex(l=>l.sellerSku===ttManualFor.sellerSku);
+    if(qty<=0){setTtManualFor(null);setTtManualLineIdx(null);return;}
+    // ★ v139: 이름(SKU) 재검색 대신, 열 때 기억해둔 정확한 인덱스를 그대로 사용.
+    //   혹시 인덱스가 어긋난 상황(줄 순서가 그 사이 바뀐 등)이면 안전하게 SKU 검색으로 폴백.
+    let lineIdx=ttManualLineIdx;
+    if(lineIdx==null||lineIdx<0||lineIdx>=ttCurrentOrder.lines.length||ttCurrentOrder.lines[lineIdx].sellerSku!==ttManualFor.sellerSku){
+      lineIdx=ttCurrentOrder.lines.findIndex(l=>l.sellerSku===ttManualFor.sellerSku);
+    }
     if(lineIdx<0)return;
     const updated={...ttCurrentOrder,lines:ttCurrentOrder.lines.map((l,i)=>i===lineIdx?{...l,scanned:l.scanned+qty,manualQty:(l.manualQty||0)+qty}:l)};
     setTtCurrentOrder(updated);
@@ -1846,7 +1862,7 @@ function App(){
       setTtProgress(p=>({...p,[updated.orderId]:{status:'in_progress',lineScanned,scannedTrackingIds:Array.from(updated.scannedTrackingIds)}}));
       ttSyncWithRetry('ttScanUpdate',payload).then(r=>{if(!r.ok)ttHandleSyncFailure(updated.orderId,'ttScanUpdate',payload);});
     }
-    setTtManualFor(null);setTtManualReason('');
+    setTtManualFor(null);setTtManualLineIdx(null);setTtManualReason('');
   };
   const ttLogManualVerify=(orderId,sellerSku,productName,qty,reason)=>{
     syncDataAwait(wh,'ttManualVerify',{orderId,sellerSku,productName,qty,worker:ttWorker,reason});
@@ -1909,7 +1925,7 @@ function App(){
       //   - 여러 개 남았으면 → 어떤 제품인지 먼저 고르는 선택창을 띄움
       const remainLines=ttCurrentOrder.lines.filter(l=>l.scanned<l.required);
       if(remainLines.length===1){
-        openManualVerify(remainLines[0]);
+        openManualVerify(remainLines[0],ttCurrentOrder.lines.indexOf(remainLines[0])); // ★ v139: 원본 배열 기준 인덱스
         setTtManualReason('바코드 인식 불가 ('+val+')');
       }else if(remainLines.length>1){
         setTtPickLineBarcode(val);
@@ -2513,7 +2529,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v138'),
+    h('span',{className:'app-ver '+D},'v139'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -2707,7 +2723,7 @@ function App(){
                   l.scanned>=l.required?'✓ Done':l.scanned>0?'Partial':'Pending')
               ),
               h('td',{style:{padding:'8px 6px',textAlign:'center'}},
-                l.scanned<l.required&&h('button',{onClick:()=>openManualVerify(l),title:'바코드가 등록된 것과 다르지만 제품은 맞을 때',style:{fontSize:10,padding:'4px 8px',borderRadius:6,border:'1px solid #D97706',background:'#FFF6E8',color:'#B45309',cursor:'pointer',fontWeight:600}},'⚠ Manual')
+                l.scanned<l.required&&h('button',{onClick:()=>openManualVerify(l,i),title:'바코드가 등록된 것과 다르지만 제품은 맞을 때',style:{fontSize:10,padding:'4px 8px',borderRadius:6,border:'1px solid #D97706',background:'#FFF6E8',color:'#B45309',cursor:'pointer',fontWeight:600}},'⚠ Manual')
               )
             )))
           ),
@@ -3215,7 +3231,7 @@ function App(){
           h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:16}},
             (ttCurrentOrder?.lines||[]).filter(l=>l.scanned<l.required).map((l,i)=>h('button',{key:i,onClick:()=>{
               setTtPickLineBarcode(null);
-              openManualVerify(l);
+              openManualVerify(l,ttCurrentOrder.lines.indexOf(l)); // ★ v139: 원본 배열 기준 인덱스
               setTtManualReason('바코드 인식 불가 ('+ttPickLineBarcode+')');
             },style:{textAlign:'left',padding:'10px 12px',borderRadius:8,border:'1.5px solid #DDD',background:'#F9F8F4',cursor:'pointer',fontSize:13}},
               h('div',{style:{fontWeight:700}},l.productName),
@@ -3227,7 +3243,7 @@ function App(){
           )
         )
       ),
-      ttManualFor&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget)setTtManualFor(null);}},
+      ttManualFor&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget){setTtManualFor(null);setTtManualLineIdx(null);}}},
         h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:400,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
           h('div',{style:{fontWeight:700,fontSize:16,marginBottom:2,color:'#B45309'}},'⚠️ 수동 확인 (Manual Verify)'),
           h('div',{style:{fontSize:12,color:'#888',marginBottom:16,lineHeight:1.5}},ttManualFor.productName,h('br',null),h('span',{className:'mono'},ttManualFor.sellerSku)),
@@ -3247,7 +3263,7 @@ function App(){
           ),
           h('textarea',{value:ttManualReason,onChange:e=>setTtManualReason(e.target.value),placeholder:'구체적인 사유를 입력하세요…',style:{width:'100%',minHeight:60,padding:10,border:'1.5px solid #DDD',borderRadius:8,fontSize:13,fontFamily:'inherit',resize:'vertical',marginBottom:20,outline:'none'}}),
           h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
-            h('button',{onClick:()=>setTtManualFor(null),style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
+            h('button',{onClick:()=>{setTtManualFor(null);setTtManualLineIdx(null);},style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel'),
             h('button',{onClick:submitManualVerify,disabled:!ttManualReason.trim()||!(+ttManualQty>0),style:{padding:'9px 22px',borderRadius:8,border:'none',background:(ttManualReason.trim()&&+ttManualQty>0)?'#D97706':'#CCC',color:'#fff',cursor:(ttManualReason.trim()&&+ttManualQty>0)?'pointer':'not-allowed',fontWeight:700}},'⚠️ 수동 확인 처리')
           )
         )
