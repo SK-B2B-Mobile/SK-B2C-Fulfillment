@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v137</title>
+<title>SK B2C Fulfillment v138</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -592,7 +592,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v137';
+const APP_VERSION='v138';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -666,10 +666,19 @@ async function ttParsePdfFile(file, ordersAcc){
     // flush()가 나중에 재호출될 때는 병합 없이 그대로 추가돼서 실제로는 1개짜리 단품
     // 주문인데 같은 SKU가 "1/1 완료" + "0/1 대기" 두 줄로 쪼개져 보이는 문제가 있었음
     // (작업자가 실물은 1개뿐인데 시스템은 2개를 요구 → 두 번째 줄은 영원히 스캔 불가).
-    // → 이미 존재하는 sellerSku면 수량만 합산하고, 새 SKU만 새 줄로 추가한다.
+    // ★ v138 버그 수정 (v135의 잘못된 후속 조치): v135는 이걸 "수량 합산"으로 고쳤는데,
+    // 실제로 확인해보니 이 파일(17건_Copy.pdf 등)은 "같은 페이지가 통째로 중복 인쇄"된
+    // 경우였다 — 실물은 1개인데 페이지만 2번 찍힌 것. 이 경우 합산하면 필요수량이
+    // 1→2로 부풀려져서, 존재하지도 않는 두 번째 실물을 스캔하라고 요구하는 정반대
+    // 문제가 새로 생겼다(실사례: SBMSKIT-SET, MECUS21-S, MECUS09-CS 등 Qty Total:1인데
+    // 화면엔 required=2로 표시됨). "세트 안에서 같은 부품이 여러 그룹에 쓰이는 경우"의
+    // 합산(curItems 내부 병합, 바로 위 별도 로직)은 계속 정당하지만, 이 flush() 간
+    // 재등장은 페이지 중복일 가능성이 훨씬 높으므로 합산이 아니라 "더 큰 값 유지"로
+    // 바꾼다 — 중복이면 값이 같아 영향 없고, 실제로 더 필요한 경우여도 최소 그 값은
+    // 보존된다(합산처럼 실제보다 부풀리지는 않음).
     curItems.forEach(it=>{
       const existing=orders[curId].items.find(x=>x.sellerSku===it.sellerSku);
-      if(existing){existing.qty+=it.qty;if(it.isSetComponent)existing.isSetComponent=true;}
+      if(existing){existing.qty=Math.max(existing.qty,it.qty);if(it.isSetComponent)existing.isSetComponent=true;}
       else orders[curId].items.push({...it});
     });
     curItems=[];
@@ -2504,7 +2513,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v137'),
+    h('span',{className:'app-ver '+D},'v138'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
