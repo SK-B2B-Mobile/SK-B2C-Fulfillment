@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v135</title>
+<title>SK B2C Fulfillment v136</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -592,7 +592,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v135';
+const APP_VERSION='v136';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -738,7 +738,8 @@ async function ttParsePdfFile(file, ordersAcc){
     //   포함) 전부 건너뛴다.
     let skipUntilHeader=false;
 
-    for(const rawLine of lines){
+    for(let li=0; li<lines.length; li++){
+      const rawLine=lines[li];
       if(/^Tracking number:/i.test(rawLine)){skipUntilHeader=true;lastPushedItem=null;continue;}
       if(skipUntilHeader){
         if(/^Product Name\b/i.test(rawLine))skipUntilHeader=false;
@@ -777,7 +778,27 @@ async function ttParsePdfFile(file, ordersAcc){
         insideCombineParent=false;pendingIsComponent=true;pendingName='';lastPushedItem=null;
       }
       const dataSrc=isComboMarkerLine?line.replace(/Combine listing/i,'').trim():line;
-      const m=dataSrc.match(TT_RE_DATAROW);
+      let m=dataSrc.match(TT_RE_DATAROW);
+      let consumedNextLine=false;
+      // ★ v136 버그 수정: v113이 "Combine listing" 부모줄의 세트 SKU가 줄바꿈으로 끊기는
+      // 경우만 방어했는데, 똑같은 문제가 일반 단품/구성품의 Seller SKU에서도 발생함이
+      // 실사례로 확인됨 (예: "US_TKBSM05"가 한 줄에서 끊기고 "-STCOA23 $78.00 1"이 다음
+      // 줄로 넘어감). 이 경우 두 줄 다 개별로는 TT_RE_DATAROW를 통과 못해서(하이픈 섹션
+      // 요구조건 미충족) 그 상품의 SKU/수량 정보가 통째로 유실됨 — 단품 1개짜리 주문이면
+      // items가 완전히 빈 배열이 되어 "제품 정보를 인식하지 못했습니다"로 스캔이 막힘
+      // (실사례: 주문 577520058299617911, US_TKBSM05-STCOA23).
+      // → 이 줄이 매칭 실패하고 다음 줄이 있으면, 공백 없이 바로 이어붙여서 한 번 더
+      //   시도한다(PDF 줄바꿈은 원래 문자 사이에 공백이 없었으므로 그대로 붙이는 게 맞음).
+      //   성공하면 다음 줄은 이미 소비했으므로 루프에서 건너뛴다.
+      if(!m&&li+1<lines.length){
+        const nextRaw=lines[li+1];
+        if(!TT_NOISE_RE.some(re=>re.test(nextRaw))&&!/^Tracking number:/i.test(nextRaw)){
+          const nextLine=nextRaw.replace(/\bDefault,?\s*/gi,'').replace(/\s{2,}/g,' ').trim();
+          const merged=dataSrc+nextLine;
+          const m2=merged.match(TT_RE_DATAROW);
+          if(m2){m=m2;consumedNextLine=true;}
+        }
+      }
       if(m){
         const namePart=m[1].trim().replace(/^•\s*/,'');
         const sku=m[2].replace(/\s+/g,'');
@@ -790,6 +811,7 @@ async function ttParsePdfFile(file, ordersAcc){
           //   여기서 버리지 않고 수량만 기억해뒀다가 아래 구성품들에 곱해줌.
           pendingParentQty=qty;
           lastPushedItem=null; // 세트 요약행은 아이템으로 만들지 않으므로 이어붙일 대상 없음
+          if(consumedNextLine)li++; // ★ v136: 병합해서 이미 소비한 다음 줄은 다시 처리하지 않음
           continue;
         }
         // ★ v94: 구성품(•)이면 라벨에 적힌 자체 수량 × 세트 주문 수량 = 실제 필요 수량
@@ -798,6 +820,7 @@ async function ttParsePdfFile(file, ordersAcc){
         const existing=curItems.find(it=>it.sellerSku===sku);
         if(existing){existing.qty+=finalQty;if(isComponent)existing.isSetComponent=true;lastPushedItem=existing;}
         else{const newItem={sellerSku:sku,productName:fullName,qty:finalQty,isSetComponent:isComponent};curItems.push(newItem);lastPushedItem=newItem;}
+        if(consumedNextLine)li++; // ★ v136: 병합해서 이미 소비한 다음 줄은 다시 처리하지 않음
       }else if(lastPushedItem){
         // ★ v101: 데이터행 다음에 이어지는 줄바꿈된 설명 — 방금 만든 아이템 이름에 계속 붙임
         lastPushedItem.productName=(lastPushedItem.productName+' '+dataSrc).trim();
@@ -2456,7 +2479,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v135'),
+    h('span',{className:'app-ver '+D},'v136'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
