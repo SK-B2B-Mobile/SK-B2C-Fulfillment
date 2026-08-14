@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v141</title>
+<title>SK B2C Fulfillment v142</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -511,6 +511,22 @@ async function syncDataAwait(url,action,payload){
     return await r.json();
   }catch(e){return{ok:false,error:e.message};}
 }
+// ★ v142 버그 수정: syncDataAwait는 fetch에 타임아웃이 전혀 없어서, 서버 응답이 느리거나
+// 네트워크가 끊긴 경우 요청 하나가 무한정 매달릴 수 있었다. 순차 처리 루프(예: 일괄 완료
+// 처리)에서 이 함수를 쓰면, 단 한 건이 응답을 안 주는 것만으로 나머지 전체가 영원히
+// "처리 중…" 상태로 멈춰버림(실사례: 103건 일괄 완료 처리가 6분 넘게 끝나지 않음).
+// → AbortController로 지정 시간 안에 응답이 없으면 확실히 포기하고 실패로 처리해서,
+// 다음 항목으로 넘어갈 수 있게 한다.
+async function syncDataAwaitTimeout(url,action,payload,timeoutMs){
+  if(!url)return{ok:false,error:'no url'};
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),timeoutMs||10000);
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload}),signal:ctrl.signal});
+    return await r.json();
+  }catch(e){return{ok:false,error:(e.name==='AbortError'?'timeout':e.message)};}
+  finally{clearTimeout(timer);}
+}
 const {createElement:h,useState,useRef,useEffect,useCallback,Fragment}=React;
 
 /* ══════════════════════════════════════════════
@@ -592,7 +608,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v141';
+const APP_VERSION='v142';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1886,10 +1902,12 @@ function App(){
   // 재확인, 사유 필수 입력, 기존 수동확인과 동일하게 감사 로그(ttManualVerify)에 남김.
   const [ttBulkConfirm,setTtBulkConfirm]=useState(null); // {rows, reason} — 확인 모달 상태
   const [ttBulkRunning,setTtBulkRunning]=useState(false);
+  const [ttBulkProgress,setTtBulkProgress]=useState(null); // ★ v142: {done,total} — 진행 상황 표시용
   const ttBulkForceComplete=async()=>{
     if(!ttBulkConfirm||!ttBulkConfirm.reason.trim())return;
     const rows=ttBulkConfirm.rows;
     setTtBulkRunning(true);
+    setTtBulkProgress({done:0,total:rows.length}); // ★ v142
     let done=0,fail=0;
     for(const o of rows){
       try{
@@ -1900,11 +1918,14 @@ function App(){
         const payload={orderId:o.orderId,lineScanned,scannedTrackingIds:o.trackingIds||[],status:'completed',worker:ttWorker||'Manager'};
         ttMarkPending(o.orderId,payload); // ★ v131
         setTtProgress(p=>({...p,[o.orderId]:{status:'completed',lineScanned,scannedTrackingIds:o.trackingIds||[],completedBy:ttWorker||'Manager',completedTime:ts()}}));
-        const r=await syncDataAwait(wh,'ttScanUpdate',payload);
+        // ★ v142: 무한 대기 방지 — 8초 안에 응답 없으면 실패로 간주하고 재시도 큐로 넘긴 뒤
+        //   바로 다음 항목으로 진행한다(전체가 한 건 때문에 멈추지 않도록).
+        const r=await syncDataAwaitTimeout(wh,'ttScanUpdate',payload,8000);
         if(r&&r.ok)done++;else{fail++;ttHandleSyncFailure(o.orderId,'ttScanUpdate',payload);}
       }catch(e){fail++;}
+      setTtBulkProgress(p=>({done:(p?p.done:0)+1,total:rows.length})); // ★ v142: 매 건마다 진행률 갱신
     }
-    setTtBulkRunning(false);setTtBulkConfirm(null);setTtStatusView(null);
+    setTtBulkRunning(false);setTtBulkConfirm(null);setTtStatusView(null);setTtBulkProgress(null);
     ttShowToast('✅ 일괄 완료 처리됨',done+'건 완료'+(fail>0?(', '+fail+'건 실패(재시도 큐로 이동)'):''),1800);
   };
 
@@ -2573,7 +2594,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v141'),
+    h('span',{className:'app-ver '+D},'v142'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -3334,7 +3355,7 @@ function App(){
           h('textarea',{value:ttBulkConfirm.reason,onChange:e=>setTtBulkConfirm(c=>({...c,reason:e.target.value})),placeholder:'구체적인 사유를 입력하세요…',style:{width:'100%',minHeight:60,padding:10,border:'1.5px solid #DDD',borderRadius:8,fontSize:13,fontFamily:'inherit',resize:'vertical',marginBottom:20,outline:'none'}}),
           h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
             h('button',{onClick:()=>setTtBulkConfirm(null),disabled:ttBulkRunning,style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:ttBulkRunning?'not-allowed':'pointer',fontWeight:600}},'Cancel'),
-            h('button',{onClick:ttBulkForceComplete,disabled:!ttBulkConfirm.reason.trim()||ttBulkRunning,style:{padding:'9px 22px',borderRadius:8,border:'none',background:(ttBulkConfirm.reason.trim()&&!ttBulkRunning)?'#D97706':'#CCC',color:'#fff',cursor:(ttBulkConfirm.reason.trim()&&!ttBulkRunning)?'pointer':'not-allowed',fontWeight:700}},ttBulkRunning?('처리 중… '):('⚡ '+ttBulkConfirm.rows.length+'건 완료 처리'))
+            h('button',{onClick:ttBulkForceComplete,disabled:!ttBulkConfirm.reason.trim()||ttBulkRunning,style:{padding:'9px 22px',borderRadius:8,border:'none',background:(ttBulkConfirm.reason.trim()&&!ttBulkRunning)?'#D97706':'#CCC',color:'#fff',cursor:(ttBulkConfirm.reason.trim()&&!ttBulkRunning)?'pointer':'not-allowed',fontWeight:700}},ttBulkRunning?('처리 중… ('+(ttBulkProgress?ttBulkProgress.done:0)+'/'+(ttBulkProgress?ttBulkProgress.total:ttBulkConfirm.rows.length)+')'):('⚡ '+ttBulkConfirm.rows.length+'건 완료 처리'))
           )
         )
       ),
