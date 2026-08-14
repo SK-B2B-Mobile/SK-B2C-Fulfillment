@@ -1,7 +1,7 @@
 // ★ v30 버그 수정: CACHE_NAME이 'v19'에서 한 번도 안 바뀌어서 브라우저가 계속 옛날
 //   index.html을 캐시에서 꺼내 쓰던 문제. 앞으로 코드를 업데이트할 때마다
 //   이 CACHE_NAME 숫자를 올려주면(예: v31, v32...) 브라우저가 확실히 새로 받아갑니다.
-const CACHE_NAME = 'sk-b2c-v139';
+const CACHE_NAME = 'sk-b2c-v140';
 const urlsToCache = [
   '/SK-B2C-Fulfillment/',
   '/SK-B2C-Fulfillment/index.html',
