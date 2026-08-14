@@ -1,5 +1,14 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v135
+ * SK B2C Fulfillment — Google Apps Script v143
+ *
+ * ★ v143 수정 (성능): 일괄 완료 처리(수십~수백 건 연속 완료) 시 건당 6~7초까지 느려지던
+ *   문제. 원인은 updateScanned_가 완료 1건마다 DailySummary(하루 전체 모든 카테고리)를
+ *   처음부터 재계산해서 쓰고 있었기 때문 — 개별 스캔 1건이면 안 느껴지지만 100건 연속
+ *   호출되면 매번 반복되어 누적 지연이 컸다(실사례: 103건 처리에 11분 이상).
+ *   → ttScanUpdate_에 skipSummary 파라미터 추가. 대량 처리 중에는 클라이언트가
+ *   skipSummary:true를 보내 매 건의 재계산을 건너뛰고, 루프가 끝난 뒤 신규 액션
+ *   refreshDailySummary를 한 번만 호출해 마무리한다. 개별 스캔(skipSummary 없음)은
+ *   기존과 동일하게 매번 즉시 반영됨 — 동작 변경 없음.
  *
  * ★ v135 핵심 수정 (Scan Station과 Records의 스캔 숫자가 어긋나는 버그):
  *   여러 작업자가 거의 동시에 스캔을 완료하면, updateScanned_가 "+1"을 락을 잡기 전에
@@ -446,7 +455,11 @@ function doPost(e) {
     // ★ TikTok CBT 서버 동기화 (v39 추가) — 여러 작업자가 각자 기기에서 동시 스캔 가능하도록
     case 'ttUploadOrders':    return json_(ttUploadOrders_(data.orders||[], data.date));
     case 'ttUploadSkuMaster': return json_(ttUploadSkuMaster_(data.single||[], data.sets||[]));
-    case 'ttScanUpdate':      return json_(ttScanUpdate_(data.orderId, data.lineScanned, data.scannedTrackingIds, data.status, data.worker));
+    case 'ttScanUpdate':      return json_(ttScanUpdate_(data.orderId, data.lineScanned, data.scannedTrackingIds, data.status, data.worker, data.skipSummary));
+    // ★ v142(서버) 신규: 대량 완료 처리가 끝난 뒤, 건너뛰었던 DailySummary 재계산을
+    // 한 번에 마무리하기 위한 액션. (일괄 완료 처리 루프에서 skipSummary:true로 보낸
+    // 만큼, 루프가 끝나면 클라이언트가 이걸 반드시 한 번 호출해줘야 요약이 최신화된다)
+    case 'refreshDailySummary':return json_((()=>{ updateDailySummary_(data.date||today_()); bumpVersion_(); return {ok:true}; })());
     case 'ttManualVerify':    return json_(ttLogManualVerify_(data.orderId, data.sellerSku, data.productName, data.qty, data.worker, data.reason));
 
     // ★ Pick Assignments — 페이지 기준 다중 작업자 배정 (v40 추가)
@@ -1166,7 +1179,7 @@ function ttLogManualVerify_(orderId, sellerSku, productName, qty, worker, reason
      - 픽리스트 카운트 반영(updateScanned_)은 락을 푼 뒤에 실행
      - 같은 주문 행이 여러 개면 병합(completed 우선/수량 최댓값)하고 1행으로 정리
 ════════════════════════════════════════ */
-function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker) {
+function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker, skipSummary) {
   if (!orderId) return { ok:false, error:'orderId required' };
 
   const oid = String(orderId).trim();
@@ -1293,7 +1306,15 @@ function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker)
           l.category==='TikTok CBT' && l.status!=='Complete' && l.status!=='Deleted' &&
           l.pickEnd && (l.scanned||0) < (l.orderCount||0)
         );
-        if (target) updateScanned_(target, oid, 'TikTok CBT', false);
+        // ★ v142(서버) 성능 개선: 완료 1건마다 updateScanned_가 하루 전체(모든 카테고리)
+        // DailySummary를 처음부터 다시 계산해서 쓰고 있었다. 평소 스캔 1건씩이면 티가 안
+        // 나지만, "일괄 완료 처리"로 100건 넘게 연속 호출되면 매 건마다 이 전체 재계산이
+        // 반복되어 건당 6~7초까지 느려지는 원인이 됐다(실사례: 103건 처리에 11분 이상).
+        // → 클라이언트가 skipSummary:true를 보내면(대량 처리 중) 이번 건은 요약 재계산을
+        // 건너뛰고, 대량 처리가 다 끝난 뒤 클라이언트가 refreshDailySummary를 한 번만
+        // 호출해서 마무리한다. 평소 개별 스캔(skipSummary 없음)은 기존과 동일하게 매번
+        // 즉시 반영된다.
+        if (target) updateScanned_(target, oid, 'TikTok CBT', !!skipSummary);
       }
     } catch(e) {
       Logger.log('⚠ 픽리스트 카운트 반영 실패(진행상황은 정상 저장됨): ' + e.message);
