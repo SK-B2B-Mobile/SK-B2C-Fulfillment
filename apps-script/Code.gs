@@ -1629,7 +1629,17 @@ function dur_(s, e, listDate) {
 }
 function getSt_(l) {
   const oc=l.orderCount||0;
-  if(oc>0&&l.scanned>=oc&&l.scanEnd)return 'Complete';
+  // ★ v152 버그 수정: 화면(index.html의 getSt)은 scanEnd만 있으면 "complete"로 보여주는데,
+  //   여기(서버)는 그 위에 "orderCount>0 && scanned>=orderCount"까지 추가로 요구했음.
+  //   Moida & Hola처럼 ORDERS/SCANNED가 애초에 0/0으로 집계되는 카테고리는 oc>0을 영원히
+  //   만족 못 해서, 화면엔 완료로 보여도 시트의 Status 컬럼엔 절대 'Complete'가 안 찍힘.
+  //   자정 자동정리(autoClearCompletedLists)는 이 Status가 정확히 'Complete'인 것만 지우기
+  //   때문에, 이런 리스트는 아무리 오래돼도 자동삭제 대상에서 계속 빠져있었음(실사례:
+  //   2026-08-10 Moida & Hola 리스트가 8/21까지 안 지워짐 — orders/scanned가 0/0으로 표시).
+  //   → orderCount가 0(집계 대상이 아님)이면 scanEnd 존재만으로 완료 판정, orderCount가
+  //   있는 경우(TikTok CBT 등 실제 건별 스캔이 의미 있는 카테고리)는 기존처럼 scanned>=oc도
+  //   같이 요구해서 "숫자만 밀고 실제 스캔은 안 된" 오탐 완료를 계속 막는다.
+  if(l.scanEnd && (oc===0 || l.scanned>=oc))return 'Complete';
   if(l.scanStart)return 'Scanning'; if(l.pickEnd)return 'Pick Done'; if(l.pickStart)return 'Picking';
   return 'Pending';
 }
@@ -1770,6 +1780,52 @@ function bulkLists_(lists) {
      함수 목록에서 installMidnightCleanupTrigger 선택 → ▶ 실행
    (GAS 특성상 정확히 00:00:00은 아니고, 자정~새벽 1시 사이 어딘가에 실행됩니다)
 ════════════════════════════════════════ */
+// ★ v152 추가: getSt_ 버그 수정 이전에 이미 시트에 잘못 저장된 Status 값(예: 화면엔
+//   완료로 보이는데 시트엔 'Complete'가 안 찍혀서 자동정리 대상에서 계속 빠져있던 행들,
+//   실사례: 2026-08-10 Moida & Hola 리스트)을 한 번에 바로잡기 위한 1회성 정리 함수.
+//   Apps Script 에디터에서 함수 목록 → fixStaleStatusesAndArchive 선택 → ▶ 실행 (1회만
+//   돌리면 됨 — 이후엔 upsertList_가 매번 올바른 getSt_로 계산해서 저장하므로 불필요).
+//   동작: 1) 모든 미보관(Archived≠TRUE) 행의 Status를 새 getSt_ 기준으로 재계산해서
+//   틀린 값이면 고쳐씀 → 2) 그 직후 autoClearCompletedLists()를 이어서 실행해 방금
+//   'Complete'로 바로잡힌 행들까지 바로 정리.
+function fixStaleStatusesAndArchive() {
+  const sh = listsSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) { Logger.log('데이터 없음'); return { ok:true, fixed:0 }; }
+  ensureArchivedColumns_();
+  const lastCol = Math.max(sh.getLastColumn(), 23);
+  const data = sh.getRange(2,1,lastRow-1,lastCol).getValues();
+  const archivedColIdx = 21; // 0-based, 'Archived' 컬럼(22번째, ensureArchivedColumns_ 기준)
+  let fixed = 0;
+  for (let i=0; i<data.length; i++) {
+    const r = data[i];
+    if (String(r[archivedColIdx]).toUpperCase()==='TRUE') continue; // 이미 보관된 행은 건드리지 않음
+    const l = {
+      orderCount:Number(r[4])||0, scanned:Number(r[5])||0,
+      pickStart:r[7], pickEnd:r[8], scanStart:r[9], scanEnd:r[10],
+    };
+    const correct = getSt_(l);
+    const current = String(r[13]);
+    if (correct !== current) {
+      sh.getRange(2+i, 14).setValue(correct);
+      const statusColors = {
+        'Complete':{bg:'#C6EFCE',tx:'#276221'},'Scanning':{bg:'#BDD7EE',tx:'#1F4E79'},
+        'Pick Done':{bg:'#DDEBF7',tx:'#2E5F8A'},'Picking':{bg:'#FFEB9C',tx:'#9C6500'},
+        'Pending':{bg:'#F2F2F2',tx:'#595959'},
+      };
+      const sc = statusColors[correct]||{bg:null,tx:null};
+      sh.getRange(2+i,14).setBackground(sc.bg).setFontColor(sc.tx).setFontWeight('bold');
+      fixed++;
+    }
+  }
+  Logger.log('✅ Status 재계산: '+fixed+'건 수정됨');
+  const archiveResult = autoClearCompletedLists();
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    'Status '+fixed+'건 수정 + 완료 리스트 '+(archiveResult.cleared||0)+'건 정리 완료', '✅ Done', 5
+  );
+  return { ok:true, fixed, archived: archiveResult.cleared||0 };
+}
+
 function autoClearCompletedLists() {
   const result = getLists_(); // 날짜 필터 없이 전체 (이미 Deleted인 건 제외됨)
   if (!result.ok) { Logger.log('autoClearCompletedLists: failed to read lists'); return { ok:false }; }
