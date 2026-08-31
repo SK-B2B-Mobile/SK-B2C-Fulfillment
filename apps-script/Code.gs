@@ -1,5 +1,14 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v143
+ * SK B2C Fulfillment — Google Apps Script v155
+ *
+ * ★ v155 수정 (자정 자동정리 버그): 서버(getSt_)가 scanEnd 있어도 orderCount>0이면서
+ *   scanned<orderCount인 경우를 계속 'Complete'로 안 쳐줘서, TikTok CBT 등에서 매니저가
+ *   End Scan으로 확정 종료했지만 개수가 덜 채워진 리스트(작업자 미스캔/OOS 등 사유로
+ *   매니저가 최종 확인 후 수동 종료한 경우)가 시트 Status엔 영원히 'Complete'가 안 찍혀서
+ *   자정 자동정리(autoClearCompletedLists) 대상에서 계속 빠지던 문제. (실사례: 2026-08-31
+ *   확인, PG00005593 8/0·PG00005599 5/0 — 둘 다 매니저 End Scan 확정, 화면엔 완료로 보이나
+ *   시트엔 반영 안 됨) → getSt_를 화면(index.html getSt)과 동일하게 "scanEnd 존재만으로
+ *   완료 판정"하도록 통일. v152가 추가했던 scanned>=orderCount 추가 조건은 제거.
  *
  * ★ v143 수정 (성능): 일괄 완료 처리(수십~수백 건 연속 완료) 시 건당 6~7초까지 느려지던
  *   문제. 원인은 updateScanned_가 완료 1건마다 DailySummary(하루 전체 모든 카테고리)를
@@ -1628,18 +1637,18 @@ function dur_(s, e, listDate) {
   return total < 60 ? total+'m' : Math.floor(total/60)+'h '+(total%60)+'m';
 }
 function getSt_(l) {
-  const oc=l.orderCount||0;
-  // ★ v152 버그 수정: 화면(index.html의 getSt)은 scanEnd만 있으면 "complete"로 보여주는데,
-  //   여기(서버)는 그 위에 "orderCount>0 && scanned>=orderCount"까지 추가로 요구했음.
-  //   Moida & Hola처럼 ORDERS/SCANNED가 애초에 0/0으로 집계되는 카테고리는 oc>0을 영원히
-  //   만족 못 해서, 화면엔 완료로 보여도 시트의 Status 컬럼엔 절대 'Complete'가 안 찍힘.
-  //   자정 자동정리(autoClearCompletedLists)는 이 Status가 정확히 'Complete'인 것만 지우기
-  //   때문에, 이런 리스트는 아무리 오래돼도 자동삭제 대상에서 계속 빠져있었음(실사례:
-  //   2026-08-10 Moida & Hola 리스트가 8/21까지 안 지워짐 — orders/scanned가 0/0으로 표시).
-  //   → orderCount가 0(집계 대상이 아님)이면 scanEnd 존재만으로 완료 판정, orderCount가
-  //   있는 경우(TikTok CBT 등 실제 건별 스캔이 의미 있는 카테고리)는 기존처럼 scanned>=oc도
-  //   같이 요구해서 "숫자만 밀고 실제 스캔은 안 된" 오탐 완료를 계속 막는다.
-  if(l.scanEnd && (oc===0 || l.scanned>=oc))return 'Complete';
+  // ★ v155 버그 수정: v152는 "orderCount>0인 카테고리는 scanned>=orderCount도 같이
+  //   요구"했는데, 이게 또 다른 실사례에서 문제가 됐음 — TikTok CBT 등에서 작업자가
+  //   일부 주문을 스캔 못 하고 넘어가거나(OOS/품절/미스캔 등 다양한 사유) 매니저가
+  //   최종 확인 후 End Scan으로 확정 종료하는 경우, scanned가 orderCount에 끝내 못
+  //   미친 채로 남는다. 이건 정상적인 종료 상황인데도(예: PG00005593 8/0, PG00005599
+  //   5/0 — 둘 다 매니저가 End Scan 확정) 시트 Status엔 'Complete'가 절대 안 찍혀서
+  //   자정 자동정리(autoClearCompletedLists)가 이 리스트들을 영원히 못 지웠음.
+  //   → scanEnd(=End Scan 확정, 매니저의 최종 확인 행위)가 존재하면 그 자체를 완료의
+  //   유일한 기준으로 삼는다. 화면(index.html의 getSt)과 정확히 동일한 기준으로 통일.
+  //   개수가 안 맞는 종료는 이제 막지 않지만, 애초에 End Scan은 매니저만 누를 수 있는
+  //   최종 확인 액션이므로 "실수로 눌림"을 방지하는 역할은 그 UI 쪽에 있다.
+  if(l.scanEnd)return 'Complete';
   if(l.scanStart)return 'Scanning'; if(l.pickEnd)return 'Pick Done'; if(l.pickStart)return 'Picking';
   return 'Pending';
 }
