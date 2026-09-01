@@ -1,6 +1,13 @@
 /******************************************************
  * SK B2C Fulfillment — Google Apps Script v155
  *
+ * ★ v155 추가 (성능): 일괄 완료 처리("전체 일괄 완료 처리")가 건마다 개별 HTTP
+ *   왕복(ttScanUpdate_)을 순서대로 기다려서, 3대 랩탑이 동시에 정상 스캔 중인
+ *   상황과 겹치면 락 경합까지 더해져 대량 처리(수십 건)가 수 분씩 걸렸음.
+ *   → ttBulkScanUpdate_ 신규: 여러 건을 배열로 한 번에 받아 락을 1회만 잡고
+ *   전부 처리(doPost action: ttBulkScanUpdate). 개별 건의 병합/중복정리 로직은
+ *   ttScanUpdate_와 동일하게 유지, HTTP 왕복만 N번 → 1번으로 줄임.
+ *
  * ★ v155 수정 (자정 자동정리 버그): 서버(getSt_)가 scanEnd 있어도 orderCount>0이면서
  *   scanned<orderCount인 경우를 계속 'Complete'로 안 쳐줘서, TikTok CBT 등에서 매니저가
  *   End Scan으로 확정 종료했지만 개수가 덜 채워진 리스트(작업자 미스캔/OOS 등 사유로
@@ -465,6 +472,8 @@ function doPost(e) {
     case 'ttUploadOrders':    return json_(ttUploadOrders_(data.orders||[], data.date));
     case 'ttUploadSkuMaster': return json_(ttUploadSkuMaster_(data.single||[], data.sets||[]));
     case 'ttScanUpdate':      return json_(ttScanUpdate_(data.orderId, data.lineScanned, data.scannedTrackingIds, data.status, data.worker, data.skipSummary));
+    // ★ v155 신규: 일괄 완료 처리 전용 — N건을 배열로 한 번에 받아 락 1회로 처리(왕복 최소화)
+    case 'ttBulkScanUpdate':  return json_(ttBulkScanUpdate_(data.items||[], data.worker));
     // ★ v142(서버) 신규: 대량 완료 처리가 끝난 뒤, 건너뛰었던 DailySummary 재계산을
     // 한 번에 마무리하기 위한 액션. (일괄 완료 처리 루프에서 skipSummary:true로 보낸
     // 만큼, 루프가 끝나면 클라이언트가 이걸 반드시 한 번 호출해줘야 요약이 최신화된다)
@@ -1331,6 +1340,148 @@ function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker,
   }
 
   return { ok:true };
+}
+
+/* ════════════════════════════════════════
+   ★ v155 신규: ttBulkScanUpdate_
+   ────────────────────────────────────────
+   "전체 일괄 완료 처리"가 지금까지는 건마다 클라이언트가 ttScanUpdate_를 개별
+   호출(N번의 HTTP 왕복 + N번의 락 획득/해제)해서, 대량 처리(수십~수백 건) 시
+   왕복 지연이 누적되어 오래 걸렸다(실사례: 42건 처리에 수 분 소요, 3대 랩탑이
+   동시에 정상 스캔 중이던 상황과 겹쳐 락 대기까지 더해짐).
+   → 여러 건을 배열로 한 번에 받아서, 락을 "한 번만" 잡은 채로 전부 처리한다.
+   HTTP 왕복이 N번 → 1번으로 줄어들고, 락 획득도 1번뿐이라 다른 작업자의
+   정상 스캔(ttScanUpdate_)과의 락 경합도 크게 줄어든다.
+   개별 건의 병합 로직(completed 우선, 라인 최댓값, 중복 행 정리)은
+   ttScanUpdate_와 동일하게 유지 — 동작 자체는 바뀌지 않고 왕복만 줄인다.
+════════════════════════════════════════ */
+function ttBulkScanUpdate_(items, worker) {
+  if (!Array.isArray(items) || items.length === 0) return { ok:false, error:'items required' };
+
+  const sh = ttProgressSheet_();
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(60000); }
+  catch (e) { return { ok:false, error:'lock timeout — 잠시 후 다시 시도해주세요' }; }
+
+  const norm = v => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'number') return v.toFixed(0);
+    return String(v).trim();
+  };
+
+  let completedCount = 0;
+  const results = [];
+
+  try {
+    const lastRow = sh.getLastRow();
+    // ── 전체 주문번호(A열)를 한 번만 읽어서 id→행번호 매핑 (여러 행 있으면 배열로) ──
+    const idToRows = {};
+    if (lastRow >= 2) {
+      const idCol = sh.getRange(2, 1, lastRow - 1, 1).getValues();
+      idCol.forEach((r, i) => {
+        const id = norm(r[0]);
+        if (!id) return;
+        (idToRows[id] = idToRows[id] || []).push(i + 2);
+      });
+    }
+
+    const now = nowLocal_();
+    const appendRows = [];
+    const rowsToDeleteLater = []; // 중복 행 정리용 (뒤에서부터 지워야 하므로 나중에 정렬)
+
+    items.forEach(it => {
+      const oid = String(it.orderId || '').trim();
+      if (!oid) { results.push({ orderId:it.orderId, ok:false, error:'orderId required' }); return; }
+      const incomingStatus = String(it.status || 'completed');
+      const matchRows = idToRows[oid] || [];
+
+      // ── 같은 주문의 기존 행들 병합 (completed 우선, 라인 최댓값) — ttScanUpdate_와 동일 로직 ──
+      let mergedStatus='', mergedLine={}, mergedTrack=[], mergedBy='', mergedTime='';
+      matchRows.forEach(rw => {
+        const c = sh.getRange(rw, 1, 1, 7).getValues()[0];
+        const st = String(c[1] || '');
+        let ls = {}, tk = [];
+        try { ls = JSON.parse(c[2] || '{}'); } catch (e) {}
+        try { tk = JSON.parse(c[3] || '[]'); } catch (e) {}
+        if (st === 'completed') {
+          mergedStatus = 'completed';
+          if (!mergedBy)   mergedBy   = String(c[4] || '');
+          if (!mergedTime) mergedTime = String(c[5] || '');
+        } else if (mergedStatus !== 'completed') {
+          mergedStatus = st || mergedStatus;
+        }
+        Object.keys(ls).forEach(k => { mergedLine[k] = Math.max(Number(mergedLine[k]||0), Number(ls[k]||0)); });
+        tk.forEach(t => { if (t && mergedTrack.indexOf(t) < 0) mergedTrack.push(t); });
+      });
+      const wasAlreadyCompleted = (mergedStatus === 'completed');
+
+      const finalLine = {};
+      Object.keys(mergedLine).forEach(k => { finalLine[k] = Number(mergedLine[k]) || 0; });
+      Object.keys(it.lineScanned || {}).forEach(k => {
+        finalLine[k] = Math.max(Number(finalLine[k]||0), Number(it.lineScanned[k])||0);
+      });
+      const finalTrack = mergedTrack.slice();
+      (it.scannedTrackingIds || []).forEach(t => { if (t && finalTrack.indexOf(t) < 0) finalTrack.push(t); });
+
+      const finalStatus = (incomingStatus === 'completed' || wasAlreadyCompleted) ? 'completed' : incomingStatus;
+      const row = [
+        oid, finalStatus,
+        JSON.stringify(finalLine), JSON.stringify(finalTrack),
+        finalStatus === 'completed' ? (mergedBy   || String(worker||'')) : '',
+        finalStatus === 'completed' ? (mergedTime || now) : '',
+        now
+      ];
+
+      // 중복 행이 있으면 첫 행만 남기고 나머지는 뒤에서 정리
+      for (let i = matchRows.length - 1; i >= 1; i--) rowsToDeleteLater.push(matchRows[i]);
+
+      if (matchRows.length > 0) {
+        sh.getRange(matchRows[0], 1).setNumberFormat('@');
+        sh.getRange(matchRows[0], 1, 1, 7).setValues([row]);
+      } else {
+        appendRows.push(row);
+      }
+
+      if (finalStatus === 'completed' && !wasAlreadyCompleted) completedCount++;
+      results.push({ orderId: oid, ok:true, status: finalStatus });
+    });
+
+    if (appendRows.length) {
+      const startRow = sh.getLastRow() + 1;
+      sh.getRange(startRow, 1, appendRows.length, 1).setNumberFormat('@');
+      sh.getRange(startRow, 1, appendRows.length, 7).setValues(appendRows);
+    }
+    if (rowsToDeleteLater.length) {
+      [...new Set(rowsToDeleteLater)].sort((a,b) => b-a).forEach(rw => sh.deleteRow(rw));
+    }
+
+    bumpVersion_();
+  } catch (e) {
+    return { ok:false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+
+  // ── 픽리스트 카운트 반영은 락을 푼 뒤, 이번 배치에서 새로 완료된 건수만큼 한 번에 증분 ──
+  if (completedCount > 0) {
+    try {
+      const listsData = getLists_(today_());
+      if (listsData.ok) {
+        const target = listsData.lists.find(l =>
+          l.category==='TikTok CBT' && l.status!=='Complete' && l.status!=='Deleted' &&
+          l.pickEnd && (l.scanned||0) < (l.orderCount||0)
+        );
+        if (target) {
+          const updated = { ...target, scanIncrement: completedCount, autoCloseIfFull:false, scanStart: target.scanStart || nowLocal_() };
+          upsertList_(updated, false); // 배치 전체가 끝난 뒤 한 번 반영이므로 요약도 이번엔 즉시 갱신
+        }
+      }
+    } catch (e) {
+      Logger.log('⚠ 일괄처리 픽리스트 카운트 반영 실패(진행상황은 정상 저장됨): ' + e.message);
+    }
+  }
+
+  return { ok:true, completed: completedCount, total: items.length, results };
 }
 
 /* ════════════════════════════════════════
