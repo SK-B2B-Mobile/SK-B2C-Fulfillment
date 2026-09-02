@@ -1,6 +1,16 @@
 /******************************************************
  * SK B2C Fulfillment — Google Apps Script v156
  *
+ * ★ v156 추가 수정 (성능 — 진짜 원인): autoScanPoll이 300건까지 처리 상한을 걸어놔도
+ *   여전히 건당 4~6초씩 걸려 300건에 20분 이상 소요됨(실사례: 2026-09-01). 원인은
+ *   processWebhookOrder_가 호출될 때마다 PickLists 시트 전체(getLists_)와 ScanLog
+ *   시트 전체(isAlreadyLoggedToday_)를 매번 다시 읽고 있었기 때문 — autoScanPoll은
+ *   이미 루프 시작 전에 이 두 가지를 한 번씩 읽어서 갖고 있었는데도 재사용을 안 했음.
+ *   → processWebhookOrder_에 opts(skipDupCheck, preFetchedLists) 파라미터 추가(안
+ *   넘기면 기존과 100% 동일하게 동작 — 기존 웹훅 호출부는 그대로 둠). autoScanPoll만
+ *   이미 가진 데이터를 넘겨서 재조회를 생략. 배치 안에서 target 리스트가 차는 것도
+ *   반환된 최신 scanned 값으로 로컬 캐시를 그때그때 갱신해서 정확하게 반영.
+ *
  * ★ v156 수정 (긴급 — autoScanPoll 실행 겹침): 10분마다 자동 실행되는 autoScanPoll이
  *   느려질 때(ShipStation API 지연 등) 이전 실행이 안 끝난 채로 다음 실행이 계속
  *   겹쳐 시작되어, 3개 이상 인스턴스가 동시에 돌다가 각각 30분 강제종료(Timed Out)
@@ -303,7 +313,14 @@ function handleSSWebhook_(data) {
   }
 }
 
-function processWebhookOrder_(orderNumber, skipSummary) {
+// ★ v156 성능 개선: opts 파라미터 추가(하위 호환 — 안 넘기면 기존과 100% 동일하게 동작).
+//   opts.skipDupCheck: true면 isAlreadyLoggedToday_(ScanLog 전체 읽기) 생략 — 호출자가
+//   이미 자기만의 방법으로 중복을 걸러낸 경우에만 사용(예: autoScanPoll의 alreadyScanned Set).
+//   opts.preFetchedLists: 넘기면 getLists_(PickLists 전체 읽기)를 다시 안 하고 이걸 그대로 사용.
+//   (배경: 300건을 순회 처리하는 autoScanPoll에서 건마다 이 두 시트를 통째로 재조회하느라
+//   건당 4~6초가 걸려 300건에 20분 이상 걸리던 문제. 실사례: 2026-09-01.)
+function processWebhookOrder_(orderNumber, skipSummary, opts) {
+  opts = opts || {};
   try {
     const detected = detectChannel_(orderNumber);
     if (!detected) {
@@ -315,7 +332,7 @@ function processWebhookOrder_(orderNumber, skipSummary) {
     //   지금까지는 매번 그냥 카운트를 또 올리고 있었음 — 중복 처리를 막는 로직이 아예
     //   없었던 게 스캔 숫자가 25→99→235→1193으로 끝없이 폭증하던 진짜 핵심 원인이었음.
     //   → 오늘 이미 ScanLog에 같은 주문번호가 기록되어 있으면 조용히 건너뜀(카운트 안 함).
-    if (isAlreadyLoggedToday_(orderNumber)) {
+    if (!opts.skipDupCheck && isAlreadyLoggedToday_(orderNumber)) {
       Logger.log('⏸ Webhook 무시 (오늘 이미 처리된 주문): ' + orderNumber);
       return { ok:true, skipped:true, reason:'duplicate_today' };
     }
@@ -324,7 +341,7 @@ function processWebhookOrder_(orderNumber, skipSummary) {
     const store = detected.store;
     const date  = today_();
 
-    const allLists = getLists_(today_());
+    const allLists = opts.preFetchedLists || getLists_(today_());
     if (!allLists.ok || !allLists.lists) return { ok:false, error:'Failed to get lists' };
 
     // ★ v39 핵심 수정: pickEnd 있는 픽리스트만 candidates로 허용
@@ -2639,10 +2656,20 @@ function autoScanPoll() {
     let failCount = 0;
     let skippedPicking = 0;
 
+    // ★ v156: allLists(위에서 이미 조회한 오늘 픽리스트 스냅샷)를 재사용하고, ScanLog 중복
+    //   체크도 이미 위에서 만든 alreadyScanned Set으로 걸러졌으므로 생략(skipDupCheck).
+    //   건마다 시트 두 개를 통째로 재조회하던 게 4~6초 지연의 실제 원인이었음.
+    //   배치 안에서 target 리스트가 다 차는 걸 정확히 반영하기 위해, 성공할 때마다
+    //   반환된 최신 scanned 값으로 로컬 캐시(allLists.lists)를 그때그때 갱신한다
+    //   (재조회 없이 락 서버 값과 동일한 정확도 유지).
     newShipments.forEach(s => {
-      const r = processWebhookOrder_(s.orderNumber, true);
+      const r = processWebhookOrder_(s.orderNumber, true, { skipDupCheck:true, preFetchedLists: allLists });
       if (r.ok) {
         successCount++;
+        if (r.pgNo && r.scanned != null && allLists.lists) {
+          const li = allLists.lists.find(l => l.pgNo === r.pgNo);
+          if (li) li.scanned = r.scanned;
+        }
         Logger.log('✅ Processed: ' + s.orderNumber + ' → ' + r.category + ' (' + r.scanned + ')');
       } else if (r.reason === 'picking_not_done') {
         skippedPicking++;
