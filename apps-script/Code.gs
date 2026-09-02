@@ -1485,6 +1485,64 @@ function ttBulkScanUpdate_(items, worker) {
 }
 
 /* ════════════════════════════════════════
+   ★ v155 신규: ttReconcilePickListScanned_
+   ────────────────────────────────────────
+   TikTok CBT 스캔 완료 시(ttScanUpdate_/ttBulkScanUpdate_) PickLists.Scanned를
+   "+1 증분"으로 반영하는데, 이 마지막 단계(updateScanned_→upsertList_)가 document
+   lock을 잡다가 실패(3대 이상 동시 스캔 시 락 대기 15초 초과 등)하면 지금까지는
+   그냥 로그만 남기고 조용히 무시됐다. TT_Progress(진짜 완료 기록)는 정상 저장되므로
+   Scan Station 화면(248/248)은 맞는데, Records의 PickLists Scanned만 실제보다 적게
+   보이는 원인이 이것(실사례: 2026-09-01 PG00005608, 실제 완료 248건 중 231건만 반영).
+   → TT_Progress를 진실의 원천으로 삼아, 그 날짜에 라벨 업로드된 주문(ttOrders) 중
+   completed된 개수를 다시 세어서 PickLists.Scanned를 정확히 맞춰 쓴다.
+   그 날짜에 활성(미완료) TikTok CBT 리스트가 정확히 1개일 때만 안전하게 적용하고,
+   0개/2개 이상이면(어느 리스트 몫인지 판단 불가) 건드리지 않고 로그만 남긴다.
+   Apps Script 편집기에서 함수 목록 → ttReconcilePickListScanned 선택 → ▶ 실행
+   (date 파라미터 없이 실행하면 오늘 날짜 기준으로 동작)
+════════════════════════════════════════ */
+function ttReconcilePickListScanned(date) {
+  const targetDate = date || today_();
+
+  const ordersRes = ttGetOrders_(targetDate);
+  if (!ordersRes.ok) { Logger.log('ttGetOrders_ 실패'); return { ok:false, error:'ttGetOrders_ failed' }; }
+  const orderIds = new Set(ordersRes.orders.map(o => String(o.orderId)));
+  if (orderIds.size === 0) { Logger.log('해당 날짜에 업로드된 TikTok 주문 없음: ' + targetDate); return { ok:true, skipped:'no orders' }; }
+
+  const progRes = ttGetProgress_();
+  if (!progRes.ok) { Logger.log('ttGetProgress_ 실패'); return { ok:false, error:'ttGetProgress_ failed' }; }
+  let trueCompleted = 0;
+  orderIds.forEach(oid => {
+    const p = progRes.progress[oid];
+    if (p && p.status === 'completed') trueCompleted++;
+  });
+
+  const listsRes = getLists_(targetDate);
+  if (!listsRes.ok) { Logger.log('getLists_ 실패'); return { ok:false, error:'getLists_ failed' }; }
+  const activeTT = listsRes.lists.filter(l =>
+    l.category === 'TikTok CBT' && l.status !== 'Complete' && l.status !== 'Deleted'
+  );
+
+  if (activeTT.length !== 1) {
+    Logger.log('⚠ ' + targetDate + ' 활성 TikTok CBT 리스트가 ' + activeTT.length + '개라 자동 보정 건너뜀 (1개일 때만 안전하게 적용 가능). 실제 완료 건수=' + trueCompleted);
+    return { ok:true, skipped:'activeTT count = ' + activeTT.length, trueCompleted };
+  }
+
+  const target = activeTT[0];
+  if (Number(target.scanned) === trueCompleted) {
+    Logger.log('✅ ' + target.pgNo + ' 이미 일치함 (Scanned=' + trueCompleted + '). 보정 불필요.');
+    return { ok:true, unchanged:true, scanned: trueCompleted };
+  }
+
+  const updated = { ...target, scanned: trueCompleted, forceScanned:true }; // ★ forceScanned로 "더 큰 값 유지" 보호를 건너뛰고 정확한 값으로 확정
+  const r = upsertList_(updated, false);
+  Logger.log('✅ ttReconcilePickListScanned: ' + target.pgNo + ' Scanned ' + target.scanned + ' → ' + trueCompleted + ' 로 보정됨');
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    target.pgNo + ' Scanned ' + target.scanned + ' → ' + trueCompleted + ' 보정 완료', '✅ TikTok CBT 카운트 보정', 6
+  );
+  return { ok:true, corrected:true, pgNo: target.pgNo, before: target.scanned, after: trueCompleted, upsertResult:r };
+}
+
+/* ════════════════════════════════════════
    ★ v132 전면 교체: ttGetProgress_
    중복 행이 남아 있어도 completed가 지지 않도록 병합해서 응답
    → 이미 꼬여 있는 데이터도 조회 단계에서 스스로 복구된다.
@@ -1986,6 +2044,163 @@ function fixStaleStatusesAndArchive() {
   return { ok:true, fixed, archived: archiveResult.cleared||0 };
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// ★ v154 신규: 오래된 완료 데이터 "진짜 삭제" 기능
+// ────────────────────────────────────────────────────────────────────────
+// 배경(2026-08-24 실사례): 지금까지 deleteList_()는 실제로 행을 지우는 게
+// 아니라 Archived=TRUE 표시만 하고 시트에 영원히 남겨뒀음(v49 설계). 몇 달치
+// 데이터가 한 번도 안 지워지고 계속 누적되면서 스프레드시트 자체가 무거워졌고,
+// 결국 Google 시트 에디터(웹)가 이 파일을 렌더링 못 할 정도까지 커져서 매니저가
+// 시트를 직접 열 수도, 사본을 만들 수도 없는 상태까지 갔었음(다행히 Apps
+// Script/API 경로는 더 가벼운 방식이라 정상 작동해서 실제 작업자 업무는
+// 영향받지 않았음). 이 함수는 그 근본 원인 — "삭제라고 부르면서 실제로는
+// 절대 안 지워지는 것" — 을 고친다.
+//
+// 안전장치: 그냥 삭제하지 않고, 지우기 전에 반드시 Google Drive에 CSV로
+// 백업부터 남긴다(스프레드시트 밖에 저장되므로 이 파일 자체는 안 무거워짐).
+// 나중에 감사/분쟁 대응으로 옛날 기록이 필요하면 Drive의
+// "SK B2C Fulfillment - Archives" 폴더에서 날짜별 CSV를 열어보면 된다.
+// ════════════════════════════════════════════════════════════════════════
+
+function getOrCreateArchiveFolder_() {
+  const folderName = 'SK B2C Fulfillment - Archives';
+  const folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(folderName);
+}
+
+function ttCsvEscape_(v) {
+  if (v instanceof Date) v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+  const s = String(v == null ? '' : v);
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+/**
+ * ★ v154: 지울 행 인덱스(0-based, data 배열 기준) 배열을 받아서, 연속된 구간은
+ *   deleteRows(start,count) 한 번으로 묶어 지운다(개별 deleteRow 반복보다 API
+ *   호출 수가 훨씬 적어짐 — 몇 달치가 한꺼번에 쌓인 첫 실행에서도 6분 실행
+ *   제한에 안전하게 걸리도록). 뒤(큰 행 번호)에서부터 지워야 앞쪽 인덱스가
+ *   안 밀린다.
+ */
+function ttDeleteRowsBatched_(sh, rowIdxList /* 0-based, data 배열 기준, 오름차순 */) {
+  if (!rowIdxList.length) return;
+  const sorted = [...rowIdxList].sort((a,b) => a-b);
+  const ranges = [];
+  let start = sorted[0], prev = sorted[0];
+  for (let k=1; k<sorted.length; k++) {
+    if (sorted[k] === prev+1) { prev = sorted[k]; continue; }
+    ranges.push([start, prev]); start = sorted[k]; prev = sorted[k];
+  }
+  ranges.push([start, prev]);
+  // 뒤쪽 구간부터 지워야 앞쪽 구간의 실제 시트 행 번호가 안 밀림
+  ranges.sort((a,b) => b[0]-a[0]).forEach(([s,e]) => sh.deleteRows(2+s, e-s+1));
+}
+
+/**
+ * PickLists 시트에서, Archived=TRUE로 표시된 지 daysOld일(기본 60일)이 지난
+ * 행들을 Drive에 CSV로 백업한 뒤 시트에서 실제로 삭제한다.
+ * 갓 완료된 건(60일 이내)은 그대로 두어서, 최근 이력은 여전히 시트에서
+ * 바로 확인 가능하게 유지한다(운영상 필요한 최근 조회는 그대로 보존).
+ */
+function purgeOldArchivedLists_(daysOld) {
+  daysOld = daysOld || 60;
+  const sh = listsSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return { ok:true, purged:0 };
+  ensureArchivedColumns_();
+  const lastCol = sh.getLastColumn();
+  const headers = sh.getRange(1,1,1,lastCol).getValues()[0];
+  const archivedColIdx = headers.indexOf('Archived');
+  const archivedAtColIdx = headers.indexOf('ArchivedAt');
+  if (archivedColIdx===-1 || archivedAtColIdx===-1) return { ok:false, error:'Archived 컬럼을 찾을 수 없음' };
+
+  const data = sh.getRange(2,1,lastRow-1,lastCol).getValues();
+  const cutoff = new Date(Date.now() - daysOld*24*60*60*1000);
+  const toDeleteRowIdx = []; // data 배열 기준 0-based 인덱스
+  const toBackup = [];
+  for (let i=0; i<data.length; i++) {
+    const r = data[i];
+    if (String(r[archivedColIdx]).toUpperCase() !== 'TRUE') continue;
+    const av = r[archivedAtColIdx];
+    let ad;
+    try { ad = av instanceof Date ? av : new Date(av); } catch(e) { continue; }
+    if (isNaN(ad.getTime())) continue;
+    if (ad < cutoff) { toDeleteRowIdx.push(i); toBackup.push(r); }
+  }
+  if (toDeleteRowIdx.length === 0) return { ok:true, purged:0 };
+
+  // 1) Drive에 CSV 백업 먼저 (삭제보다 항상 먼저 실행 — 백업 실패 시 삭제도 안 함)
+  const csv = [headers, ...toBackup].map(row => row.map(ttCsvEscape_).join(',')).join('\n');
+  const fname = 'PickLists_purged_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.csv';
+  getOrCreateArchiveFolder_().createFile(fname, csv, MimeType.CSV);
+
+  // 2) 실제 삭제 — 연속 구간은 묶어서 한번에(대량 삭제 시 API 호출 수 최소화)
+  ttDeleteRowsBatched_(sh, toDeleteRowIdx);
+
+  Logger.log('✅ purgeOldArchivedLists_: ' + toDeleteRowIdx.length + '건 백업(' + fname + ') 후 삭제됨');
+  return { ok:true, purged: toDeleteRowIdx.length, backupFile: fname };
+}
+
+/**
+ * ScanLog는 스캔 1건마다 1행씩 쌓이는 로그라 PickLists보다 훨씬 빠르게
+ * 커진다 — 감사/분쟁 대응 목적상 조금 더 길게(기본 90일) 보관 후 동일한
+ * 방식(Drive 백업 후 삭제)으로 정리한다.
+ */
+function purgeOldScanLog_(daysOld) {
+  daysOld = daysOld || 90;
+  const sh = logSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return { ok:true, purged:0 };
+  const lastCol = sh.getLastColumn();
+  const headers = sh.getRange(1,1,1,lastCol).getValues()[0];
+  const dateColIdx = headers.indexOf('Date'); // 'yyyy-MM-dd' 문자열
+  if (dateColIdx === -1) return { ok:false, error:'Date 컬럼을 찾을 수 없음' };
+
+  const data = sh.getRange(2,1,lastRow-1,lastCol).getValues();
+  const cutoffStr = Utilities.formatDate(new Date(Date.now() - daysOld*24*60*60*1000), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const toDeleteRowIdx = [];
+  const toBackup = [];
+  for (let i=0; i<data.length; i++) {
+    const dv = String(data[i][dateColIdx] || '').slice(0,10);
+    if (dv && dv < cutoffStr) { toDeleteRowIdx.push(i); toBackup.push(data[i]); }
+  }
+  if (toDeleteRowIdx.length === 0) return { ok:true, purged:0 };
+
+  const csv = [headers, ...toBackup].map(row => row.map(ttCsvEscape_).join(',')).join('\n');
+  const fname = 'ScanLog_purged_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.csv';
+  getOrCreateArchiveFolder_().createFile(fname, csv, MimeType.CSV);
+
+  ttDeleteRowsBatched_(sh, toDeleteRowIdx);
+
+  Logger.log('✅ purgeOldScanLog_: ' + toDeleteRowIdx.length + '건 백업(' + fname + ') 후 삭제됨');
+  return { ok:true, purged: toDeleteRowIdx.length, backupFile: fname };
+}
+
+/**
+ * 매일 자정 트리거 끝에서 이어서 호출되는 종합 정리 함수. 순서: ① 완료 리스트
+ * Archived 표시 → ② 60일 지난 Archived PickLists 진짜 삭제 → ③ 90일 지난
+ * ScanLog 진짜 삭제 → ④ (v155 신규) TikTok CBT Scanned 카운트 드리프트 보정.
+ * 매일 돌아도 대부분의 날은 기준일을 넘는 게 없어서 사실상 아무 일도 안 하고
+ * (비용 거의 0), 기준일을 넘긴 게 쌓인 날에만 실제로 정리 작업이 발생한다.
+ */
+function nightlyMaintenance_() {
+  const archiveResult = autoClearCompletedLists();
+  const purgeLists = purgeOldArchivedLists_(60);
+  const purgeScan = purgeOldScanLog_(90);
+  // ★ v155: TikTok CBT의 Scanned 카운트 드리프트(락 경합으로 조용히 누락되는 문제)를
+  //   매일 밤 자동으로 바로잡는 안전망. 오늘 날짜만이 아니라 어제 날짜도 같이 보정하는
+  //   이유: 자정을 넘겨 이어지는 야간 근무가 있을 수 있고, 자정 직전에 발생한 드리프트가
+  //   아직 반영 안 됐을 수 있기 때문. 비용은 거의 없다(활성 TikTok CBT 리스트가 있는
+  //   날짜에만 실제 계산 발생, 없으면 즉시 skip).
+  let reconcileToday, reconcileYesterday;
+  try { reconcileToday = ttReconcilePickListScanned(today_()); } catch(e) { Logger.log('reconcile(today) 실패: '+e.message); }
+  try { reconcileYesterday = ttReconcilePickListScanned(getYesterday_()); } catch(e) { Logger.log('reconcile(yesterday) 실패: '+e.message); }
+  Logger.log('🌙 nightlyMaintenance_ 완료 — 정리:' + (archiveResult.cleared||0) +
+    ', PickLists 삭제:' + (purgeLists.purged||0) + ', ScanLog 삭제:' + (purgeScan.purged||0));
+  return { ok:true, archived: archiveResult.cleared||0, purgedLists: purgeLists.purged||0, purgedScanLog: purgeScan.purged||0,
+    reconcileToday, reconcileYesterday };
+}
+
 function autoClearCompletedLists() {
   const result = getLists_(); // 날짜 필터 없이 전체 (이미 Deleted인 건 제외됨)
   if (!result.ok) { Logger.log('autoClearCompletedLists: failed to read lists'); return { ok:false }; }
@@ -2000,23 +2215,29 @@ function autoClearCompletedLists() {
   return { ok:true, cleared };
 }
 
+// ★ v154: 이 트리거가 이제 autoClearCompletedLists 하나만이 아니라
+//   nightlyMaintenance_(완료 표시 + 오래된 데이터 진짜 삭제 + v155 카운트 보정까지)를
+//   전부 호출하도록 변경. 기존에 이미 설치된 트리거가 있다면(예전 버전) 지우고 새로
+//   만듦 — 이미 installMidnightCleanupTrigger를 1회 실행했던 곳이라도, 이 함수를
+//   다시 한 번 실행해주기만 하면 자동으로 최신 방식으로 교체된다(재설치 안전).
 function installMidnightCleanupTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === 'autoClearCompletedLists') {
+    const fn = t.getHandlerFunction();
+    if (fn === 'autoClearCompletedLists' || fn === 'nightlyMaintenance_') {
       ScriptApp.deleteTrigger(t);
-      Logger.log('Deleted existing trigger');
+      Logger.log('Deleted existing trigger: ' + fn);
     }
   });
 
-  ScriptApp.newTrigger('autoClearCompletedLists')
+  ScriptApp.newTrigger('nightlyMaintenance_')
     .timeBased()
     .atHour(0)
     .everyDays(1)
     .create();
 
-  Logger.log('✅ autoClearCompletedLists trigger set: every day at midnight');
+  Logger.log('✅ nightlyMaintenance_ trigger set: every day at midnight');
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    '매일 자정 완료 픽리스트 자동 정리 설정 완료!', '✅ Trigger Set', 5
+    '매일 자정 완료 픽리스트 정리 + 오래된 데이터 자동 삭제(백업 포함) + TikTok 카운트 보정 설정 완료!', '✅ Trigger Set', 5
   );
 }
 
