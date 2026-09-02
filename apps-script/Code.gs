@@ -1,5 +1,16 @@
 /******************************************************
- * SK B2C Fulfillment — Google Apps Script v155
+ * SK B2C Fulfillment — Google Apps Script v156
+ *
+ * ★ v156 수정 (긴급 — autoScanPoll 실행 겹침): 10분마다 자동 실행되는 autoScanPoll이
+ *   느려질 때(ShipStation API 지연 등) 이전 실행이 안 끝난 채로 다음 실행이 계속
+ *   겹쳐 시작되어, 3개 이상 인스턴스가 동시에 돌다가 각각 30분 강제종료(Timed Out)
+ *   되는 상태가 실제로 발생함(2026-09-01 확인, Executions 로그에 여러 건 동시 Running
+ *   확인됨). 여러 인스턴스가 같은 PickLists 문서 락을 다투면서 이 시간대 정상 스캔
+ *   요청(doPost)들까지 같이 지연/실패했을 가능성이 큼 — 오늘 있었던 TikTok CBT 카운트
+ *   누락 등 다른 증상들의 배경 원인 중 하나로 의심됨.
+ *   → PropertiesService로 "실행 중" 플래그를 남겨 중복 실행을 스스로 건너뛰게 하고,
+ *   한 사이클에 처리하는 건수도 300건으로 상한을 둬서 한 번의 실행이 무한정 길어지지
+ *   않게 함.
  *
  * ★ v155 추가 (성능): 일괄 완료 처리("전체 일괄 완료 처리")가 건마다 개별 HTTP
  *   왕복(ttScanUpdate_)을 순서대로 기다려서, 3대 랩탑이 동시에 정상 스캔 중인
@@ -2520,10 +2531,37 @@ function testSSConnectionDirect() {
    10분마다 실행 (GAS 타이머)
 ════════════════════════════════════════ */
 function autoScanPoll() {
+  // ★ v155 버그 수정: 지금까지 이 함수는 10분마다 무조건 새로 시작했는데, 한 번이라도
+  //   느려지면(ShipStation API 지연, 락 경합 등) 이전 실행이 안 끝난 채로 다음 실행이
+  //   겹쳐 시작되고, 그 다음 것도 또 겹쳐서 30분 강제종료(Timed Out)까지 눈덩이처럼
+  //   불어나는 문제가 실제로 발생했다(실사례: 2026-09-01, 3개 실행이 동시에 겹쳐서
+  //   돎). 여러 인스턴스가 동시에 같은 PickLists 문서 락을 다투면서, 이 시간대의
+  //   정상 스캔 요청들(doPost)까지 같이 지연/실패했을 가능성이 큼.
+  //   → 실행 시작 시 PropertiesService에 "실행 중" 플래그(시작 시각)를 남기고, 다음
+  //   실행이 시작될 때 그 플래그가 아직 남아있고 25분이 안 지났으면(=이전 게 아직
+  //   실제로 도는 중일 가능성이 높음) 이번 사이클은 조용히 건너뛴다. 정상 종료(성공/
+  //   실패 무관)되면 finally에서 항상 플래그를 지운다. 30분 타임아웃으로 강제 종료된
+  //   경우엔 finally가 못 돌아서 플래그가 남아있을 수 있는데, 25분 지나면 스스로
+  //   "오래된 플래그"로 간주하고 다시 시도하므로 영구적으로 막히지 않는다.
+  //   getScriptLock()이 아니라 PropertiesService를 쓰는 이유: ScriptLock을 실행
+  //   내내(수십 분) 쥐고 있으면 이 스크립트의 다른 모든 기능(스캔 저장, 시트 생성 등)이
+  //   전부 같이 막혀버리므로, 가벼운 플래그 방식으로 이 함수 자기 자신의 중복 실행만
+  //   막는다.
+  const RUN_FLAG_KEY = 'AUTOSCANPOLL_RUNNING_SINCE';
+  const nowMs = Date.now();
+  const runningSince = Number(PROP.getProperty(RUN_FLAG_KEY) || 0);
+  if (runningSince && (nowMs - runningSince) < 25 * 60 * 1000) {
+    Logger.log('⏸ autoScanPoll: 이전 실행이 아직 진행 중으로 보여 이번 사이클 건너뜀 (시작 ' +
+      Math.round((nowMs - runningSince) / 1000) + '초 전)');
+    return;
+  }
+  PROP.setProperty(RUN_FLAG_KEY, String(nowMs));
+
   const key    = PROP.getProperty('SS_API_KEY')    || '';
   const secret = PROP.getProperty('SS_API_SECRET') || '';
   if (!key || !secret) {
     Logger.log('autoScanPoll: No SS credentials');
+    PROP.deleteProperty(RUN_FLAG_KEY);
     return;
   }
 
@@ -2549,7 +2587,7 @@ function autoScanPoll() {
     );
     Logger.log('Already scanned today: ' + alreadyScanned.size);
 
-    const newShipments = verified.shipments.filter(s => {
+    let newShipments = verified.shipments.filter(s => {
       if (alreadyScanned.has(String(s.orderNumber))) return false;
       // TikTok CBT는 Scan Station 수동 스캔만 사용
       const detected = detectChannel_(String(s.orderNumber));
@@ -2562,6 +2600,16 @@ function autoScanPoll() {
     if (newShipments.length === 0) {
       Logger.log('No new shipments to process');
       return;
+    }
+
+    // ★ v155: 한 번에 처리하는 건수를 상한선(300건)으로 제한해서, 물량이 아주 많은
+    //   날에도 이 한 번의 실행이 무한정 길어지지 않게 한다. 못 처리한 나머지는
+    //   alreadyScanned 체크상 다음 10분 주기에 자동으로 이어서 처리된다(데이터 유실
+    //   없음, 그냥 여러 사이클에 걸쳐 나눠 처리될 뿐).
+    const BATCH_CAP = 300;
+    if (newShipments.length > BATCH_CAP) {
+      Logger.log('⚠ 처리 대상이 ' + newShipments.length + '건이라 이번 사이클은 ' + BATCH_CAP + '건만 처리, 나머지는 다음 주기에');
+      newShipments = newShipments.slice(0, BATCH_CAP);
     }
 
     // ★ v39: 카테고리별 pickEnd 상태 미리 확인해서 로그 출력
@@ -2617,6 +2665,8 @@ function autoScanPoll() {
 
   } catch(e) {
     Logger.log('autoScanPoll error: ' + e.message);
+  } finally {
+    PROP.deleteProperty(RUN_FLAG_KEY); // ★ v155: 정상 종료 시 항상 플래그 해제 (성공/실패 무관)
   }
 }
 
