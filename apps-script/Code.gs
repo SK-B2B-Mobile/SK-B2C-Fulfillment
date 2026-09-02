@@ -1,6 +1,13 @@
 /******************************************************
  * SK B2C Fulfillment — Google Apps Script v156
  *
+ * ★ v156 추가 수정 (ttReconcilePickListScanned 부작용): 이 함수가 Scanned 숫자만
+ *   강제로 맞추고 autoCloseIfFull 신호를 안 보내서, Scanned=Orders로 다 찼는데도
+ *   Scan End가 자동으로 안 찍히는 부작용이 있었음(실사례: 2026-09-01 PG00005608,
+ *   248/248인데 Scan End 공란). → 개수가 다 찬 경우 Scan End도 정상 흐름과 동일하게
+ *   자동 확정하도록 수정. 숫자가 이미 일치해도 Scan End가 비어있으면 다시 보정 대상으로
+ *   잡도록 조건도 같이 수정.
+ *
  * ★ v156 추가 수정 (성능 — 진짜 원인): autoScanPoll이 300건까지 처리 상한을 걸어놔도
  *   여전히 건당 4~6초씩 걸려 300건에 20분 이상 소요됨(실사례: 2026-09-01). 원인은
  *   processWebhookOrder_가 호출될 때마다 PickLists 시트 전체(getLists_)와 ScanLog
@@ -1556,18 +1563,35 @@ function ttReconcilePickListScanned(date) {
   }
 
   const target = activeTT[0];
-  if (Number(target.scanned) === trueCompleted) {
+  const oc = Number(target.orderCount) || 0;
+  const alreadyMatches = Number(target.scanned) === trueCompleted;
+  // ★ v156 버그 수정: 지금까지는 Scanned 숫자만 맞으면 "보정 불필요"로 스킵했는데, 그러면
+  //   Scanned=Orders인데 Scan End는 비어있는 상태(정상 흐름이었다면 자동으로 찍혔을 값)를
+  //   영영 못 고침 — 어제 이 함수로 231→248 보정했을 때 정확히 이 문제가 생겼음(실사례:
+  //   2026-09-01 PG00005608, Scanned/Orders 248/248인데 Scan End 공란으로 남음). 원인은
+  //   이 함수가 scanned 필드만 강제로 덮어쓰고 autoCloseIfFull 신호를 안 보냈기 때문 —
+  //   정상적인 증분 스캔(updateScanned_)이었다면 마지막 건에서 자동으로 Scan End가 찍혔을
+  //   상황임. → 개수가 다 찼는데 Scan End가 없는 경우도 "보정 필요"로 같이 잡아서 처리.
+  const needsAutoClose = !target.scanEnd && oc > 0 && trueCompleted >= oc;
+
+  if (alreadyMatches && !needsAutoClose) {
     Logger.log('✅ ' + target.pgNo + ' 이미 일치함 (Scanned=' + trueCompleted + '). 보정 불필요.');
     return { ok:true, unchanged:true, scanned: trueCompleted };
   }
 
-  const updated = { ...target, scanned: trueCompleted, forceScanned:true }; // ★ forceScanned로 "더 큰 값 유지" 보호를 건너뛰고 정확한 값으로 확정
+  const updated = {
+    ...target, scanned: trueCompleted, forceScanned:true,
+    // ★ v156: 개수가 다 찼으면 정상 흐름과 동일하게 Scan End도 같이 자동 확정
+    autoCloseIfFull: true, scanEndTime: nowLocal_(),
+  };
   const r = upsertList_(updated, false);
-  Logger.log('✅ ttReconcilePickListScanned: ' + target.pgNo + ' Scanned ' + target.scanned + ' → ' + trueCompleted + ' 로 보정됨');
+  Logger.log('✅ ttReconcilePickListScanned: ' + target.pgNo + ' Scanned ' + target.scanned + ' → ' + trueCompleted +
+    (needsAutoClose ? ' (+ Scan End 자동 확정)' : '') + ' 로 보정됨');
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    target.pgNo + ' Scanned ' + target.scanned + ' → ' + trueCompleted + ' 보정 완료', '✅ TikTok CBT 카운트 보정', 6
+    target.pgNo + ' Scanned ' + target.scanned + ' → ' + trueCompleted +
+    (needsAutoClose ? ' + Scan End 확정' : '') + ' 보정 완료', '✅ TikTok CBT 카운트 보정', 6
   );
-  return { ok:true, corrected:true, pgNo: target.pgNo, before: target.scanned, after: trueCompleted, upsertResult:r };
+  return { ok:true, corrected:true, pgNo: target.pgNo, before: target.scanned, after: trueCompleted, autoClosed: needsAutoClose, upsertResult:r };
 }
 
 /* ════════════════════════════════════════
