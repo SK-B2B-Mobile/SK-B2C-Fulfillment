@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v154</title>
+<title>SK B2C Fulfillment v155</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -512,29 +512,30 @@ async function syncData(url,action,payload){
   if(!url)return;
   try{await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});}catch(e){console.warn('syncData error:',e);}
 }
-async function syncDataAwait(url,action,payload){
-  // syncData는 no-cors라 응답을 못 읽음. TT 저장처럼 결과가 필요한 곳에서 사용.
-  if(!url)return{ok:false,error:'no url'};
-  try{
-    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload})});
-    return await r.json();
-  }catch(e){return{ok:false,error:e.message};}
-}
-// ★ v142 버그 수정: syncDataAwait는 fetch에 타임아웃이 전혀 없어서, 서버 응답이 느리거나
-// 네트워크가 끊긴 경우 요청 하나가 무한정 매달릴 수 있었다. 순차 처리 루프(예: 일괄 완료
-// 처리)에서 이 함수를 쓰면, 단 한 건이 응답을 안 주는 것만으로 나머지 전체가 영원히
-// "처리 중…" 상태로 멈춰버림(실사례: 103건 일괄 완료 처리가 6분 넘게 끝나지 않음).
-// → AbortController로 지정 시간 안에 응답이 없으면 확실히 포기하고 실패로 처리해서,
-// 다음 항목으로 넘어갈 수 있게 한다.
-async function syncDataAwaitTimeout(url,action,payload,timeoutMs){
+// ★ v157 버그 수정: 지금까지 syncDataAwait에 타임아웃이 전혀 없었음. 완전히 인터넷이
+// 끊기면 fetch가 보통 빠르게 실패해주지만, "연결은 되어있는데 응답만 안 오는" 상황
+// (불안정한 와이파이, 공용 와이파이 로그인 화면에 걸림 등)에서는 요청 하나가 무한정
+// 매달릴 수 있었다. 이게 특히 문제였던 곳: TikTok 스캔 재시도 큐(ttFailedSyncsRef)와
+// 픽리스트 재시도 큐(listFailedSyncsRef)의 10초 sweep — 둘 다 이 함수를 타임아웃 없이
+// 호출하고 있어서, 한 번 이렇게 걸리면 그 사이클 전체가 막혀버릴 수 있었음.
+// → syncDataAwaitTimeout과 로직을 통합해서, syncDataAwait 자체에 기본 타임아웃(20초)을
+// 넣었다. timeoutMs를 안 넘기는 기존 모든 호출부(재시도 큐, Manual Verify, PickAssign,
+// 웹훅 등록 등)가 코드 수정 없이 전부 자동으로 보호받는다. 페이로드가 큰 업로드(SKU
+// Master 전체 재업로드 등)는 호출부에서 더 넉넉한 timeoutMs를 명시적으로 넘긴다.
+async function syncDataAwait(url,action,payload,timeoutMs){
   if(!url)return{ok:false,error:'no url'};
   const ctrl=new AbortController();
-  const timer=setTimeout(()=>ctrl.abort(),timeoutMs||10000);
+  const timer=setTimeout(()=>ctrl.abort(),timeoutMs||20000);
   try{
     const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action,...payload}),signal:ctrl.signal});
     return await r.json();
   }catch(e){return{ok:false,error:(e.name==='AbortError'?'timeout':e.message)};}
   finally{clearTimeout(timer);}
+}
+// ★ v157: syncDataAwait와 완전히 같은 구현(중복 제거) — 이름만 유지해서 기존 호출부가
+// 그대로 동작하게 함. timeoutMs를 명시적으로 넘기는 용도로 계속 사용하면 됨.
+async function syncDataAwaitTimeout(url,action,payload,timeoutMs){
+  return syncDataAwait(url,action,payload,timeoutMs);
 }
 const {createElement:h,useState,useRef,useEffect,useCallback,Fragment}=React;
 
@@ -617,7 +618,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v154';
+const APP_VERSION='v155';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1639,29 +1640,41 @@ function App(){
   //   재시도 큐 + 실패 건수 배지로 "저장 안 됐는데 완료로 보이는" 상황을 없앤다.
   const ttFailedSyncsRef=useRef(new Map()); // orderId -> {action,payload}
   const [ttFailedSyncCount,setTtFailedSyncCount]=useState(0);
+  const ttSweepingRef=useRef(false); // ★ v157: sweep 겹침 방지 플래그
   useEffect(()=>{ // 실패 큐 백그라운드 재시도(10초마다) — 성공하면 큐에서 제거, 계속 실패하면 배지 유지
     if(!wh)return;
     const sweep=async()=>{
       if(ttFailedSyncsRef.current.size===0)return;
-      const entries=[...ttFailedSyncsRef.current.entries()];
-      for(const [orderId,job] of entries){
-        // ★ v130 버그 수정: 이 재시도 큐에 들어간 주문은 "로컬에선 완료 처리됐지만 서버 저장은
-        // 아직 실패/재시도 중"인 상태인데, 로컬 상태를 지켜주는 pendingTtProgressRef는 최초
-        // 1회(20초)만 보호하고 끝이라서, 재시도가 20초 넘게 걸리면(락 대기 등으로 흔함) 그 사이
-        // pollTT(30초 주기)가 "서버엔 아직 완료로 안 남아있네" 하고 로컬 완료 표시를 되돌려버림
-        // → 작업자 눈엔 "스캔했는데 시간 지나면 없어짐"으로 보이고 또 스캔하게 됨. 오늘 가장
-        // 흔한 상품(APNS11-AP, 50건+)이 하필 이 재시도 경합에 가장 자주 걸려서 두드러졌던 것.
-        // 재시도가 진행되는 동안 보호 시각을 계속 갱신해서, 실제로 저장 성공(또는 영구 실패로
-        // 확정)할 때까지 로컬 완료 표시가 함부로 되돌아가지 않게 한다.
-        // ★ v131: 새 구조(객체)에 맞춰 ts만 갱신. 큐에만 있고 보호 등록이 없는 경우
-        // (예: 새로고침 직후)엔 job.payload를 기대값으로 삼아 새로 등록한다.
-        const pd=pendingTtProgressRef.current.get(orderId);
-        if(pd)pd.ts=Date.now();
-        else if(job.payload&&job.payload.status)ttMarkPending(orderId,job.payload);
-        const r=await syncDataAwait(wh,job.action,job.payload);
-        if(r&&r.ok)ttFailedSyncsRef.current.delete(orderId);
+      // ★ v157 버그 수정: syncDataAwait에 타임아웃(기본 20초)이 생기면서, 재시도 큐에 항목이
+      // 여러 개 쌓여 있으면 sweep 한 번이 10초 주기보다 오래 걸릴 수 있게 됐다(항목마다 최대
+      // 20초까지 대기 가능). setInterval은 이전 sweep이 끝났는지 신경 안 쓰고 그냥 10초마다
+      // 새로 호출하므로, 그대로 두면 sweep 여러 개가 겹쳐 돌 수 있었다(오늘 autoScanPoll에서
+      // 겪은 것과 같은 종류의 문제). → 이전 sweep이 아직 진행 중이면 이번 사이클은 건너뛴다.
+      if(ttSweepingRef.current)return;
+      ttSweepingRef.current=true;
+      try{
+        const entries=[...ttFailedSyncsRef.current.entries()];
+        for(const [orderId,job] of entries){
+          // ★ v130 버그 수정: 이 재시도 큐에 들어간 주문은 "로컬에선 완료 처리됐지만 서버 저장은
+          // 아직 실패/재시도 중"인 상태인데, 로컬 상태를 지켜주는 pendingTtProgressRef는 최초
+          // 1회(20초)만 보호하고 끝이라서, 재시도가 20초 넘게 걸리면(락 대기 등으로 흔함) 그 사이
+          // pollTT(30초 주기)가 "서버엔 아직 완료로 안 남아있네" 하고 로컬 완료 표시를 되돌려버림
+          // → 작업자 눈엔 "스캔했는데 시간 지나면 없어짐"으로 보이고 또 스캔하게 됨. 오늘 가장
+          // 흔한 상품(APNS11-AP, 50건+)이 하필 이 재시도 경합에 가장 자주 걸려서 두드러졌던 것.
+          // 재시도가 진행되는 동안 보호 시각을 계속 갱신해서, 실제로 저장 성공(또는 영구 실패로
+          // 확정)할 때까지 로컬 완료 표시가 함부로 되돌아가지 않게 한다.
+          // ★ v131: 새 구조(객체)에 맞춰 ts만 갱신. 큐에만 있고 보호 등록이 없는 경우
+          // (예: 새로고침 직후)엔 job.payload를 기대값으로 삼아 새로 등록한다.
+          const pd=pendingTtProgressRef.current.get(orderId);
+          if(pd)pd.ts=Date.now();
+          else if(job.payload&&job.payload.status)ttMarkPending(orderId,job.payload);
+          const r=await syncDataAwait(wh,job.action,job.payload); // ★ v157: 이제 기본 20초 타임아웃 적용됨(무한 대기 없음)
+          if(r&&r.ok)ttFailedSyncsRef.current.delete(orderId);
+        }
+        setTtFailedSyncCount(ttFailedSyncsRef.current.size);
+      }finally{
+        ttSweepingRef.current=false;
       }
-      setTtFailedSyncCount(ttFailedSyncsRef.current.size);
     };
     const id=setInterval(sweep,10000);
     return()=>clearInterval(id);
@@ -1758,17 +1771,24 @@ function App(){
   //   리스트 생성/수정 전반(upsertList/deleteList 등)에도 동일하게 적용.
   const listFailedSyncsRef=useRef(new Map()); // id -> {action,payload}
   const [listFailedSyncCount,setListFailedSyncCount]=useState(0);
+  const listSweepingRef=useRef(false); // ★ v157: sweep 겹침 방지 플래그 (ttSweepingRef와 동일한 이유)
   useEffect(()=>{
     if(!wh)return;
     const sweep=async()=>{
       if(listFailedSyncsRef.current.size===0)return;
-      const entries=[...listFailedSyncsRef.current.entries()];
-      for(const [id,job] of entries){
-        touchPending(id); // 재시도가 끝날 때까지 pruneStale이 지우지 못하도록 보호 시각 계속 갱신
-        const r=await syncDataAwait(wh,job.action,job.payload);
-        if(r&&r.ok)listFailedSyncsRef.current.delete(id);
+      if(listSweepingRef.current)return; // ★ v157: 이전 sweep이 아직 진행 중이면 건너뜀
+      listSweepingRef.current=true;
+      try{
+        const entries=[...listFailedSyncsRef.current.entries()];
+        for(const [id,job] of entries){
+          touchPending(id); // 재시도가 끝날 때까지 pruneStale이 지우지 못하도록 보호 시각 계속 갱신
+          const r=await syncDataAwait(wh,job.action,job.payload); // ★ v157: 기본 20초 타임아웃 적용됨
+          if(r&&r.ok)listFailedSyncsRef.current.delete(id);
+        }
+        setListFailedSyncCount(listFailedSyncsRef.current.size);
+      }finally{
+        listSweepingRef.current=false;
       }
-      setListFailedSyncCount(listFailedSyncsRef.current.size);
     };
     const iv=setInterval(sweep,10000);
     return()=>clearInterval(iv);
@@ -2099,7 +2119,7 @@ function App(){
       setTtUploadMsg('서버 업로드 중… ('+doneCount+'/'+orderList.length+'건)');
       let res=null;
       for(let attempt=0;attempt<3;attempt++){
-        res=await syncDataAwait(wh,'ttUploadOrders',{orders:chunk,date:today()});
+        res=await syncDataAwait(wh,'ttUploadOrders',{orders:chunk,date:today()},30000); // ★ v157: 150건 묶음이라도 넉넉히 30초
         if(res&&res.ok)break;
         if(attempt<2)await new Promise(r=>setTimeout(r,1500)); // 재시도 전 잠깐 대기
       }
@@ -2139,7 +2159,7 @@ function App(){
     try{
       const buf=await file.arrayBuffer();
       const{single,sets}=ttParseSkuXlsx(buf);
-      const res=await syncDataAwait(wh,'ttUploadSkuMaster',{single,sets});
+      const res=await syncDataAwait(wh,'ttUploadSkuMaster',{single,sets},60000); // ★ v157: 수천 건짜리 페이로드라 60초로 넉넉히
       setTtUploading(false);
       if(res&&res.ok){
         setTtSkuUploadMsg('✓ SKU Master 업로드 완료 — 단품 '+res.addedSingle+'개, 세트 '+res.addedSet+'개 신규 추가 (기존 데이터 유지)');
@@ -2962,7 +2982,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v154'),
+    h('span',{className:'app-ver '+D},'v155'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
