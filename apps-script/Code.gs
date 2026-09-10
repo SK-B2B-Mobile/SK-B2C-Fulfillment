@@ -1,4 +1,25 @@
 /******************************************************
+ * SK B2C Fulfillment — Google Apps Script v157
+ *
+ * ★ v157 — 근본 구조 개선 (TikTok CBT Scanned "진실의 원천화"): 지금까지 PickLists.
+ *   Scanned는 완료마다 +1씩 증분하는 방식이라, 짧은 시간에 완료가 몰리면(동시 스캔,
+ *   일괄 처리) 락 경합으로 일부가 조용히 누락되는 사고가 반복됐다(2026-08-31, 09-01,
+ *   09-03 — 매번 사후 보정으로 땜질). 근본 원인은 "한 번이라도 놓치면 영구히 틀린 값을
+ *   들고 있는" 증분 카운터 방식 자체.
+ *   → getLists_가 특정 단일 날짜를 조회할 때(가장 흔한 실사용 패턴), 그 날짜의 활성
+ *   TikTok CBT 리스트가 정확히 1개면 TT_Orders/TT_Progress(진짜 완료 기록)에서 그
+ *   자리에서 다시 세어 응답값을 덮어쓴다(읽기 전용 보정, 시트 자체는 안 건드림).
+ *   → Records/Scan Station 화면이 매번 그 순간의 진짜 값을 보게 되어, 증분이 몇 건
+ *   누락되든 화면엔 더 이상 안 보인다(사후 수동 보정이 필요 없어짐).
+ *   → 시트에 실제로 저장된 값 자체를 고치는 역할(CSV 내보내기, DailySummary 등 원본
+ *   데이터를 쓰는 다른 용도를 위해)은 기존처럼 nightlyMaintenance_/수동
+ *   ttReconcilePickListScanned가 계속 담당 — 두 레이어가 함께 동작(읽기 즉시 정확 +
+ *   저장값도 매일 밤 자동으로 따라잡음).
+ *   → 카운팅 로직은 ttCountCompletedForDate_로 공용화해서 getLists_와
+ *   ttReconcilePickListScanned가 항상 같은 기준을 쓰도록 함.
+ *   → "date=''"(날짜 필터 없는 전체 조회 — 자정 정리, CSV 등)에는 적용 안 함(여러 날짜에
+ *   걸쳐 재계산하면 비용이 커짐 — 기존처럼 저장값 그대로 반환).
+ *
  * SK B2C Fulfillment — Google Apps Script v156
  *
  * ★ v156 추가 수정 (ttReconcilePickListScanned 부작용): 이 함수가 Scanned 숫자만
@@ -1538,20 +1559,24 @@ function ttBulkScanUpdate_(items, worker) {
 function ttReconcilePickListScanned(date) {
   const targetDate = date || today_();
 
-  const ordersRes = ttGetOrders_(targetDate);
-  if (!ordersRes.ok) { Logger.log('ttGetOrders_ 실패'); return { ok:false, error:'ttGetOrders_ failed' }; }
-  const orderIds = new Set(ordersRes.orders.map(o => String(o.orderId)));
-  if (orderIds.size === 0) { Logger.log('해당 날짜에 업로드된 TikTok 주문 없음: ' + targetDate); return { ok:true, skipped:'no orders' }; }
+  const trueCompleted = ttCountCompletedForDate_(targetDate);
+  if (trueCompleted === null) { Logger.log('ttCountCompletedForDate_ 실패(ttGetOrders_/ttGetProgress_ 조회 실패)'); return { ok:false, error:'count failed' }; }
+  if (trueCompleted === 0) {
+    // orderIds.size===0(오늘 업로드된 주문 없음)이거나 completed가 0건인 두 경우가 섞여 있을 수 있으나,
+    // 어느 쪽이든 지금 이 시점엔 보정할 완료 건이 없다는 뜻이라 동일하게 처리.
+    const ordersCheck = ttGetOrders_(targetDate);
+    if (ordersCheck.ok && ordersCheck.orders.length === 0) {
+      Logger.log('해당 날짜에 업로드된 TikTok 주문 없음: ' + targetDate);
+      return { ok:true, skipped:'no orders' };
+    }
+  }
 
-  const progRes = ttGetProgress_();
-  if (!progRes.ok) { Logger.log('ttGetProgress_ 실패'); return { ok:false, error:'ttGetProgress_ failed' }; }
-  let trueCompleted = 0;
-  orderIds.forEach(oid => {
-    const p = progRes.progress[oid];
-    if (p && p.status === 'completed') trueCompleted++;
-  });
-
-  const listsRes = getLists_(targetDate);
+  // ★ v157: getLists_에 skipLiveRecompute를 넘겨서, 방금 넣은 "실시간 재계산" 레이어를
+  //   우회하고 시트에 실제로 저장되어 있는 값(raw)을 그대로 받는다. 그래야 "보정 전/후"
+  //   로그와 "이미 일치하는지" 판단이 실제 저장값 기준으로 정확하게 유지된다(안 그러면
+  //   getLists_가 이미 화면단에서 값을 맞춰 보여주고 있어서 이 함수가 늘 "이미 일치함"
+  //   으로만 보이고, 정작 시트엔 옛날 값이 그대로 남아있는 걸 못 알아챌 수 있음).
+  const listsRes = getLists_(targetDate, { skipLiveRecompute:true });
   if (!listsRes.ok) { Logger.log('getLists_ 실패'); return { ok:false, error:'getLists_ failed' }; }
   const activeTT = listsRes.lists.filter(l =>
     l.category === 'TikTok CBT' && l.status !== 'Complete' && l.status !== 'Deleted'
@@ -2323,7 +2348,26 @@ function deleteList_(pgNo, date) {
   return { ok:false, error:'not found: '+pgNo };
 }
 
-function getLists_(date) {
+// ★ v157 신규: TikTok CBT의 "진짜 완료 건수"를 TT_Progress에서 직접 세는 공용 함수.
+//   ttReconcilePickListScanned(사후 보정)와 getLists_(실시간 표시) 양쪽에서 같은
+//   로직을 공유해서 기준이 어긋나지 않게 한다.
+function ttCountCompletedForDate_(date) {
+  const ordersRes = ttGetOrders_(date);
+  if (!ordersRes.ok) return null;
+  const orderIds = ordersRes.orders.map(o => String(o.orderId));
+  if (orderIds.length === 0) return 0;
+  const progRes = ttGetProgress_();
+  if (!progRes.ok) return null;
+  let trueCompleted = 0;
+  orderIds.forEach(oid => {
+    const p = progRes.progress[oid];
+    if (p && p.status === 'completed') trueCompleted++;
+  });
+  return trueCompleted;
+}
+
+function getLists_(date, opts) {
+  opts = opts || {};
   const sh=listsSheet_(); const lastRow=sh.getLastRow();
   if (lastRow<2) return { ok:true, lists:[] };
   const lastCol=Math.max(sh.getLastColumn(),23);
@@ -2349,6 +2393,35 @@ function getLists_(date) {
       pages:Number(r[19])||0, workerDurations:String(r[20]||''),
     };
   });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // ★ v157 신규: TikTok CBT Scanned "진실의 원천화" (근본 구조 개선)
+  // ────────────────────────────────────────────────────────────────────────
+  // 배경: PickLists.Scanned는 지금까지 스캔 완료마다 +1씩 증분하는 방식으로 관리했는데,
+  // 짧은 시간에 완료가 몰리면(동시 스캔, 일괄 처리 등) 락 경합으로 일부 증분이 조용히
+  // 누락되는 사고가 반복됐다(2026-08-31, 09-01, 09-03 실사례 — 매번 사후 수동/자동 보정
+  // 으로 땜질). 근본 원인은 "증분 카운터"라는 방식 자체가 한 번이라도 놓치면 영구히 틀린
+  // 값을 들고 있는다는 것.
+  // → 이제부터는 특정 단일 날짜를 조회할 때(가장 흔한 폴링 패턴: 매 요청이 today() 하나만
+  // 콕 집어서 조회), 그 날짜의 활성(Deleted 아닌) TikTok CBT 리스트가 정확히 1개면
+  // TT_Orders/TT_Progress(진짜 완료 기록)에서 그 자리에서 다시 세어 응답값을 덮어쓴다.
+  // 시트에 저장된 값 자체는 안 건드림(쓰기 없음, 읽기 전용 보정) — 실제 시트 값 자체를
+  // 고치는 건 기존처럼 nightlyMaintenance_/ttReconcilePickListScanned가 담당한다.
+  // "date=''"(날짜 필터 없이 전체 조회 — 자정 정리, 히스토리 로드 등)일 때는 여러 날짜에
+  // 걸쳐 이 재계산을 반복하면 비용이 커지므로 적용하지 않고 저장된 값을 그대로 반환한다.
+  // 리스트가 0개/2개 이상인 날짜도(어느 리스트 몫인지 판단 불가) 저장된 값을 그대로 둔다.
+  if (date && !opts.skipLiveRecompute) {
+    const ttOfDate = lists.filter(l => l.category === 'TikTok CBT' && l.status !== 'Deleted');
+    if (ttOfDate.length === 1) {
+      try {
+        const trueCompleted = ttCountCompletedForDate_(date);
+        if (trueCompleted != null) ttOfDate[0].scanned = trueCompleted;
+      } catch (e) {
+        Logger.log('⚠ getLists_: TikTok CBT 실시간 재계산 실패, 저장된 값 사용 — ' + e.message);
+      }
+    }
+  }
+
   return { ok:true, lists, ver:getVersion_() };
 }
 
