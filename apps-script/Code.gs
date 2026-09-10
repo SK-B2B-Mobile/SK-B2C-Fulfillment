@@ -1,4 +1,18 @@
 /******************************************************
+ * SK B2C Fulfillment — Google Apps Script v158
+ *
+ * ★ v158 — 긴급 성능 수정(v157의 부작용): TikTok CBT Scanned 실시간 정확화(v157)가
+ *   폴링(30초 주기)마다 TT_Orders/TT_Progress 전체를 다시 읽게 만들었는데, 여러 작업자
+ *   기기가 거의 동시에 폴링하면 같은 계산이 기기 수만큼 중복 실행됐다. 실사례
+ *   (2026-09-10): 이 여파로 단순 조회(doGet)가 22~58초까지 걸리는 게 다수 확인됐고,
+ *   서버 전체가 느려지면서 다른 쓰기 작업(PickAssign 완료 등)의 락 대기까지 길어져
+ *   타임아웃으로 실패하는 연쇄 효과로 이어진 것으로 보임 — 정확도를 높이려던 수정이
+ *   부작용으로 다른 기능을 망가뜨린 사례.
+ *   → ttCountCompletedForDate_에 CacheService 기반 15초 캐시 추가. 같은 15초 안의
+ *   중복 요청은 실제 계산 없이 캐시된 값을 재사용. 스캔이 실제로 완료되는 순간(개별/
+ *   일괄 처리 둘 다) 캐시를 즉시 무효화해서, 15초를 기다리지 않고도 바로 최신 숫자가
+ *   보이게 함.
+ *
  * SK B2C Fulfillment — Google Apps Script v157
  *
  * ★ v157 — 근본 구조 개선 (TikTok CBT Scanned "진실의 원천화"): 지금까지 PickLists.
@@ -1373,6 +1387,10 @@ function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker,
   //    구조를 여기서 끊는다. (이 아래가 실패해도 TT_Progress는 이미 확정됨)
   //    ★ v91: 이미 완료 처리됐던 주문의 재전송이면 카운트를 다시 올리지 않음(중복 방지)
   if (justCompleted) {
+    // ★ v158: 방금 진짜로 완료됐으므로, 15초 캐시(ttCountCompletedForDate_)를 즉시
+    //   비워서 다음 조회(폴링)부터 바로 최신 숫자가 보이게 한다. 캐시 TTL이 끝날 때까지
+    //   기다리지 않아도 됨 — "완료했는데 화면에 안 보인다"는 체감 지연을 없앤다.
+    try { CacheService.getScriptCache().remove('ttCompletedCount_' + today_()); } catch(e) {}
     try {
       const listsData = getLists_(today_());
       if (listsData.ok) {
@@ -1520,6 +1538,8 @@ function ttBulkScanUpdate_(items, worker) {
 
   // ── 픽리스트 카운트 반영은 락을 푼 뒤, 이번 배치에서 새로 완료된 건수만큼 한 번에 증분 ──
   if (completedCount > 0) {
+    // ★ v158: 여기도 마찬가지로 캐시 즉시 무효화 — 일괄 처리 직후 바로 최신 숫자가 보이게
+    try { CacheService.getScriptCache().remove('ttCompletedCount_' + today_()); } catch(e) {}
     try {
       const listsData = getLists_(today_());
       if (listsData.ok) {
@@ -2351,11 +2371,28 @@ function deleteList_(pgNo, date) {
 // ★ v157 신규: TikTok CBT의 "진짜 완료 건수"를 TT_Progress에서 직접 세는 공용 함수.
 //   ttReconcilePickListScanned(사후 보정)와 getLists_(실시간 표시) 양쪽에서 같은
 //   로직을 공유해서 기준이 어긋나지 않게 한다.
+// ★ v158 버그 수정(성능 — 실사례): getLists_(date)가 폴링(30초 주기)마다 이 함수를
+//   호출하는데, 여러 작업자 기기가 동시에 폴링하면 "거의 같은 순간에" 이 무거운
+//   계산(TT_Orders 전체 읽기 + TT_Progress 전체 읽기)이 기기 수만큼 중복 실행됐다.
+//   2026-09-10 확인: 이 시점 Executions 로그에서 단순 조회(doGet)가 22~58초까지
+//   걸리는 게 다수 확인됨 — 이게 서버 전체를 느리게 만들어 다른 쓰기 작업(PickAssign
+//   완료 등)의 락 대기까지 함께 길어지고, 결국 그쪽이 타임아웃으로 실패하는 연쇄
+//   효과로 이어진 것으로 보임(정확도를 높이려던 수정이 부작용으로 다른 기능을
+//   느리게 만든 사례).
+//   → CacheService로 짧은(15초) 캐시를 둔다. 같은 15초 안에 여러 기기가 물어보면
+//   맨 처음 1번만 실제로 계산하고, 나머지는 그 결과를 그대로 재사용한다. 화면
+//   최신성은 최대 15초 지연 정도로, 어차피 폴링 주기(30초)보다 짧아 체감상 실시간과
+//   다름없다.
 function ttCountCompletedForDate_(date) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'ttCompletedCount_' + date;
+  const cached = cache.get(cacheKey);
+  if (cached !== null) return Number(cached);
+
   const ordersRes = ttGetOrders_(date);
   if (!ordersRes.ok) return null;
   const orderIds = ordersRes.orders.map(o => String(o.orderId));
-  if (orderIds.length === 0) return 0;
+  if (orderIds.length === 0) { cache.put(cacheKey, '0', 15); return 0; }
   const progRes = ttGetProgress_();
   if (!progRes.ok) return null;
   let trueCompleted = 0;
@@ -2363,6 +2400,7 @@ function ttCountCompletedForDate_(date) {
     const p = progRes.progress[oid];
     if (p && p.status === 'completed') trueCompleted++;
   });
+  cache.put(cacheKey, String(trueCompleted), 15); // 15초 캐시
   return trueCompleted;
 }
 
