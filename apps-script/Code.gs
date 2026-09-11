@@ -1,4 +1,15 @@
 /******************************************************
+ * SK B2C Fulfillment — Google Apps Script v159
+ *
+ * ★ v159 버그 수정 (일괄/강제 완료 시 Scan End 미확정): ttBulkScanUpdate_에서
+ *   autoCloseIfFull을 false로 못박아놔서, 일괄/강제 완료 처리로 마지막 남은 건까지
+ *   채워져 scanned가 orderCount에 도달해도 Scan End가 절대 자동으로 안 찍혔다
+ *   (실사례: 2026-09-11 PG00005648 — 라벨 인식 안 되는 3건을 육안 확인 후 강제 완료
+ *   처리 → 319→322로 정확히 채워졌지만 Scan End는 공란으로 남음). 개별 스캔 경로
+ *   (updateScanned_ 기본값 true)와 사후 보정 경로(ttReconcilePickListScanned, v156)는
+ *   이미 다 채워지면 자동 확정하도록 되어있었는데, 일괄 처리 경로만 예외였던 불일치.
+ *   → true로 통일해서 세 경로가 전부 동일하게 동작하도록 함.
+ *
  * SK B2C Fulfillment — Google Apps Script v158
  *
  * ★ v158 — 긴급 성능 수정(v157의 부작용): TikTok CBT Scanned 실시간 정확화(v157)가
@@ -1548,7 +1559,15 @@ function ttBulkScanUpdate_(items, worker) {
           l.pickEnd && (l.scanned||0) < (l.orderCount||0)
         );
         if (target) {
-          const updated = { ...target, scanIncrement: completedCount, autoCloseIfFull:false, scanStart: target.scanStart || nowLocal_() };
+          // ★ v159 버그 수정: 여기 autoCloseIfFull이 false로 박혀있어서, 일괄/강제 완료
+          //   처리로 마지막 남은 건까지 채워져 scanned가 orderCount에 도달해도 Scan End가
+          //   절대 자동으로 안 찍혔다(실사례: 2026-09-11 PG00005648, 라벨 인식 안 되는 3건을
+          //   육안 확인 후 강제 완료 처리 → 319→322로 정확히 채워졌지만 Scan End는 공란).
+          //   개별 스캔 경로(ttScanUpdate_의 justCompleted, updateScanned_ 기본값 true)는
+          //   다 채워지면 정상적으로 자동 확정되는데, 일괄 처리 경로만 이 로직이 꺼져있던
+          //   불일치였음 — 안전상 막아야 할 이유가 없어서(오히려 매니저가 확인 후 강제
+          //   완료시킨 것이므로 자동 확정이 더 맞음) true로 통일한다.
+          const updated = { ...target, scanIncrement: completedCount, autoCloseIfFull:true, scanStart: target.scanStart || nowLocal_() };
           upsertList_(updated, false); // 배치 전체가 끝난 뒤 한 번 반영이므로 요약도 이번엔 즉시 갱신
         }
       }
