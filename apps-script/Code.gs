@@ -1,4 +1,19 @@
 /******************************************************
+ * SK B2C Fulfillment — Google Apps Script v160
+ *
+ * ★ v160 버그 수정 (v157의 부작용 — TikTok CBT 완료 시 카운트/Scan End 누락):
+ *   ttScanUpdate_/ttBulkScanUpdate_가 완료 후 "이 리스트에 반영해도 되는지" 확인할 때
+ *   쓰는 getLists_(today_())가, v157 이후로 저장된 값이 아니라 TT_Progress에서 실시간
+ *   재계산한 "진짜" 완료 개수를 보게 됐다. 여러 건이 동시에 완료되면 이 실시간 값이
+ *   시트의 증분 반영보다 먼저 orderCount에 도달해서, 뒤늦게 도착한 요청이 "이미 다
+ *   찼다"고 착각해 자기 자신의 시트 반영(증분/Scan End 확정)을 통째로 건너뛰는 문제가
+ *   있었다(실사례: 2026-09-14 PG00005655, 990/990인데 Scan End 공란, 5명 동시 작업 중).
+ *   → 이 두 target 검색 호출에 skipLiveRecompute:true를 넘겨서 시트에 저장된 값을
+ *   기준으로 판단하도록 되돌림. 증분이 정확히 orderCount에 도달하는 마지막 호출에서
+ *   자동으로 Scan End가 찍히는 기존 보장이 복원됨. (v157의 "화면 표시 실시간 정확화"
+ *   자체는 그대로 유지 — getLists_의 기본 동작은 안 바뀌었고, 이 두 내부 판단 지점만
+ *   예외 처리함)
+ *
  * SK B2C Fulfillment — Google Apps Script v159
  *
  * ★ v159 버그 수정 (일괄/강제 완료 시 Scan End 미확정): ttBulkScanUpdate_에서
@@ -1403,7 +1418,16 @@ function ttScanUpdate_(orderId, lineScanned, scannedTrackingIds, status, worker,
     //   기다리지 않아도 됨 — "완료했는데 화면에 안 보인다"는 체감 지연을 없앤다.
     try { CacheService.getScriptCache().remove('ttCompletedCount_' + today_()); } catch(e) {}
     try {
-      const listsData = getLists_(today_());
+      // ★ v160 버그 수정 (v157의 부작용): 이 target 검색은 getLists_에 skipLiveRecompute를
+      //   반드시 넘겨서 "시트에 저장된" scanned 값을 봐야 한다. 안 그러면(v157 실시간
+      //   재계산을 그대로 쓰면) 이 검색이 TT_Progress 기준 "진짜" 완료 개수를 보게 되는데,
+      //   동시에 여러 건이 완료되면 이 값이 시트의 증분 반영보다 먼저 orderCount에 도달해서
+      //   "이미 다 찼다"고 착각 → 정작 이 요청 자신의 증분/Scan End 확정 시도를 건너뛰어
+      //   버리는 문제가 있었다(실사례: 2026-09-14 PG00005655, 990/990인데 Scan End 공란,
+      //   5명이 동시에 완료 처리 중이었음). 시트에 저장된 값 기준으로 "덜 찼는지"를 판단해야
+      //   증분이 정확히 orderCount에 도달하는 마지막 호출에서 자동으로 Scan End가 찍히는
+      //   기존 보장이 유지된다.
+      const listsData = getLists_(today_(), { skipLiveRecompute:true });
       if (listsData.ok) {
         const target = listsData.lists.find(l =>
           l.category==='TikTok CBT' && l.status!=='Complete' && l.status!=='Deleted' &&
@@ -1552,7 +1576,8 @@ function ttBulkScanUpdate_(items, worker) {
     // ★ v158: 여기도 마찬가지로 캐시 즉시 무효화 — 일괄 처리 직후 바로 최신 숫자가 보이게
     try { CacheService.getScriptCache().remove('ttCompletedCount_' + today_()); } catch(e) {}
     try {
-      const listsData = getLists_(today_());
+      // ★ v160: 위 ttScanUpdate_와 동일한 이유로 skipLiveRecompute 필요
+      const listsData = getLists_(today_(), { skipLiveRecompute:true });
       if (listsData.ok) {
         const target = listsData.lists.find(l =>
           l.category==='TikTok CBT' && l.status!=='Complete' && l.status!=='Deleted' &&
