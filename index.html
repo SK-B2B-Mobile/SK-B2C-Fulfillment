@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v164</title>
+<title>SK B2C Fulfillment v165</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -618,7 +618,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v164';
+const APP_VERSION='v165';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -2995,15 +2995,37 @@ function App(){
                   //   컬럼엔 "Giho Lee"가 있는데 화면 PICKERS 칸은 공란 → 픽커가 지워진
                   //   것처럼 오인). 배정 기록이 하나도 없고 Worker 필드만 있을 때는 그 이름을
                   //   대신 보여줘서 혼란을 없앰.
-                  assignsFor(l.pgNo).length===0&&l.worker&&h('div',{
-                    onClick:()=>isMgr&&setEL(l),
-                    'data-tip':l.worker+(l.pickStart?(' · '+fmtS(l.pickStart)+(l.pickEnd?'~'+fmtS(l.pickEnd):'~ongoing')):''),
-                    style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,padding:'4px 9px',borderRadius:8,fontSize:11.5,fontWeight:700,width:'100%',
-                      background:pkC(l.worker).bg,color:pkC(l.worker).tx,border:'1.5px solid '+pkC(l.worker).tx,
-                      cursor:isMgr?'pointer':'default'}
-                  },
-                    h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},shortName(l.worker))
-                  ),
+                  (()=>{
+                    if(assignsFor(l.pgNo).length>0||!l.worker)return null;
+                    // ★ v165 버그 수정(v164 부작용): 방금 추가한 Worker 대체 표시 알약이,
+                    //   실제 배정 알약(assignsFor)의 "완료 시 초록색+✅" 규칙을 안 따르고
+                    //   항상 작업자 고유색(pkC)만 썼다 — 그래서 PG00005703처럼 Pick End까지
+                    //   끝난 건인데도 픽커별 색(예: 노란색)으로만 보여서, 완료된 다른 픽리스트
+                    //   알약들(초록색)과 달라 보여 "색이 왜 다르지?" 하는 혼란을 새로 만들었다.
+                    //   → done 여부(l.pickEnd 유무)에 따라 실제 배정 알약과 동일한 초록/✅
+                    //   완료 스타일을 적용하도록 통일.
+                    const wc=pkC(l.worker);const done=!!l.pickEnd;
+                    const timeStr=l.pickStart?(fmtS(l.pickStart)+(l.pickEnd?'~'+fmtS(l.pickEnd):'~ongoing')):'';
+                    const durStr=l.pickStart?fmtDurMin((l.pickEnd?new Date(l.pickEnd):new Date())-new Date(l.pickStart)):'';
+                    return h('div',{key:'wfallback',style:{display:'flex',flexDirection:'column',gap:1}},
+                      h('div',{
+                        onClick:()=>isMgr&&setEL(l),
+                        'data-tip':l.worker+(timeStr?' · '+timeStr:'')+(durStr?' · '+durStr:''),
+                        style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,padding:done?'5px 10px':'4px 9px',borderRadius:8,fontSize:11.5,fontWeight:700,width:'100%',
+                          background:done?'#DCF7DC':wc.bg,color:done?wc.tx:wc.tx,
+                          border:'1.5px solid '+(done?'#4ADE80':wc.tx),cursor:isMgr?'pointer':'default',
+                          boxShadow:done?'0 1px 3px rgba(0,0,0,0.12)':'none'}
+                      },
+                        h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}},
+                          done&&h('span',{style:{fontSize:12}},'✅'),shortName(l.worker)
+                        )
+                      ),
+                      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:10.5,color:isMgr?'#8888C0':'#777',fontFamily:'monospace',padding:'0 2px'}},
+                        h('span',null,timeStr),
+                        durStr&&h('span',{style:{fontWeight:700,color:done?'#15803D':'#B45309',fontFamily:'inherit',fontSize:11}},'⏱ '+durStr)
+                      )
+                    );
+                  })(),
                   // ★ v79 개선: 이미 Complete(발송 완료)된 리스트는 페이지 배정에 빈 곳이
                   //   있어도(예: 4페이지 누락) +Add를 더 이상 노출하지 않음 — 발송이 끝난
                   //   뒤에 페이지 배정을 채우는 건 의미가 없고 혼란만 주므로.
@@ -3060,7 +3082,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v164'),
+    h('span',{className:'app-ver '+D},'v165'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
