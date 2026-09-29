@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v166</title>
+<title>SK B2C Fulfillment v168</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -618,7 +618,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v166';
+const APP_VERSION='v168';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1909,10 +1909,23 @@ function App(){
             .filter(l=>l.category==='TikTok CBT'&&l.date&&l.date!==td&&getSt(l)!=='complete')
             .map(l=>l.date)
         ));
-        const [roToday,...roCarry]=await Promise.all([
+        // ★ v167 버그 수정(v166 부작용): Promise.all은 배열 안 요청이 하나라도 실패하면
+        //   전체가 reject된다. today 조회 하나만 있을 땐 항상 성공(빈 배열이라도 ok:true)
+        //   해서 문제가 없었는데, 여기에 carry(전날 미완료) 조회를 같은 Promise.all에
+        //   묶어 넣으면서, carry 쪽 요청이 일시적으로라도 실패(네트워크 순간 끊김, 서버
+        //   동시 요청 제한 등)하면 today 조회까지 통째로 실패해 ttOrders가 계속 빈 채로
+        //   남는 문제가 생겼다(실사례: 2026-09-29, carry 배너는 떴지만 orders는 계속 0/0).
+        //   → Promise.allSettled로 바꿔서 한쪽이 실패해도 나머지는 정상 반영되게 한다.
+        const ttReqs=await Promise.allSettled([
           fetch(wh+'?op=ttOrders&date='+td).then(r=>r.json()),
           ...carryDates.map(d=>fetch(wh+'?op=ttOrders&date='+d).then(r=>r.json())),
         ]);
+        const roToday=ttReqs[0].status==='fulfilled'?ttReqs[0].value:null;
+        const roCarry=ttReqs.slice(1).map((r,i)=>{
+          if(r.status==='fulfilled')return r.value;
+          console.warn('TT carry-date(',carryDates[i],') fetch 실패:',r.reason);
+          return null;
+        });
         const [rs,rp]=await Promise.all([
           fetch(wh+'?op=ttSkuMaster').then(r=>r.json()),
           fetch(wh+'?op=ttProgress').then(r=>r.json()),
@@ -3110,7 +3123,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v166'),
+    h('span',{className:'app-ver '+D},'v168'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -3212,9 +3225,17 @@ function App(){
             h('div',{style:{fontSize:13,fontWeight:700,color:'#111'}},(ttStatusView==='pending'?'⏳ Pending':'🔄 In Progress')+' 목록 ('+rows.length+'건)'),
             h('div',{style:{display:'flex',alignItems:'center',gap:10}},
               // ★ v141: 매니저 모드 + Pending 화면 + 1건 이상일 때만 일괄 완료 버튼 노출
-              isMgr&&ttStatusView==='pending'&&rows.length>0&&h('button',{
+              // ★ v167 개선: In Progress(라벨은 스캔됐지만 상품 바코드 검수가 안 끝난 건)에도
+              //   동일한 일괄 완료 처리가 필요하다는 요청 — ttBulkForceComplete는 애초에
+              //   rows의 현재 상태(pending/in_progress)를 가리지 않고 그대로 강제 완료시키는
+              //   범용 함수라 조건만 넓혀주면 그대로 재사용 가능. In Progress에서 쓸 때는
+              //   "라벨만 스캔되고 상품 검수가 안 끝난 건"이라는 의미가 다르므로 버튼
+              //   문구/안내 문구만 구분해서 보여준다.
+              isMgr&&(ttStatusView==='pending'||ttStatusView==='in_progress')&&rows.length>0&&h('button',{
                 onClick:()=>setTtBulkConfirm({rows,reason:''}),
-                title:'시스템 장애 등으로 육안 확인 후 이미 출고된 주문을 한 번에 완료 처리',
+                title:ttStatusView==='pending'
+                  ?'시스템 장애 등으로 육안 확인 후 이미 출고된 주문을 한 번에 완료 처리'
+                  :'라벨은 스캔됐으나 상품 바코드 검수가 끝나지 않은 주문을, 육안 확인 후 한 번에 완료 처리',
                 style:{fontSize:11,padding:'6px 12px',borderRadius:7,border:'1px solid #D97706',background:'#FFF6E8',color:'#B45309',cursor:'pointer',fontWeight:700}
               },'⚡ 전체 일괄 완료 처리'),
               h('button',{onClick:()=>setTtStatusView(null),style:{fontSize:11,color:'#888',background:'none',border:'none',cursor:'pointer'}},'닫기 ✕')
