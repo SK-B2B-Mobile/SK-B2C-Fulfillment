@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v189</title>
+<title>SK B2C Fulfillment v190</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -274,6 +274,14 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
   0%{opacity:0;transform:translateX(-50%) translateY(6px) scale(.9)}
   70%{opacity:1;transform:translateX(-50%) translateY(-2px) scale(1.03)}
   100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+}
+/* ★ v190 신규: Supplies — 레터 용지(8.5x11in) 출력용. 평소엔 영향 없음, 인쇄할 때만 적용. */
+@media print{
+  @page{size:letter;margin:0.5in}
+  body *{visibility:hidden}
+  #supply-print-area,#supply-print-area *{visibility:visible}
+  #supply-print-area{position:absolute;left:0;top:0;width:100%}
+  .no-print{display:none !important}
 }
 </style>
 </head>
@@ -625,7 +633,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v189';
+const APP_VERSION='v190';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1797,6 +1805,18 @@ function App(){
   const [piManual,setPiManual]=useState(false); // 바코드 매칭 실패 시 수동 입력 모드
   const [piManualSku,setPiManualSku]=useState('');
   const [piManualName,setPiManualName]=useState('');
+  // ★ v190 신규: Supplies — 서플라이(포장재) 재고 현황. Worker/Manager 공용 한 화면:
+  //   Target(목표) vs On Hand(보유량)를 같이 보여주고 Urgent/Order/OK를 즉시 계산한다.
+  const [supplyItems,setSupplyItems]=useState([]); // [{id,category,unit,name,target,onHand,status,sortOrder}]
+  const [supplyLastSubmit,setSupplyLastSubmit]=useState({worker:'',submittedAt:'',date:''});
+  const [supplyWorker,setSupplyWorker]=useState('');
+  const [supplyEditingId,setSupplyEditingId]=useState(null);
+  const [supplyEditDraft,setSupplyEditDraft]=useState({name:'',target:''});
+  const [supplyAddingToCat,setSupplyAddingToCat]=useState(null); // 카테고리명 — 이 카테고리에 품목 추가 폼이 열려있음
+  const [supplyAddDraft,setSupplyAddDraft]=useState({name:'',target:''});
+  const [supplyAddingCategory,setSupplyAddingCategory]=useState(false);
+  const [supplyNewCat,setSupplyNewCat]=useState({name:'',unit:''});
+  const supplyPendingPatches=useRef(new Map()); // itemId -> {patch, ts} — 30초 폴링이 방금 입력한 On Hand를 덮어쓰지 않도록 보호
   const [ttCurrentOrder,setTtCurrentOrder]=useState(null); // 현재 검수 중인 주문 (라벨 스캔 후)
   const [ttLabelIn,setTtLabelIn]=useState('');
   const [ttItemIn,setTtItemIn]=useState('');
@@ -2056,6 +2076,28 @@ function App(){
               setPickIssues(byPg);
             }
           }catch(e){console.warn('productMaster/pickIssues poll error',e);}
+          // ★ v190 신규: Supplies — 서플라이 재고(품목/보유량)도 버전 변경 시 함께 갱신
+          //   (addSupplyItem_/updateSupplyItem_/removeSupplyItem_/adjustSupplyOnHand_/
+          //   submitSupplyCount_ 전부 bumpVersion_ 호출함)
+          try{
+            const [rsi,rls]=await Promise.all([
+              fetch(wh+'?op=supplyItems').then(r=>r.json()),
+              fetch(wh+'?op=supplyLastSubmit').then(r=>r.json()),
+            ]);
+            if(rsi&&rsi.ok){
+              const remote=(rsi.items||[]).map(it=>{
+                // 방금 로컬에서 On Hand를 조정했는데 서버가 아직 안 따라잡았으면, 그 값을
+                // 폴링이 되돌리지 않도록 보호 (PickAssign의 pendingAssignPatches와 동일 패턴)
+                const pending=supplyPendingPatches.current.get(it.id);
+                if(!pending)return it;
+                const confirmed=Object.entries(pending.patch).every(([k,v])=>String(it[k]??'')===String(v??''));
+                if(confirmed||Date.now()-pending.ts>30000){supplyPendingPatches.current.delete(it.id);return it;}
+                return {...it,...pending.patch};
+              });
+              setSupplyItems(remote);
+            }
+            if(rls&&rls.ok)setSupplyLastSubmit({worker:rls.worker||'',submittedAt:rls.submittedAt||'',date:rls.date||''});
+          }catch(e){console.warn('supplyItems poll error',e);}
         }
         lastVerRef.current=newVer;
       }catch(e){console.warn('poll error',e);}
@@ -2510,6 +2552,97 @@ function App(){
       alert('⚠ 삭제 실패: '+((res&&res.error)||'서버 오류'));
     }
   };
+
+  /* ── ★ v190 신규: Supplies — 서플라이 재고 현황 ── */
+  const supplyStatusFor=(onHand,target)=>{
+    const t=Number(target)||0, o=Number(onHand)||0;
+    if(o>=t)return{label:'OK',color:'#15803D',bg:'#E8F5EC',border:'#B8E3C4'};
+    if(o<t*0.5)return{label:'Urgent',color:'#B91C1C',bg:'#FEE2E2',border:'#FCA5A5'};
+    return{label:'Order',color:'#7A3A00',bg:'#FFF0DC',border:'#F5C070'};
+  };
+  const supplyWorkersList=(pksStr||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const supplyEffectiveWorker=supplyWorker||supplyWorkersList[0]||'';
+  // 즉시 반응: 로컬에서 바로 숫자/상태를 바꾸고 모달 없이 백그라운드로 저장 (v189와 동일한 패턴)
+  const supplyAdjust=(item,dir)=>{
+    const step=item.unit==='Pallets'?0.5:1;
+    const next=Math.max(0,Math.round((item.onHand+dir*step)*100)/100);
+    supplyPendingPatches.current.set(item.id,{patch:{onHand:next},ts:Date.now()});
+    setSupplyItems(prev=>prev.map(x=>x.id===item.id?{...x,onHand:next,status:supplyStatusFor(next,x.target).label}:x));
+    sync('adjustSupplyOnHand',{id:item.id,onHand:next,worker:supplyEffectiveWorker});
+  };
+  const supplyStartEdit=item=>{setSupplyEditingId(item.id);setSupplyEditDraft({name:item.name,target:String(item.target)});};
+  const supplyCancelEdit=()=>setSupplyEditingId(null);
+  const supplySaveEdit=()=>{
+    const id=supplyEditingId;
+    const name=(supplyEditDraft.name||'').trim();
+    const target=Number(supplyEditDraft.target);
+    if(!id)return;
+    const prevItem=supplyItems.find(x=>x.id===id);
+    if(!prevItem)return;
+    const nextName=name||prevItem.name;
+    const nextTarget=(target>=0?target:prevItem.target);
+    setSupplyItems(prevArr=>prevArr.map(x=>x.id===id?{...x,name:nextName,target:nextTarget,status:supplyStatusFor(x.onHand,nextTarget).label}:x));
+    setSupplyEditingId(null);
+    (async()=>{
+      const res=await syncDataAwait(wh,'updateSupplyItem',{id,patch:{name:nextName,target:nextTarget}},20000);
+      if(!res||!res.ok){
+        setSupplyItems(prevArr=>prevArr.map(x=>x.id===id?prevItem:x));
+        alert('⚠ 저장 실패: '+((res&&res.error)||'서버 오류')+' — 다시 시도해주세요');
+      }
+    })();
+  };
+  const supplyRemoveItem=item=>{
+    if(!window.confirm('Remove "'+item.name+'" from Supplies?\n(History stays in Google Sheets.)'))return;
+    const prev=supplyItems;
+    setSupplyItems(prevArr=>prevArr.filter(x=>x.id!==item.id));
+    (async()=>{
+      const res=await syncDataAwait(wh,'removeSupplyItem',{id:item.id},20000);
+      if(!res||!res.ok){
+        setSupplyItems(prev);
+        alert('⚠ 삭제 실패: '+((res&&res.error)||'서버 오류'));
+      }
+    })();
+  };
+  const supplyStartAddItem=category=>{setSupplyAddingToCat(category);setSupplyAddDraft({name:'',target:''});};
+  const supplyCancelAddItem=()=>setSupplyAddingToCat(null);
+  const supplyConfirmAddItem=(category,unit)=>{
+    const name=(supplyAddDraft.name||'').trim()||'New Item';
+    const target=Math.max(0,Number(supplyAddDraft.target))||1;
+    setSupplyAddingToCat(null);
+    (async()=>{
+      const res=await syncDataAwait(wh,'addSupplyItem',{category,unit,name,target},20000);
+      if(res&&res.ok){
+        setSupplyItems(prev=>[...prev,{id:res.id,category,unit,name,target,onHand:0,status:supplyStatusFor(0,target).label,sortOrder:999}]);
+      }else{
+        alert('⚠ 추가 실패: '+((res&&res.error)||'서버 오류'));
+      }
+    })();
+  };
+  const supplyStartAddCategory=()=>{setSupplyAddingCategory(true);setSupplyNewCat({name:'',unit:''});};
+  const supplyCancelAddCategory=()=>setSupplyAddingCategory(false);
+  const supplyConfirmAddCategory=()=>{
+    const name=(supplyNewCat.name||'').trim()||'New Category';
+    const unit=(supplyNewCat.unit||'').trim()||'Units';
+    setSupplyAddingCategory(false);
+    (async()=>{
+      const res=await syncDataAwait(wh,'addSupplyCategory',{name,unit},20000);
+      if(res&&res.ok){
+        setSupplyItems(prev=>[...prev,{id:res.id,category:name,unit,name:'New Item',target:1,onHand:0,status:supplyStatusFor(0,1).label,sortOrder:1}]);
+      }else{
+        alert('⚠ 추가 실패: '+((res&&res.error)||'서버 오류'));
+      }
+    })();
+  };
+  const supplySubmit=async()=>{
+    const res=await syncDataAwait(wh,'submitSupplyCount',{worker:supplyEffectiveWorker},20000);
+    if(res&&res.ok){
+      setSupplyLastSubmit({worker:res.worker,submittedAt:res.submittedAt,date:today()});
+    }else{
+      alert('⚠ 제출 실패: '+((res&&res.error)||'서버 오류')+' — 다시 시도해주세요');
+    }
+  };
+  const supplyIsSubmittedToday=supplyLastSubmit.date===today();
+  const supplyPrint=()=>{window.print();};
 
   /* ── 1단계: 라벨(Tracking) 스캔 ── */
   const ttHandleLabelScan=e=>{
@@ -3512,6 +3645,130 @@ function App(){
     ));
   };
 
+  /* ★ v190 신규: Supplies — Worker/Manager 공용 한 화면. Target vs On Hand를 한 줄에
+     같이 보여주고 Urgent/Order/OK를 즉시 계산한다. 품목/카테고리는 화면에서 바로
+     추가·수정(Target 포함)·삭제 가능. Letter 용지 출력 지원. */
+  const SuppliesPage=()=>{
+    const cats=[];
+    supplyItems.forEach(it=>{ if(!cats.includes(it.category))cats.push(it.category); });
+    const counts={OK:0,Order:0,Urgent:0};
+    supplyItems.forEach(it=>{counts[supplyStatusFor(it.onHand,it.target).label]++;});
+    const gridCols='1.9fr 0.9fr 1.3fr 0.9fr 0.9fr 1fr';
+
+    const renderRow=it=>{
+      const editing=supplyEditingId===it.id;
+      if(editing){
+        return h('div',{key:it.id,className:'no-print',style:{display:'flex',alignItems:'center',gap:8,padding:'10px 16px',borderBottom:'1px solid #EEEDF5',background:'#F7F7FB'}},
+          h('input',{type:'text',value:supplyEditDraft.name,onChange:e=>setSupplyEditDraft(d=>({...d,name:e.target.value})),placeholder:'Item name',style:{flex:1.9,minWidth:0,padding:'7px 9px',border:'1.5px solid #DDD',borderRadius:7,fontSize:12.5,fontFamily:'inherit'}}),
+          h('input',{type:'number',value:supplyEditDraft.target,onChange:e=>setSupplyEditDraft(d=>({...d,target:e.target.value})),placeholder:'Target',style:{flex:0.9,minWidth:0,padding:'7px 9px',border:'1.5px solid #DDD',borderRadius:7,fontSize:12.5,fontFamily:'inherit'}}),
+          h('div',{style:{flex:1.3,fontSize:11,color:'#999'}},'Unit: '+it.unit),
+          h('button',{onClick:supplySaveEdit,style:{padding:'7px 14px',borderRadius:7,border:'none',background:'#5B5EF4',color:'#fff',fontWeight:700,fontSize:11.5,cursor:'pointer'}},'Save'),
+          h('button',{onClick:supplyCancelEdit,style:{padding:'7px 14px',borderRadius:7,border:'1px solid #DDD',background:'#fff',color:'#666',fontWeight:700,fontSize:11.5,cursor:'pointer'}},'Cancel')
+        );
+      }
+      const st=supplyStatusFor(it.onHand,it.target);
+      const needed=Math.max(0,Math.round((it.target-it.onHand)*100)/100);
+      return h('div',{key:it.id,style:{display:'grid',gridTemplateColumns:gridCols,alignItems:'center',padding:'10px 16px',borderBottom:'1px solid #EEEDF5'}},
+        h('div',{style:{fontSize:13,fontWeight:700,color:'#111'}},it.name),
+        h('div',{style:{fontSize:12.5,color:'#666'}},it.target+' '+it.unit),
+        h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+          h('button',{className:'no-print',onClick:()=>supplyAdjust(it,-1),style:{width:26,height:26,borderRadius:6,border:'1px solid #DDD',background:'#F7F7FB',color:'#666',fontWeight:800,fontSize:14,cursor:'pointer'}},'−'),
+          h('div',{style:{width:44,textAlign:'center',fontSize:13.5,fontWeight:800,color:'#111'}},it.onHand+' '+it.unit),
+          h('button',{className:'no-print',onClick:()=>supplyAdjust(it,1),style:{width:26,height:26,borderRadius:6,border:'1px solid #DDD',background:'#F7F7FB',color:'#666',fontWeight:800,fontSize:14,cursor:'pointer'}},'+')
+        ),
+        h('div',{style:{fontSize:12.5,fontWeight:700,color:needed>0?'#B45309':'#AAA'}},needed>0?(needed+' '+it.unit):'—'),
+        h('div',null,h('span',{style:{padding:'4px 9px',borderRadius:7,background:st.bg,border:'1px solid '+st.border,color:st.color,fontSize:10.5,fontWeight:800}},st.label)),
+        h('div',{className:'no-print',style:{display:'flex',gap:10,justifyContent:'flex-end'}},
+          h('span',{onClick:()=>supplyStartEdit(it),style:{fontSize:11,color:'#888',cursor:'pointer',textDecoration:'underline'}},'Edit'),
+          h('span',{onClick:()=>supplyRemoveItem(it),style:{fontSize:11,color:'#888',cursor:'pointer',textDecoration:'underline'}},'Remove')
+        )
+      );
+    };
+
+    return h('div',{id:'supply-print-area',style:{padding:'20px 24px 60px',maxWidth:'clamp(600px,70vw,1100px)',background:'#ECEAE5',minHeight:'calc(100vh - 52px)',margin:'0 auto'}},
+      h('div',{style:{background:'#fff',border:'1px solid #E8E7E3',borderRadius:16,padding:'20px 22px',marginBottom:16}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:10}},
+          h('div',null,
+            h('div',{style:{fontWeight:700,fontSize:17,color:'#111'}},'📦 Supply Inventory'),
+            h('div',{style:{fontSize:12,color:'#888',marginTop:2}},today()+' · Updated weekly by staff — adjust On Hand any time')
+          ),
+          h('div',{className:'no-print',style:{display:'flex',gap:8,alignItems:'center'}},
+            h('select',{value:supplyWorker,onChange:e=>setSupplyWorker(e.target.value),style:{padding:'8px 10px',border:'1.5px solid #DDD',borderRadius:8,fontSize:12.5,fontWeight:600,fontFamily:'inherit'}},
+              !supplyWorkersList.includes(supplyWorker)&&h('option',{value:''},'Select worker'),
+              supplyWorkersList.map(w=>h('option',{key:w,value:w},w))
+            ),
+            h('button',{onClick:supplyPrint,style:{padding:'8px 14px',borderRadius:8,border:'1px solid #DDD',background:'#fff',color:'#444',fontWeight:700,fontSize:12.5,cursor:'pointer'}},'🖨 Print')
+          )
+        ),
+        h('div',{style:{fontSize:12,color:'#999',marginTop:10}},
+          supplyLastSubmit.submittedAt
+            ?('Last submitted: '+(supplyLastSubmit.worker||'—')+' · '+supplyLastSubmit.submittedAt+(supplyIsSubmittedToday?' — today':''))
+            :'No submission yet'
+        ),
+        !supplyIsSubmittedToday&&h('div',{className:'no-print',style:{marginTop:10,padding:'10px 14px',borderRadius:9,background:'#FFF0DC',border:'1px solid #F5C070',fontSize:12,color:'#7A3A00',fontWeight:600}},
+          '⏰ This week\'s update hasn\'t been submitted yet — review the counts below and submit.'
+        )
+      ),
+
+      h('div',{style:{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap'}},
+        h('div',{style:{flex:'1 1 160px',background:'#FEE2E2',border:'1px solid #FCA5A5',borderRadius:14,padding:16}},
+          h('div',{style:{fontSize:11,fontWeight:700,color:'#B91C1C',textTransform:'uppercase',letterSpacing:'.05em'}},'⚠ Urgent — order now'),
+          h('div',{style:{fontSize:26,fontWeight:800,color:'#B91C1C',marginTop:4}},counts.Urgent)
+        ),
+        h('div',{style:{flex:'1 1 160px',background:'#FFF0DC',border:'1px solid #F5C070',borderRadius:14,padding:16}},
+          h('div',{style:{fontSize:11,fontWeight:700,color:'#7A3A00',textTransform:'uppercase',letterSpacing:'.05em'}},'🛒 Order — needed soon'),
+          h('div',{style:{fontSize:26,fontWeight:800,color:'#7A3A00',marginTop:4}},counts.Order)
+        ),
+        h('div',{style:{flex:'1 1 160px',background:'#E8F5EC',border:'1px solid #B8E3C4',borderRadius:14,padding:16}},
+          h('div',{style:{fontSize:11,fontWeight:700,color:'#15803D',textTransform:'uppercase',letterSpacing:'.05em'}},'✔ OK — no action needed'),
+          h('div',{style:{fontSize:26,fontWeight:800,color:'#15803D',marginTop:4}},counts.OK)
+        )
+      ),
+
+      h('div',{style:{background:'#fff',border:'1px solid #E8E7E3',borderRadius:16,padding:4,overflow:'hidden',marginBottom:16}},
+        h('div',{style:{display:'grid',gridTemplateColumns:gridCols,padding:'12px 16px',fontSize:10.5,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.04em',borderBottom:'1px solid #E8E7E3'}},
+          h('div',null,'Item'),h('div',null,'Target'),h('div',null,'On Hand'),h('div',null,'Needed'),h('div',null,'Status'),h('div',{className:'no-print'},'')
+        ),
+        cats.map(cat=>{
+          const items=supplyItems.filter(it=>it.category===cat).sort((a,b)=>a.sortOrder-b.sortOrder);
+          const unit=items[0]?items[0].unit:'';
+          return h('div',{key:cat},
+            h('div',{style:{padding:'10px 16px 2px',fontSize:10.5,fontWeight:700,color:'#5B5EF4',textTransform:'uppercase',letterSpacing:'.04em'}},cat+' ('+unit+')'),
+            items.map(renderRow),
+            supplyAddingToCat===cat
+              ?h('div',{className:'no-print',style:{display:'flex',alignItems:'center',gap:8,padding:'10px 16px',borderBottom:'1px solid #EEEDF5',background:'#F7F7FB'}},
+                  h('input',{type:'text',value:supplyAddDraft.name,onChange:e=>setSupplyAddDraft(d=>({...d,name:e.target.value})),placeholder:'New item name',style:{flex:1.9,minWidth:0,padding:'7px 9px',border:'1.5px solid #DDD',borderRadius:7,fontSize:12.5,fontFamily:'inherit'}}),
+                  h('input',{type:'number',value:supplyAddDraft.target,onChange:e=>setSupplyAddDraft(d=>({...d,target:e.target.value})),placeholder:'Target qty',style:{flex:0.9,minWidth:0,padding:'7px 9px',border:'1.5px solid #DDD',borderRadius:7,fontSize:12.5,fontFamily:'inherit'}}),
+                  h('div',{style:{flex:1.3,fontSize:11,color:'#999'}},'Unit: '+unit),
+                  h('button',{onClick:()=>supplyConfirmAddItem(cat,unit),style:{padding:'7px 14px',borderRadius:7,border:'none',background:'#5B5EF4',color:'#fff',fontWeight:700,fontSize:11.5,cursor:'pointer'}},'Add'),
+                  h('button',{onClick:supplyCancelAddItem,style:{padding:'7px 14px',borderRadius:7,border:'1px solid #DDD',background:'#fff',color:'#666',fontWeight:700,fontSize:11.5,cursor:'pointer'}},'Cancel')
+                )
+              :h('div',{className:'no-print',style:{padding:'9px 16px 14px'}},
+                  h('span',{onClick:()=>supplyStartAddItem(cat),style:{fontSize:11.5,color:'#5B5EF4',fontWeight:700,cursor:'pointer'}},'+ Add item to '+cat)
+                )
+          );
+        })
+      ),
+
+      supplyAddingCategory
+        ?h('div',{className:'no-print',style:{background:'#fff',border:'1px solid #E8E7E3',borderRadius:14,padding:16,display:'flex',alignItems:'center',gap:10,marginBottom:16,flexWrap:'wrap'}},
+            h('input',{type:'text',value:supplyNewCat.name,onChange:e=>setSupplyNewCat(d=>({...d,name:e.target.value})),placeholder:'Category name (e.g. Mailers)',style:{flex:'1.6 1 180px',padding:'9px 10px',border:'1.5px solid #DDD',borderRadius:7,fontSize:12.5,fontFamily:'inherit'}}),
+            h('input',{type:'text',value:supplyNewCat.unit,onChange:e=>setSupplyNewCat(d=>({...d,unit:e.target.value})),placeholder:'Unit (e.g. Boxes)',style:{flex:'1 1 140px',padding:'9px 10px',border:'1.5px solid #DDD',borderRadius:7,fontSize:12.5,fontFamily:'inherit'}}),
+            h('button',{onClick:supplyConfirmAddCategory,style:{padding:'9px 16px',borderRadius:7,border:'none',background:'#5B5EF4',color:'#fff',fontWeight:700,fontSize:12,cursor:'pointer'}},'Add Category'),
+            h('button',{onClick:supplyCancelAddCategory,style:{padding:'9px 16px',borderRadius:7,border:'1px solid #DDD',background:'#fff',color:'#666',fontWeight:700,fontSize:12,cursor:'pointer'}},'Cancel')
+          )
+        :h('div',{className:'no-print',style:{marginBottom:16}},
+            h('span',{onClick:supplyStartAddCategory,style:{fontSize:12.5,color:'#5B5EF4',fontWeight:700,cursor:'pointer'}},'+ Add new supply category')
+          ),
+
+      h('div',{style:{fontSize:11.5,color:'#999',padding:'2px 4px',marginBottom:14}},'Status rule: On Hand ≥ Target = OK · On Hand < Target = Order · On Hand < 50% of Target = Urgent'),
+
+      h('button',{className:'no-print',onClick:supplySubmit,style:{width:'100%',padding:15,borderRadius:12,border:'none',background:supplyIsSubmittedToday?'#15803D':'#5B5EF4',color:'#fff',fontWeight:700,fontSize:14.5,cursor:'pointer'}},
+        supplyIsSubmittedToday?('✓ Submitted today — '+(supplyLastSubmit.worker||'')):'Submit'
+      )
+    );
+  };
+
   /* Nav */
   const Nav=()=>h('div',{className:'nav '+D},
     h('div',{className:'logo-box '+D},
@@ -3521,7 +3778,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v189'),
+    h('span',{className:'app-ver '+D},'v190'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -3534,7 +3791,7 @@ function App(){
       )
     ),
     h('div',{className:'nav-sep '+D}),
-    ...[['records','Records'],['scan','Scan Station'],...(isMgr?[['create',editId?'Edit List':'Create List'],['settings','Settings']]:[])]
+    ...[['records','Records'],['scan','Scan Station'],['supplies','📦 Supplies'],...(isMgr?[['create',editId?'Edit List':'Create List'],['settings','Settings']]:[])]
       .map(([p,l])=>h('button',{key:p,onClick:()=>setTab(p),className:'nav-btn '+D+(tab===p?' on':'')},l)),
     h('div',{style:{flex:1}}),
     syncSt&&h('span',{style:{fontSize:10,color:'#86EFAC',marginRight:8,fontWeight:600}},syncSt),
@@ -4339,6 +4596,7 @@ function App(){
       Nav(),
       tab==='records'&&RecordsPage(),
       tab==='scan'&&ScanPage(),
+      tab==='supplies'&&SuppliesPage(),
       tab==='create'&&isMgr&&CreatePage(),
       tab==='settings'&&isMgr&&SettingsPage(),
       showPin&&h(PinModal,{onOK:()=>{setMgr(true);setPin(false);},onCancel:()=>setPin(false)}),
