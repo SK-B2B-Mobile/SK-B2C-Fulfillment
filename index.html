@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v207</title>
+<title>SK B2C Fulfillment v208</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -642,7 +642,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v207';
+const APP_VERSION='v208';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1628,6 +1628,7 @@ function App(){
   //   → poll()의 버전 변경 감지에도 연결해서, 매니저가 저장한 순간 다른 기기가
   //   새로고침 없이도 30초 내로 자동 반영되도록 함 (기존엔 페이지를 새로 열어야만 반영됐음)
   const syncPickerNamesRef=useRef(()=>{});
+  const fetchTtSkuMasterRef=useRef(()=>{}); // ★ v207: SKU Master 업로드 직후 즉시 재조회용
   syncPickerNamesRef.current=()=>{
     if(!wh)return;
     fetch(wh+'?op=pickerNames').then(r=>r.json()).then(r=>{
@@ -1949,10 +1950,25 @@ function App(){
 
   /* ★ 삭제된 항목 추적 (폴링 복원 방지) — pgNo_date 형태로 저장 */
   const deletedKeys=useRef(new Set());
+  // ★ v207 버그 수정(전수 검사): deletedKeys/pendingListPatches/deletedAssignIds(아래)는
+  //   한 번 추가되면 지워질 방법이 전혀 없어서, 매니저 탭을 며칠씩 켜두면 계속 쌓이기만
+  //   하는 누수였다. 실제 삭제/수정이 서버에 반영되는 데 걸리는 시간은 길어야
+  //   PENDING_PROTECT_MS(3분) 수준이므로, 그보다 훨씬 넉넉한 시간이 지난 항목은 더 이상
+  //   보호할 이유가 없다 — deletedKeysTs에 추가 시각을 같이 기록해두고 주기적으로 정리.
+  const deletedKeysTs=useRef(new Map());
+  const markDeletedKey=key=>{deletedKeys.current.add(key);deletedKeysTs.current.set(key,Date.now());};
   // ★ v62: 메인 리스트(worker/시간필드)도 pickAssigns와 동일한 방식으로
   //   "방금 로컬에서 수정한 항목(30초)"만 보호 — id -> timestamp
   const pendingListPatches=useRef(new Map());
   const touchPending=id=>pendingListPatches.current.set(id,Date.now());
+  // ★ v207: 위 세 추적 Map/Set을 주기적으로 비우는 공용 정리 함수 — poll()에서 매 tick 호출.
+  const STALE_TRACKING_MS=PENDING_PROTECT_MS*4; // 보호 목적상 필요한 시간보다 넉넉히 여유를 둠
+  const pruneStaleTracking=()=>{
+    const now=Date.now();
+    pendingListPatches.current.forEach((ts,id)=>{ if(now-ts>STALE_TRACKING_MS) pendingListPatches.current.delete(id); });
+    deletedKeysTs.current.forEach((ts,key)=>{ if(now-ts>STALE_TRACKING_MS){ deletedKeysTs.current.delete(key); deletedKeys.current.delete(key); } });
+    deletedAssignIdsTs.current.forEach((ts,id)=>{ if(now-ts>STALE_TRACKING_MS){ deletedAssignIdsTs.current.delete(id); deletedAssignIds.current.delete(id); } });
+  };
 
   // ★ v130 버그 수정: mSave(리스트 생성)가 쓰는 sync()는 지금까지 실패해도 그냥 '⚠' 표시만
   //   하고 끝(재시도 없음)이었음. 반면 pruneStale은 로컬에서 방금(30초 이내) 만든 항목만
@@ -2014,6 +2030,7 @@ function App(){
     if(!wh)return;
     const poll=async()=>{
       try{
+        pruneStaleTracking(); // ★ v207: 추적용 Map/Set 누수 방지 — 매 폴링 tick마다 오래된 항목 정리
         // ★ v130 버그 수정: Google Apps Script는 스크립트가 한동안 안 쓰이다 다시 깨어날 때
         // (콜드스타트) exec URL이 script.googleusercontent.com/macros/echo?...로 302
         // 리다이렉트되는데, 이 리다이렉트 응답엔 CORS 허용 헤더가 없어서 fetch()가 그냥
@@ -2109,7 +2126,7 @@ function App(){
                 const pending=supplyPendingPatches.current.get(it.id);
                 if(!pending)return it;
                 const confirmed=Object.entries(pending.patch).every(([k,v])=>String(it[k]??'')===String(v??''));
-                if(confirmed||Date.now()-pending.ts>30000){supplyPendingPatches.current.delete(it.id);return it;}
+                if(confirmed||Date.now()-pending.ts>PENDING_PROTECT_MS){supplyPendingPatches.current.delete(it.id);return it;}
                 return {...it,...pending.patch};
               });
               setSupplyItems(remote);
@@ -2132,6 +2149,18 @@ function App(){
   /* ── TikTok CBT 데이터 폴링 (주문/SKU마스터/스캔진행) — 다른 작업자의 스캔이 실시간 반영되도록 ── */
   useEffect(()=>{
     if(!wh)return;
+    // ★ v207: ttSkuMaster를 polling 바깥으로 분리 — 최초 1회 + 업로드 직후에만 호출.
+    const fetchTtSkuMaster=async()=>{
+      try{
+        const rs=await fetch(wh+'?op=ttSkuMaster').then(r=>r.json());
+        if(rs&&rs.ok){
+          const singleMap={};(rs.single||[]).forEach(s=>{singleMap[s.sku]=s.barcode;});
+          const setMap={};(rs.sets||[]).forEach(s=>{if(!setMap[s.setSku])setMap[s.setSku]=[];setMap[s.setSku].push(s);});
+          setTtSkuSingle(singleMap);setTtSkuSet(setMap);
+        }
+      }catch(e){console.warn('ttSkuMaster fetch error',e);}
+    };
+    fetchTtSkuMasterRef.current=fetchTtSkuMaster;
     const pollTT=async()=>{
       try{
         // ★ v166 신규: TikTok CBT 리스트가 자정을 넘겨 미완료로 남으면(예: 60여 건 미스캔
@@ -2163,10 +2192,13 @@ function App(){
           console.warn('TT carry-date(',carryDates[i],') fetch 실패:',r.reason);
           return null;
         });
-        const [rs,rp]=await Promise.all([
-          fetch(wh+'?op=ttSkuMaster').then(r=>r.json()),
-          fetch(wh+'?op=ttProgress').then(r=>r.json()),
-        ]);
+        // ★ v207 최적화(전수 검사): ttSkuMaster(제품 바코드 마스터)는 매니저가 Settings에서
+        //   엑셀을 업로드할 때만 바뀌는 데이터인데, 지금까지 이 25초 주기 폴링마다 매번
+        //   같이 다시 받아오고 있었다 — 구글 서버의 동시 실행 한도(503) 완화를 위해 폴링
+        //   주기를 늦췄던 바로 그 이유를 생각하면, 거의 안 바뀌는 데이터를 매번 받아오는 건
+        //   아까운 요청 하나였다. → 최초 마운트 시 한 번 + 업로드 직후에만 받아오고
+        //   (fetchTtSkuMaster, 아래), 여기서는 정말 자주 바뀌는 ttProgress만 받아온다.
+        const rp=await fetch(wh+'?op=ttProgress').then(r=>r.json());
         if(roToday&&roToday.ok){
           const merged=[...(roToday.orders||[])];
           const seen=new Set(merged.map(o=>o.orderId));
@@ -2174,11 +2206,6 @@ function App(){
             if(rc&&rc.ok)(rc.orders||[]).forEach(o=>{if(!seen.has(o.orderId)){seen.add(o.orderId);merged.push(o);}});
           });
           setTtOrders(merged);
-        }
-        if(rs&&rs.ok){
-          const singleMap={};(rs.single||[]).forEach(s=>{singleMap[s.sku]=s.barcode;});
-          const setMap={};(rs.sets||[]).forEach(s=>{if(!setMap[s.setSku])setMap[s.setSku]=[];setMap[s.setSku].push(s);});
-          setTtSkuSingle(singleMap);setTtSkuSet(setMap);
         }
         // ★ v97 버그 수정: 서버 poll이 항상 setTtProgress(rp.progress)로 "무조건 덮어쓰기"를 해서,
         // 작업자가 방금 마지막 제품을 스캔/수동확인해 로컬에서 completed로 바꾼 직후(=In Progress 1→0)
@@ -2219,6 +2246,7 @@ function App(){
         }
       }catch(e){console.warn('TT poll error',e);}
     };
+    fetchTtSkuMaster();
     pollTT();
     // ★ v204 수정(매니저 요청, 2026-10-30 구글 동시 실행 한도 503 사태): 이 폴링이 호출마다
     //   3~4개 요청(ttOrders+이월 날짜들, ttSkuMaster, ttProgress)을 동시에 쏘는 제일 무거운
@@ -2229,6 +2257,8 @@ function App(){
 
   /* ── 페이지 기준 작업자 배정 폴링 ── */
   const deletedAssignIds=useRef(new Set());
+  const deletedAssignIdsTs=useRef(new Map()); // ★ v207: pruneStaleTracking이 쓰는 타임스탬프 짝
+  const markDeletedAssignId=id=>{deletedAssignIds.current.add(id);deletedAssignIdsTs.current.set(id,Date.now());};
   const pendingAssignPatches=useRef(new Map()); // id -> {patch:{...}, ts} — 서버가 따라잡을 때까지 로컬 변경(완료 처리 등) 보호
   const paFirstLoadDone=useRef(false); // ★ v130: 리스트 로딩(1270번대)과 동일한 패턴 — 최초 1회만 전체(date='')
   useEffect(()=>{
@@ -2246,10 +2276,14 @@ function App(){
             // ★ 버그 수정: "완료" 눌러도 서버가 아직 처리 전이면 폴링이 옛(미완료) 데이터로
             //   덮어써서 잠깐 되돌아갔다 나중에 다시 반영되는 현상 발생.
             //   → 로컬에서 방금 바꾼 필드는, 서버 값이 실제로 따라잡을 때까지 그대로 유지.
+            // ★ v207 버그 수정(전수 검사): 이 보호 시간이 30초로 하드코딩돼 있어서, 리스트 쪽
+            //   (mergeRemoteIntoLocal/pruneStale)만 v204에서 3분으로 늘렸던 게 여기(피킹 완료
+            //   칩)엔 적용이 안 돼 있었다 — 503 등으로 서버 확인이 30초 넘게 걸리면 완료 칩이
+            //   다시 "진행중"으로 되돌아가는 바로 그 증상이 이 경로에서만 재발할 수 있었음.
             const pending=pendingAssignPatches.current.get(a.id);
             if(!pending)return a;
             const confirmed=Object.entries(pending.patch).every(([k,v])=>String(a[k]||'')===String(v||''));
-            if(confirmed||Date.now()-pending.ts>30000){pendingAssignPatches.current.delete(a.id);return a;}
+            if(confirmed||Date.now()-pending.ts>PENDING_PROTECT_MS){pendingAssignPatches.current.delete(a.id);return a;}
             return {...a,...pending.patch};
           });
           setPickAssigns(prev=>{
@@ -2513,6 +2547,7 @@ function App(){
         doneCount+=chunk.length;
       }
       setTtUploading(false);
+      if(totalAddedSingle>0||totalAddedSet>0){fetchTtSkuMasterRef.current();}
       if(failedChunks===0){
         setTtSkuUploadMsg('✓ SKU Master 업로드 완료 — 단품 '+totalAddedSingle+'개, 세트 '+totalAddedSet+'개 신규 추가 (기존 데이터 유지)');
       }else{
@@ -2758,10 +2793,13 @@ function App(){
     }
   };
   // 이슈 등록을 취소(되돌리기) — 다시 Pending으로 복귀, PG 이슈 건수도 서버에서 1 차감
-  const unmarkTtOrderIssue=async(orderId)=>{
+  // ★ v207 버그 수정(전수 검사): markTtOrderIssue는 order.date를 같이 보내는데 이쪽은
+  //   orderId만 보내던 비대칭을 없앰 — 이월 주문 되돌리기가 엉뚱한 날짜의 PG를 건드리지
+  //   않도록 date도 함께 전달.
+  const unmarkTtOrderIssue=async(orderId,date)=>{
     const prevProg=ttProgress[orderId];
     setTtProgress(p=>({...p,[orderId]:{...(p[orderId]||{}),status:'pending',issueReason:'',issueBy:''}}));
-    const res=await syncDataAwait(wh,'ttUnmarkIssue',{orderId},20000);
+    const res=await syncDataAwait(wh,'ttUnmarkIssue',{orderId,date},20000);
     if(!res||!res.ok){
       setTtProgress(p=>{const n={...p};if(prevProg)n[orderId]=prevProg;return n;});
       setTtAlert({msg:'⚠️ 이슈 취소 실패: '+((res&&res.error)||'서버 오류'),type:'err'});
@@ -2951,8 +2989,16 @@ function App(){
       return;
     }
     if(matchLine.scanned>=matchLine.required){ttPlayWarn();ttShowBigAlert('⚠️','초과 스캔',matchLine.productName,'warn');setTtAlert({msg:'⚠️ 이미 필요 수량만큼 스캔되었습니다: '+matchLine.productName,type:'warn'});return;}
-    matchLine.scanned+=1;
-    const updated={...ttCurrentOrder,lines:[...ttCurrentOrder.lines]};
+    // ★ v207 버그 수정(전수 검사): matchLine.scanned+=1으로 state 안의 객체를 직접
+    //   변형(mutate)하던 것을, 이 파일 다른 곳(submitManualVerify 등)과 동일하게 불변
+    //   업데이트로 통일 — 이 핸들러가 재렌더 전에 두 번 연속 호출되는 경우(예: 스캐너
+    //   키 입력 중복 전송)에도 이전 state를 조용히 오염시키지 않도록. matchLine은
+    //   ttCurrentOrder.lines 안의 "바로 그 객체"에 대한 참조이므로, 바코드가 같은 다른
+    //   라인(중복 SKU)과 섞이지 않게 참조(===) 비교로 정확히 그 한 줄만 교체한다.
+    const originalLine=matchLine;
+    const updatedLine={...originalLine,scanned:originalLine.scanned+1};
+    const updated={...ttCurrentOrder,lines:ttCurrentOrder.lines.map(l=>l===originalLine?updatedLine:l)};
+    matchLine=updatedLine; // 아래 로직이 matchLine.scanned/.required/.productName을 계속 참조하므로 갱신된 값을 보게 함
     setTtCurrentOrder(updated);
     const lineScanned=ttBuildLineScanned(updated.lines); // ★ v133: 중복 SKU 합산
     const allDone=updated.lines.every(l=>l.scanned>=l.required);
@@ -3038,7 +3084,10 @@ function App(){
     if(!l)return;
     // ★ v130: 여기도 v113 원칙(pgNo만 매칭)이 누락돼 있었음 — 날짜 넘어간 리스트를 오늘
     // 이어서 작업할 때 어제 배정한 작업자가 구글시트 Worker 요약에서 누락되던 잔여 버그.
-    const relevant=(assignsSnapshot||pickAssigns).filter(a=>a.pgNo===pgNo);
+    // ★ v207 버그 수정(전수 검사): assignsFor()는 화면 표시용으로 페이지 순 정렬을
+    //   적용했는데, 시트/CSV에 쓰이는 이 요약 텍스트는 등록 순 그대로였다 — 화면 칩은
+    //   "A(1~5p), B(6~10p)"인데 시트 Worker 칸은 "B, A"로 어긋나 보이는 불일치를 방지.
+    const relevant=(assignsSnapshot||pickAssigns).filter(a=>a.pgNo===pgNo).sort((a,b)=>(a.pageStart||0)-(b.pageStart||0));
     const names=[...new Set(relevant.map(a=>a.worker))];
     // ★ 작업자별 소요시간 요약 (구글시트 메인 PickList 탭에도 바로 보이도록) — 예: "Kim Jisu(21m), Helper 1(28m)"
     const durTxt=relevant.map(a=>{
@@ -3215,7 +3264,7 @@ function App(){
     })();
   };
   const deleteAssignFn=a=>{
-    deletedAssignIds.current.add(a.id);
+    markDeletedAssignId(a.id);
     // ★ v88 버그 수정: v87에서 setPickAssigns 콜백 "안에서" newCoverage를 계산해
     //   바로 다음 줄에서 읽으려 했는데, 그 시점이 보장되지 않아 값이 반영 전이었던 문제.
     //   → 삭제하기 전, 현재 pickAssigns 상태를 기준으로 미리(동기적으로) 계산.
@@ -3275,14 +3324,14 @@ function App(){
   };
   const delItem=id=>{
     const l=lists.find(x=>x.id===id);
-    if(l){deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10));sync('deleteList',{pgNo:l.pgNo,date:l.date});}
+    if(l){markDeletedKey(l.pgNo+'_'+String(l.date||'').slice(0,10));sync('deleteList',{pgNo:l.pgNo,date:l.date});}
     setLists(p=>p.filter(x=>x.id!==id));
     setEL(null);
   };
   const delFromTable=id=>{
     if(!window.confirm('Delete this pick list?'))return;
     const l=lists.find(x=>x.id===id);
-    if(l){deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10));sync('deleteList',{pgNo:l.pgNo,date:l.date});}
+    if(l){markDeletedKey(l.pgNo+'_'+String(l.date||'').slice(0,10));sync('deleteList',{pgNo:l.pgNo,date:l.date});}
     setLists(p=>p.filter(x=>x.id!==id));
   };
 
@@ -3315,7 +3364,7 @@ function App(){
     const completed=lists.filter(l=>l.date===today()&&getSt(l)==='complete');
     if(!completed.length){alert('No completed lists today.');return;}
     if(!window.confirm('Delete '+completed.length+' completed list(s) from today?\n\nData remains in Google Sheets.'))return;
-    completed.forEach(l=>deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10)));
+    completed.forEach(l=>markDeletedKey(l.pgNo+'_'+String(l.date||'').slice(0,10)));
     setLists(p=>p.filter(l=>!(l.date===today()&&getSt(l)==='complete')));
     completed.forEach(l=>sync('deleteList',{pgNo:l.pgNo,date:l.date}));
   };
@@ -3327,7 +3376,7 @@ function App(){
     const completed=lists.filter(l=>l.date!==today()&&getSt(l)==='complete');
     if(!completed.length){alert('No completed lists from previous days.');return;}
     if(!window.confirm('Delete '+completed.length+' completed list(s) from previous days?\n\nData remains in Google Sheets.'))return;
-    completed.forEach(l=>deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10)));
+    completed.forEach(l=>markDeletedKey(l.pgNo+'_'+String(l.date||'').slice(0,10)));
     setLists(p=>p.filter(l=>!(l.date!==today()&&getSt(l)==='complete')));
     completed.forEach(l=>sync('deleteList',{pgNo:l.pgNo,date:l.date}));
   };
@@ -3335,7 +3384,7 @@ function App(){
     const todays=lists.filter(l=>l.date===today());
     if(!todays.length){alert('No lists for today.');return;}
     if(!window.confirm('Delete ALL '+todays.length+' list(s) from today?\n\nData remains in Google Sheets.'))return;
-    todays.forEach(l=>deletedKeys.current.add(l.pgNo+'_'+String(l.date||'').slice(0,10)));
+    todays.forEach(l=>markDeletedKey(l.pgNo+'_'+String(l.date||'').slice(0,10)));
     setLists(p=>p.filter(l=>l.date!==today()));
     todays.forEach(l=>sync('deleteList',{pgNo:l.pgNo,date:l.date}));
   };
@@ -3869,7 +3918,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v207'),
+    h('span',{className:'app-ver '+D},'v208'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -4044,7 +4093,7 @@ function App(){
                     h('span',{style:{color:'#888',marginLeft:8}},o.buyer||''),
                     h('span',{style:{color:'#B45309',marginLeft:8,fontWeight:700}},'⚠ '+(prog.issueReason||'')+(prog.issueBy?' · '+prog.issueBy:''))
                   ),
-                  h('button',{onClick:(e)=>{e.stopPropagation();unmarkTtOrderIssue(o.orderId);},style:{fontSize:11,padding:'4px 10px',borderRadius:7,border:'1px solid #D97706',background:'#fff',color:'#B45309',cursor:'pointer',fontWeight:700,flexShrink:0}},'↩ 되돌리기')
+                  h('button',{onClick:(e)=>{e.stopPropagation();unmarkTtOrderIssue(o.orderId,o.date);},style:{fontSize:11,padding:'4px 10px',borderRadius:7,border:'1px solid #D97706',background:'#fff',color:'#B45309',cursor:'pointer',fontWeight:700,flexShrink:0}},'↩ 되돌리기')
                 );
               }
               return h('div',{key:o.orderId,onClick:()=>ttOpenOrderDirect(o),title:'클릭해서 이 주문 바로 열기',style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',background:'#F9F8F4',borderRadius:8,fontSize:12,cursor:'pointer'},onMouseEnter:e=>e.currentTarget.style.background='#F0EEE6',onMouseLeave:e=>e.currentTarget.style.background='#F9F8F4'},
