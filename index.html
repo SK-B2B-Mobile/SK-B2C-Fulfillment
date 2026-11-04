@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v205</title>
+<title>SK B2C Fulfillment v206</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -642,7 +642,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v205';
+const APP_VERSION='v206';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -3865,7 +3865,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v205'),
+    h('span',{className:'app-ver '+D},'v206'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -4826,7 +4826,13 @@ function App(){
         //   Records의 SKU 칸을 클릭해서 여는 경우(piWorker가 빈 값)엔 지금처럼 PG 전체를
         //   다 보여준다 — 매니저는 전체 현황을 확인해야 하므로.
         const allEntries=pickIssues[pgNo]||[];
-        const entries=piWorker?allEntries.filter(en=>en.worker===piWorker):allEntries;
+        // ★ v206 버그 수정(PG00005899 사례): v196에서 배지(칩) 색상 판정은 assignId로
+        //   "이 배정"에만 scoped 되도록 고쳤는데, 정작 이 모달이 보여주는 목록(entries)은
+        //   v195 그대로 worker 이름만으로 필터링되고 있었다 — 그래서 같은 작업자의 서로
+        //   다른 배정(예: Giho 5~6p와 16~18p)을 각각 열어도 "같은 목록"이 보이고, 거기서
+        //   등록/삭제하면 두 배정 모두에 영향을 주는 것처럼 보였다. 배지와 동일한 기준
+        //   (assignId가 있으면 assignId로, 과거 데이터처럼 없으면 worker로 폴백)으로 통일.
+        const entries=piWorker?allEntries.filter(en=>en.assignId?en.assignId===piAssignId:en.worker===piWorker):allEntries;
         const q=piSearch.trim();
         const matches=q.length>=2?productMaster.filter(p=>p.barcode&&p.barcode.endsWith(q)).slice(0,8):[];
         const closeModal=()=>{setPickIssueModalFor(null);setPiSearch('');setPiSelected(null);setPiQty(1);setPiReason('');setPiManual(false);setPiManualSku('');setPiManualName('');setPiWorker('');setPiAssignId('');setPiEditingId(null);};
