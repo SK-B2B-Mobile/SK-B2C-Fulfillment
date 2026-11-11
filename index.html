@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v210</title>
+<title>SK B2C Fulfillment v212</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -642,7 +642,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v210';
+const APP_VERSION='v212';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1470,7 +1470,7 @@ function PinModal({onOK,onCancel}){
 function EditModal({list,pickers,onSave,onDel,onCancel}){
   const fi=iso=>{if(!iso)return'';const d=new Date(iso);const pad=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());};
   const pi=s=>{if(!s.trim())return null;try{return new Date(s.trim()).toISOString();}catch{return null;}};
-  const [F,setF]=useState({pgNo:list.pgNo,sku:String(list.sku||0),orderCount:String(list.orderCount||0),pages:String(list.pages||0),scanned:String(list.scanned||0),worker:list.worker||'',memo:list.memo||'',pickStart:fi(list.pickStart),pickEnd:fi(list.pickEnd),scanStart:fi(list.scanStart),scanEnd:fi(list.scanEnd)});
+  const [F,setF]=useState({pgNo:list.pgNo,sku:String(list.sku||0),orderCount:String(list.orderCount||0),pages:String(list.pages||0),scanned:String(list.scanned||0),worker:list.worker||'',memo:list.memo||'',pickStart:fi(list.pickStart),pickEnd:fi(list.pickEnd),scanStart:fi(list.scanStart),scanEnd:fi(list.scanEnd),excludeScanRecon:!!list.excludeScanRecon});
   const [del2,setDel2]=useState(false);
   // ★ v178 신규: 이슈 등록 — 고객 취소/OOS/유통기한 등 출고 불가로 확정된 건을 사유별
   //   건수로 기록. 등록하면 스캔 목표(분모)가 Order Count에서 이 합계만큼 줄어든다.
@@ -1512,6 +1512,20 @@ function EditModal({list,pickers,onSave,onDel,onCancel}){
             )
           ),
           issueTot>0&&h('div',{style:{marginTop:8,fontSize:11,color:'#F87171'}},'이슈 '+issueTot+'건 — 저장하면 스캔 목표가 '+issueTot+'건만큼 줄어듭니다.')
+        ),
+        // ★ v212 신규(PG00005940/PG00005941 반복 제보 대응): TikTok CBT는 메인 리스트
+        //   하나 외에, 누락된 제품만 따로 피킹시키는 "누락건" 보조 리스트를 별도로 만드는
+        //   경우가 있다 — 이건 피킹용일 뿐 스캔은 메인 리스트 쪽으로 전부 잡히므로 영원히
+        //   Scanned=0이다. 이런 보조 리스트가 있으면 시스템이 "오늘 TikTok CBT 활성 리스트가
+        //   2개"로 착각해서 메인 리스트의 자동 보정(Scanned 드리프트 교정)이 계속 막혔다.
+        //   이 체크박스를 켜두면 이 리스트는 "활성 리스트 개수" 판단에서 제외되어, 메인
+        //   리스트가 정상적으로 자동 보정된다.
+        list.category==='TikTok CBT'&&h('div',{style:{marginBottom:12,padding:'10px 12px',background:'rgba(107,114,128,0.08)',border:'1px solid rgba(107,114,128,0.25)',borderRadius:9,display:'flex',alignItems:'flex-start',gap:9}},
+          h('input',{type:'checkbox',id:'excludeScanRecon',checked:F.excludeScanRecon,onChange:e=>f('excludeScanRecon',e.target.checked),style:{marginTop:2}}),
+          h('label',{htmlFor:'excludeScanRecon',style:{fontSize:12,color:'#CCC',cursor:'pointer',lineHeight:1.5}},
+            h('div',{style:{fontWeight:700,color:'#DDD',marginBottom:2}},'누락건 피킹 전용 (스캔 집계에서 제외)'),
+            '메인 리스트에 없던 누락 제품만 모아 피킹시키는 보조 리스트인 경우 체크하세요. 스캔은 메인 리스트 쪽으로 잡히므로 이 리스트의 Scanned는 계속 0이어도 정상이며, 메인 리스트의 자동 보정이 막히지 않도록 "활성 리스트 개수" 계산에서 제외됩니다.'
+          )
         ),
         h('div',{style:{marginBottom:12}},
           h('label',{className:'lbl dark'},'Override Picker'),
@@ -3633,7 +3647,13 @@ function App(){
               h('td',{className:D+' c',style:{color:isMgr?'#5555AA':'#CCC',fontWeight:600,fontSize:13,width:38}},i+1),
               ...(showPrev&&prevAll.length>0?[h('td',{className:D,style:{fontSize:11,fontWeight:600,color:isPrev?'#F59E0B':'#AAA',whiteSpace:'nowrap'}},isPrev?l.date:'today')]:[]),
               h('td',{className:D},h('span',{className:'mono',style:{fontWeight:700,color:isMgr?'#C4C2FF':'#111',fontSize:14}},l.pgNo)),
-              h('td',{className:D},h('span',{className:'pill',style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},l.category)),
+              h('td',{className:D},
+                h('span',{className:'pill',style:{background:cs.bg,color:cs.tx,borderColor:cs.br}},l.category),
+                // ★ v212 신규: 누락건 피킹 전용(스캔 집계 제외) 리스트 표시 — PG00005941 사례처럼
+                //   같은 날 TikTok CBT 리스트가 2개 이상 있어도, 이렇게 표시된 건 자동 보정 판단에서
+                //   제외되어 메인 리스트의 Scanned 자동 보정이 막히지 않는다.
+                l.excludeScanRecon&&h('span',{title:'누락건 피킹 전용 — 스캔 집계에서 제외됨',style:{marginLeft:5,fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:100,background:'rgba(107,114,128,0.15)',color:'#6B7280',border:'1px solid rgba(107,114,128,0.3)'}},'집계제외')
+              ),
               h('td',{className:D+' c',style:{fontWeight:700,color:isMgr?'#F0A0C8':'#8A2A56'}},l.pages||0),
               h('td',{className:D+' c',style:{fontWeight:600,color:isMgr?'#CCC':'#333',cursor:'pointer'},onClick:()=>{setPiWorker('');setPiAssignId('');setPickIssueModalFor({pgNo:l.pgNo,date:l.date});}},
                 l.sku||0,
@@ -3952,7 +3972,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v210'),
+    h('span',{className:'app-ver '+D},'v212'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
