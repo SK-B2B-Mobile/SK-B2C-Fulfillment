@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v215</title>
+<title>SK B2C Fulfillment v217</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -652,7 +652,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v215';
+const APP_VERSION='v217';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -3846,7 +3846,12 @@ function App(){
               h('td',{className:D,style:{fontWeight:700,color:isMgr?'#86EFAC':'#1E6B3A',fontSize:14}},dur(l.pickStart,l.pickEnd,l.date)),
               h('td',{className:D,style:{fontWeight:700,color:isMgr?'#86EFAC':'#1E6B3A',fontSize:14}},dur(l.scanStart,l.scanEnd,l.date)),
               h('td',{className:D,style:{minWidth:100}},h('span',{className:'pill '+STC[si]},STL[si])),
-              h('td',{className:D,style:{minWidth:110,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',color:isMgr?'#7070A0':'#888',fontSize:11}},
+              // ★ v217 버그 수정 (2026-11-13 제보 — "Remarks 글씨가 잘 안 보이고 너무 작다",
+              //   흰 배경인 작업자용 Worker Mode 화면 기준): 기존엔 매니저/작업자 모드 둘 다
+              //   11px에 연한 회색(#888/#7070A0)이라, 특히 흰 배경에서 작업자들이 거의 안
+              //   보인다고 했다. 작업자 모드(!isMgr, 흰 배경)는 글자를 14px로 키우고 어두운
+              //   진회색(#333)으로 대비를 높였다. 매니저(어두운 배경)는 기존보다 살짝만 키움.
+              h('td',{className:D,style:{minWidth:110,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',color:isMgr?'#9494C8':'#333',fontSize:isMgr?12:14,fontWeight:isMgr?400:500}},
                 l.skipReason?h('span',null,l.memo?l.memo+' ':null,h('span',{style:{color:'#DC2626',fontWeight:700}},l.skipReason)):l.memo||'—'
               ),
               h('td',{className:D,style:{position:'sticky',right:0,zIndex:2,paddingLeft:16,boxShadow:'-6px 0 10px -3px rgba(0,0,0,0.14)',background:isMgr?'#0E0E1C':'#fff'}},
@@ -4019,7 +4024,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v215'),
+    h('span',{className:'app-ver '+D},'v217'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
