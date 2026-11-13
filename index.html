@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v224</title>
+<title>SK B2C Fulfillment v225</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -168,21 +168,17 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .tbl tbody tr.dark:hover td.dark{background:#13132B}
 .tbl td.c{text-align:center}
 .mono{font-family:'SF Mono','JetBrains Mono','Roboto Mono',ui-monospace,Consolas,'Courier New',monospace;font-variant-numeric:tabular-nums}
-/* ★ v224: v223은 수학적으로는 글자가 정중앙이었지만(실측 확인), 점(●)이 왼쪽에만
-   있다 보니 "글자+점" 묶음 전체가 시각적으로는 오른쪽에 쏠려 보이는 착시가 남아있었고,
-   카테고리 칸은 가장 긴 라벨(Official_Walmart) 기준으로 맞추다 보니 전체적으로 너무
-   컸다(매니저 제보 2회). 구조를 다시 바꿈: 점을 다시 flex 흐름 안으로 넣되, 오른쪽에
-   "보이지 않는 점 자리"를 똑같이 하나 더 둬서(점-글자-빈점자리) 전체 묶음이 박스
-   중앙에 오게 하고(= 점의 시각적 무게가 상쇄되어 글자가 진짜 가운데처럼 보임),
-   칸 크기는 실제 자주 쓰는 라벨 기준으로 작게 고정하고 아주 긴 예외
-   (Official_Walmart 등)만 말줄임(…)+툴팁으로 처리해 전체 칸이 커지지 않게 함. */
-.pill{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:5px;height:25px;padding:0 10px;border-radius:100px;font-size:11.5px;font-weight:700;letter-spacing:.2px;line-height:1;border:1px solid;white-space:nowrap;box-sizing:border-box}
-.pill::before,.pill::after{content:'';width:6px;height:6px;min-width:6px;flex-shrink:0;border-radius:50%}
-.pill::before{background:currentColor;opacity:.8}
-.pill::after{background:transparent}
-.pill-label{overflow:hidden;text-overflow:ellipsis;min-width:0}
-.pill-cat{width:122px}
-.pill-status{width:104px}
+/* ★ v225: flex+gap+의사요소 조합(v224)이 매니저 실제 화면에서 글자가 오른쪽에 거의
+   붙어버리는 현상(점 뒤 여백 3px, 텍스트 앞 여백 33px — 환경에 따라 flex gap이
+   의사요소 사이에서 다르게 계산된 것으로 추정)으로 또 깨졌다. 가장 단순하고 어느
+   브라우저에서도 동일하게 동작하는 방식으로 교체: flex를 완전히 버리고
+   inline-block + text-align:center + line-height만으로 글자를 중앙 정렬하고
+   (이 방식은 점의 유무와 무관하게 항상 박스 "진짜 정중앙"), 점(●)은 흐름 밖
+   position:absolute로 왼쪽 고정 위치에 올린다. */
+.pill{position:relative;display:inline-block;vertical-align:middle;height:25px;line-height:25px;text-align:center;padding:0 14px;border-radius:100px;font-size:11.5px;font-weight:700;letter-spacing:.2px;border:1px solid;white-space:nowrap;box-sizing:border-box}
+.pill::before{content:'';position:absolute;left:12px;top:50%;margin-top:-3px;width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.8}
+.pill-cat{width:122px;padding:0 10px;overflow:hidden;text-overflow:ellipsis}
+.pill-status{width:104px;padding:0 10px}
 /* ★ v222: Picking/Scanning처럼 "지금 진행 중"인 상태만 점이 은은하게 깜빡이도록.
    Pending·Pick Done·Complete는 정지 상태이므로 그대로 둔다(기존 pk-dot 키프레임 재사용). */
 .pill-live::before,.pill-st.pill-live::before{animation:pk-dot 1.2s ease-in-out infinite}
@@ -699,7 +695,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v224';
+const APP_VERSION='v225';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -3776,7 +3772,7 @@ function App(){
               ...(showPrev&&prevAll.length>0?[h('td',{className:D,style:{fontSize:11,fontWeight:600,color:isPrev?'#F59E0B':'#AAA',whiteSpace:'nowrap'}},isPrev?l.date:'today')]:[]),
               h('td',{className:D},h('span',{className:'mono',style:{fontWeight:700,color:isMgr?'#C4C2FF':'#111',fontSize:14}},l.pgNo)),
               h('td',{className:D},
-                h('span',{className:'pill pill-cat',style:{background:cs.bg,color:cs.tx,borderColor:cs.br},title:l.category},h('span',{className:'pill-label'},l.category)),
+                h('span',{className:'pill pill-cat',style:{background:cs.bg,color:cs.tx,borderColor:cs.br},title:l.category},l.category),
                 // ★ v212 신규: 누락건 피킹 전용(스캔 집계 제외) 리스트 표시 — PG00005941 사례처럼
                 //   같은 날 TikTok CBT 리스트가 2개 이상 있어도, 이렇게 표시된 건 자동 보정 판단에서
                 //   제외되어 메인 리스트의 Scanned 자동 보정이 막히지 않는다.
@@ -4137,7 +4133,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v224'),
+    h('span',{className:'app-ver '+D},'v225'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
