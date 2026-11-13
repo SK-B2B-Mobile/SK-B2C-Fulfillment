@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v220</title>
+<title>SK B2C Fulfillment v221</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -168,12 +168,13 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
 .tbl tbody tr.dark:hover td.dark{background:#13132B}
 .tbl td.c{text-align:center}
 .mono{font-family:'SF Mono','JetBrains Mono','Roboto Mono',ui-monospace,Consolas,'Courier New',monospace;font-variant-numeric:tabular-nums}
-.pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:600;border:1px solid;white-space:nowrap}
-.s0{background:#F2F1EC;color:#666;border-color:#CCC}
-.s1{background:#FFF0DC;color:#7A3A00;border-color:#F5C070}
-.s2{background:#DAEEFF;color:#0A4A8A;border-color:#7ABEF5}
-.s3{background:#FFE8E0;color:#8A2800;border-color:#F5A070}
-.s4{background:#E0F5D0;color:#1A6A08;border-color:#90D870}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:94px;padding:5px 14px;border-radius:100px;font-size:11.5px;font-weight:700;letter-spacing:.2px;line-height:1;border:1px solid;white-space:nowrap}
+.pill::before,.pill-st::before{content:'';width:6px;height:6px;min-width:6px;border-radius:50%;background:currentColor;opacity:.8}
+.s0{background:#F3F2EE;color:#78756D;border-color:#DDDAD2}
+.s1{background:#FEF3E2;color:#92610A;border-color:#F3CA85}
+.s2{background:#E6F1FD;color:#1A5CA8;border-color:#A8CEF4}
+.s3{background:#FDEEE6;color:#B5490C;border-color:#F3B98A}
+.s4{background:#E7F6E0;color:#237A1E;border-color:#A9DD9B}
 .pk-wrap{position:relative;display:inline-block}
 .pk-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:100px;font-size:13px;border:1px solid;white-space:nowrap;font-weight:500}
 .pk-dot{width:7px;height:7px;border-radius:50%;border:2px solid;flex-shrink:0}
@@ -204,8 +205,9 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
    흡수. 탭 가능할 때만 보이는 작은 원형 아이콘 버튼(st-act-btn)을 배지 옆에 붙인다.
    Pending/Picking/Complete처럼 탭할 게 없는 상태는 기존 .pill(.s0~.s4)과 똑같이
    보이도록 둬서, 새로 생긴 상태만 "버튼처럼" 도드라지게 한다. */
-.pill-st{display:inline-flex;align-items:center;gap:6px;padding:4px 4px 4px 12px;border-radius:100px;font-size:12px;font-weight:600;border:1px solid;white-space:nowrap}
-.st-act-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:none;color:#fff;cursor:pointer;flex-shrink:0;transition:filter .15s,transform .1s}
+.pill-st{display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:3px 3px 3px 14px;border-radius:100px;font-size:11.5px;font-weight:700;letter-spacing:.2px;line-height:1;border:1px solid;white-space:nowrap}
+.pill-st-label{display:inline-flex;align-items:center;min-width:58px}
+.st-act-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:none;color:#fff;cursor:pointer;flex-shrink:0;transition:filter .15s,transform .1s}
 .st-act-btn:hover{filter:brightness(1.12)}
 .st-act-btn:active{transform:scale(0.92)}
 .st-act-btn.play{background:linear-gradient(135deg,#3b82f6,#2563eb)}
@@ -680,7 +682,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v220';
+const APP_VERSION='v221';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -3944,8 +3946,7 @@ function App(){
                 const cls=collapsed?'s3':STC[si];
                 return h('td',{className:D,style:{minWidth:100}},
                   h('span',{className:'pill-st '+cls},
-                    st==='complete'&&h('span',{style:{display:'flex'}},IconCheck()),
-                    label,
+                    h('span',{className:'pill-st-label'},label),
                     canWork&&h('button',{className:'st-act-btn play',title:'탭하여 스캔 시작',onClick:e=>{e.stopPropagation();startScan(l.id);}},IconPlay()),
                     canEnd&&h('button',{className:'st-act-btn stop',title:'탭하여 스캔 완료 또는 OOS·취소 등 미스캔 처리',onClick:e=>{e.stopPropagation();endScan(l.id);}},IconStop())
                   )
@@ -4116,7 +4117,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v220'),
+    h('span',{className:'app-ver '+D},'v221'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
