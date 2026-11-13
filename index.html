@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v226</title>
+<title>SK B2C Fulfillment v227</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -177,8 +177,13 @@ button{cursor:pointer;font-family:'DM Sans',system-ui,sans-serif;transition:all 
    작은 값 그대로 유지되고, 점부터 글자까지 포함한 묶음의 좌우 여백이 자연히 같아진다. */
 .pill{position:relative;display:inline-block;vertical-align:middle;height:25px;line-height:25px;text-align:center;padding:0 14px;border-radius:100px;font-size:11.5px;font-weight:700;letter-spacing:.2px;border:1px solid;white-space:nowrap;box-sizing:border-box}
 .pill-dot{display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:currentColor;opacity:.8;vertical-align:middle}
-.pill-cat{width:122px;padding:0 10px;overflow:hidden;text-overflow:ellipsis}
-.pill-status{width:104px;padding:0 10px}
+/* ★ v227: 매니저 실제 화면에서는 v226도 여전히 오른쪽으로 치우쳐 보인다는 재확인 —
+   계산상/다른 브라우저 테스트로는 정중앙인데, 매니저 실제 화면에서만 반복적으로
+   어긋남. 원인 규명보다 실제 보이는 화면을 바로잡는 게 우선이라, text-align:center
+   계산에 기대지 않고 왼쪽 패딩을 크게 줄이고 오른쪽 패딩을 늘려 글자 덩어리 자체를
+   왼쪽으로 직접 당김. */
+.pill-cat{width:122px;padding:0 26px 0 2px;overflow:hidden;text-overflow:ellipsis}
+.pill-status{width:104px;padding:0 26px 0 2px}
 /* ★ v222: Picking/Scanning처럼 "지금 진행 중"인 상태만 점이 은은하게 깜빡이도록.
    Pending·Pick Done·Complete는 정지 상태이므로 그대로 둔다(기존 pk-dot 키프레임 재사용). */
 .pill-live .pill-dot,.pill-st.pill-live::before{animation:pk-dot 1.2s ease-in-out infinite}
@@ -695,7 +700,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v226';
+const APP_VERSION='v227';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -4133,7 +4138,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v226'),
+    h('span',{className:'app-ver '+D},'v227'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
