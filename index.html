@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v229</title>
+<title>SK B2C Fulfillment v230</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -458,6 +458,30 @@ const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 // Map은 JSON.stringify가 그대로 못 다루므로 [...map.entries()] 배열로 변환해서 저장한다.
 const lsSaveQueue=(k,map)=>lsSet(k,[...map.entries()]);
 const lsLoadQueue=k=>{try{return new Map(lsGet(k,[]));}catch{return new Map();}};
+// ★ v230 버그 수정(2026-11-16 — "서버 저장 재시도 중 159건"이 안 풀리고 전체 503/CORS로
+//   번진 실사례): v218에서 재시도 큐 sweep을 Promise.allSettled로 바꿔 "큐 전체가 한
+//   사이클 안에 끝나게" 한 것까지는 좋았는데, 큐가 크게 쌓인 상황(네트워크 장애·서버
+//   과부하 후)에서는 그 "전체"가 159건이면 10초마다 159개 요청을 전부 동시에 쏴버리는
+//   것과 같았다. Apps Script는 "이 구글 계정에서 동시 실행 중인 스크립트가 너무 많음"
+//   쿼터를 계정 전체로 공유하므로, 이 한 번의 폭주가 바로 그 쿼터를 넘겨 scan/picker 등
+//   모든 요청이 503+CORS로 동시에 실패하는 전체 장애로 번졌다(장애가 장애를 부르는
+//   악순환 — 실패할수록 큐가 커지고, 큐가 클수록 다음 sweep이 더 크게 터짐).
+//   → 동시에 보내는 개수를 작은 한도(4개)로 묶어서, 큐가 아무리 커도 서버에는 항상
+//   몇 개씩만 순서대로 도착하게 한다. 끝까지 도는 총 시간은 늘어날 수 있지만(그래도
+//   sweepingRef가 겹침을 막아줌), 서버를 쓰러뜨리지 않는 쪽이 훨씬 중요하다.
+const runLimited=async(items,limit,task)=>{
+  const results=new Array(items.length);
+  let idx=0;
+  const workers=new Array(Math.min(limit,items.length)||0).fill(0).map(async()=>{
+    while(idx<items.length){
+      const i=idx++;
+      try{results[i]={status:'fulfilled',value:await task(items[i],i)};}
+      catch(e){results[i]={status:'rejected',reason:e};}
+    }
+  });
+  await Promise.all(workers);
+  return results;
+};
 
 /* ══════════════════════════════════════════════
    ★ v19 CORE FIX: mergeRemoteIntoLocal
@@ -701,7 +725,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v229';
+const APP_VERSION='v230';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1871,10 +1895,11 @@ function App(){
           if(pd)pd.ts=Date.now();
           else if(job.payload&&job.payload.status)ttMarkPending(orderId,job.payload);
         });
-        // ★ v218: 순차(for-await, 최대 N×20초)에서 병렬(Promise.allSettled, 최대 ~20초)로.
-        // 서버가 아무리 바빠도 큐 전체가 한 사이클 안에 끝나므로 위 보호 시각 문제의 근본
-        // 해결이자, 과부하 상황에서 재시도 전체가 끝나기까지 걸리는 시간도 크게 줄어든다.
-        const results=await Promise.allSettled(entries.map(([orderId,job])=>syncDataAwait(wh,job.action,job.payload))); // ★ v157: 기본 20초 타임아웃
+        // ★ v218: 순차(for-await, 최대 N×20초)에서 병렬로 — 서버가 아무리 바빠도 큐 전체가
+        // 한 사이클 안에 끝나므로 위 보호 시각 문제의 근본 해결.
+        // ★ v230 버그 수정: 그 "병렬"이 Promise.allSettled라 큐가 크면(예: 159건) 동시에
+        // 159개를 한꺼번에 쏴서 Apps Script 계정 전체 쿼터를 넘겨버렸다 — 동시 4개로 제한.
+        const results=await runLimited(entries,4,([orderId,job])=>syncDataAwait(wh,job.action,job.payload)); // ★ v157: 기본 20초 타임아웃
         results.forEach((res,i)=>{
           const [orderId]=entries[i];
           if(res.status==='fulfilled'&&res.value&&res.value.ok)ttFailedSyncsRef.current.delete(orderId);
@@ -2134,10 +2159,11 @@ function App(){
             if(pa)pa.ts=Date.now();
           }
         });
-        // ★ v218: 순차(for-await, 최대 N×20초)에서 병렬(Promise.allSettled, 최대 ~20초)로 —
-        // 위 보호 시각 문제의 근본 해결이자, 과부하 상황에서 재시도 전체가 끝나기까지
-        // 걸리는 시간도 크게 줄어든다.
-        const results=await Promise.allSettled(entries.map(([id,job])=>syncDataAwait(wh,job.action,job.payload))); // ★ v157: 기본 20초 타임아웃
+        // ★ v218: 순차(for-await, 최대 N×20초)에서 병렬로 — 위 보호 시각 문제의 근본 해결.
+        // ★ v230 버그 수정: Promise.allSettled가 큐 전체를 한꺼번에 쏴서(예: 159건 동시)
+        // Apps Script 계정 전체의 "동시 실행" 쿼터를 넘겨 503/CORS 전체 장애로 번졌다.
+        // 동시 4개로 제한해 서버가 감당할 수 있는 속도로만 재시도되게 한다.
+        const results=await runLimited(entries,4,([id,job])=>syncDataAwait(wh,job.action,job.payload)); // ★ v157: 기본 20초 타임아웃
         results.forEach((res,i)=>{
           const [id]=entries[i];
           if(res.status==='fulfilled'&&res.value&&res.value.ok)listFailedSyncsRef.current.delete(id);
@@ -4139,7 +4165,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v229'),
+    h('span',{className:'app-ver '+D},'v230'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
