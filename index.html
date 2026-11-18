@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>SK B2C Fulfillment v235</title>
+<title>SK B2C Fulfillment v237</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1A1A3E">
 <meta name="mobile-web-app-capable" content="yes">
@@ -453,7 +453,7 @@ const issueTotalOf=iq=>iq&&typeof iq==='object'?Object.values(iq).reduce((a,b)=>
 const reqOf=l=>Math.max(0,(Number(l&&l.orderCount)||0)-issueTotalOf(l&&l.issueQtys));
 // ★ v235: '피킹리스트에 없음' 사유 추가(2026-11-18 요청) — 라벨/주문은 있는데 피킹
 //   리스트(바인 로케이션 목록)에 해당 제품이 아예 없어서 피킹 자체가 불가능했던 경우.
-const ISSUE_REASONS=['OOS','NF (Not Found)','EXP (Expiry Issue)','Customer Cancel','피킹리스트에 없음'];
+const ISSUE_REASONS=['OOS','NF (Not Found)','EXP (Expiry Issue)','Customer Cancel','Not in Picking List'];
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 // ★ v215: 재시도 큐(Map)를 localStorage에 배열 형태로 백업/복원하기 위한 헬퍼.
@@ -727,7 +727,7 @@ const TT_NOISE_RE=[
 const TT_RE_DATAROW=/^(.*?)\b([A-Za-z][A-Za-z0-9._]{1,14}(?:-[A-Za-z0-9._]{1,14}){1,3})\b\s*(\$[\d,]+\.\d{2})?\s*(\d{1,4})\s*$/;
 // ★ v130 추가: 아래 App() 안의 자동 업데이트 감지 배너가 참조하는 현재 실행 중인 버전.
 // sed로 버전을 일괄 치환할 때 title/app-ver 배지와 함께 이 값도 같이 바뀜.
-const APP_VERSION='v235';
+const APP_VERSION='v237';
 
 async function ttGetPageLines(page){
   const content=await page.getTextContent();
@@ -1601,7 +1601,7 @@ function EditModal({list,pickers,onSave,onDel,onCancel}){
         ),
         h('div',{style:{background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.18)',borderRadius:10,padding:'12px',marginBottom:12}},
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:8}},
-            h('div',{style:{fontSize:10,fontWeight:700,color:'#F87171',textTransform:'uppercase',letterSpacing:'.07em'}},'⚠ 이슈 등록 (출고 불가 확정 건)'),
+            h('div',{style:{fontSize:10,fontWeight:700,color:'#F87171',textTransform:'uppercase',letterSpacing:'.07em'}},'⚠ Registered Issues (Confirmed Not Shippable)'),
             h('div',{style:{fontSize:11,color:'#AAA'}},issueTot>0?('목표 '+F.orderCount+' → '+Math.max(0,(+F.orderCount||0)-issueTot)):'')
           ),
           h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
@@ -1940,6 +1940,10 @@ function App(){
     setTtAlert({msg:'⚠️ 주문 #'+orderId+' 서버 저장 실패 — 자동으로 계속 재시도 중입니다 (인터넷 확인)',type:'err'});
   };
   const [ttUploading,setTtUploading]=useState(false);
+  // ★ v236 신규: 하루에 TikTok CBT PickList가 2개 이상 활성 상태일 때, 이번에 올리는
+  //   레이블 PDF가 어느 리스트 소속인지 매니저가 직접 고르게 하는 선택 모달용 상태.
+  //   {files, options} — options는 그 날짜의 활성 TikTok CBT 리스트 배열.
+  const [ttPgChoicePending,setTtPgChoicePending]=useState(null);
   // ★ v130 추가: 레이블 PDF / SKU Master 업로드 영역에 드래그앤드롭 지원.
   // 파일 선택창을 여는 대신 탐색기에서 파일을 끌어다 놓을 수 있게 함. 시각적 피드백용 상태.
   const [ttDragLabel,setTtDragLabel]=useState(false);
@@ -2631,6 +2635,27 @@ function App(){
   const ttUploadLabelFiles=async(fileList)=>{
     if(!wh){setTtUploadMsg('⚠ Google Sheets URL을 먼저 설정하세요 (Settings)');return;}
     const files=Array.from(fileList||[]);if(!files.length)return;
+    // ★ v236 근본 수정: TT_Orders에는 지금까지 "날짜"만 기록되고 "어느 PickList(PgNo)
+    //   소속인지"는 전혀 기록되지 않았다 — 하루에 TikTok CBT PickList가 2개 이상 활성
+    //   상태면(실제로 자주 발생) 서버가 완료 건수를 리스트별로 정확히 나눠서 집계할
+    //   방법이 없어, Records의 Scanned 숫자가 조용히 틀어지는(예: 614 vs 178) 근본
+    //   원인이 됐다. → 업로드 시점에 이번 레이블이 어느 PickList 소속인지 PgNo로
+    //   같이 보내도록 함: 활성 리스트가 1개면 자동 선택, 0개면 공란(기존과 동일),
+    //   2개 이상이면 매니저가 선택 모달에서 직접 고르게 한다.
+    const activeTodayTT=lists.filter(l=>
+      l.category==='TikTok CBT'&&l.date===today()&&getSt(l)!=='complete'&&
+      (Number(l.orderCount)||0)>0&&!l.excludeScanRecon
+    );
+    if(activeTodayTT.length>=2){
+      setTtPgChoicePending({files,options:activeTodayTT});
+      return;
+    }
+    const chosenPgNo=activeTodayTT.length===1?activeTodayTT[0].pgNo:'';
+    await ttUploadLabelFilesRun(files,chosenPgNo);
+  };
+
+  const ttUploadLabelFilesRun=async(fileList,chosenPgNo)=>{
+    const files=Array.from(fileList||[]);if(!files.length)return;
     setTtUploading(true);setTtUploadMsg('분석 중… ('+files.length+'개 파일)');
     let ordersAcc={};
     // ★ v144: 파일이 이미지형(OCR 필요)으로 판정되면 ttParsePdfFile이 이 콜백들을 호출해서
@@ -2679,7 +2704,7 @@ function App(){
       setTtUploadMsg('서버 업로드 중… ('+doneCount+'/'+orderList.length+'건)');
       let res=null;
       for(let attempt=0;attempt<3;attempt++){
-        res=await syncDataAwait(wh,'ttUploadOrders',{orders:chunk,date:today()},30000); // ★ v157: 150건 묶음이라도 넉넉히 30초
+        res=await syncDataAwait(wh,'ttUploadOrders',{orders:chunk,date:today(),pgNo:chosenPgNo||''},30000); // ★ v157: 150건 묶음이라도 넉넉히 30초 / ★ v236: pgNo 포함
         if(res&&res.ok)break;
         if(attempt<2)await new Promise(r=>setTimeout(r,1500)); // 재시도 전 잠깐 대기
       }
@@ -3021,9 +3046,9 @@ function App(){
     const res=await syncDataAwait(wh,'ttMarkIssue',{orderId,reason,worker:ttWorker,date:order.date},20000);
     if(!res||!res.ok){
       setTtProgress(p=>{const n={...p};if(prevProg)n[orderId]=prevProg;else delete n[orderId];return n;});
-      setTtAlert({msg:'⚠️ 이슈 등록 실패: '+((res&&res.error)||'서버 오류')+' — 다시 시도해주세요',type:'err'});
+      setTtAlert({msg:'⚠️ Failed to register issue: '+((res&&res.error)||'Server error')+' — Please try again',type:'err'});
     }else{
-      ttShowToast('⚠️ 이슈 등록됨','주문 #'+orderId+' — '+reason,1400);
+      ttShowToast('⚠️ Issue registered','Order #'+orderId+' — '+reason,1400);
     }
   };
   // 이슈 등록을 취소(되돌리기) — 다시 Pending으로 복귀, PG 이슈 건수도 서버에서 1 차감
@@ -3036,9 +3061,9 @@ function App(){
     const res=await syncDataAwait(wh,'ttUnmarkIssue',{orderId,date},20000);
     if(!res||!res.ok){
       setTtProgress(p=>{const n={...p};if(prevProg)n[orderId]=prevProg;return n;});
-      setTtAlert({msg:'⚠️ 이슈 취소 실패: '+((res&&res.error)||'서버 오류'),type:'err'});
+      setTtAlert({msg:'⚠️ Failed to undo issue: '+((res&&res.error)||'Server error'),type:'err'});
     }else{
-      ttShowToast('↩️ 이슈 등록 취소됨','주문 #'+orderId,1000);
+      ttShowToast('↩️ Issue undone','Order #'+orderId,1000);
     }
   };
 
@@ -4214,7 +4239,7 @@ function App(){
       )
     ),
     h('span',{className:'app-title '+D},'SK B2C Fulfillment'),
-    h('span',{className:'app-ver '+D},'v235'),
+    h('span',{className:'app-ver '+D},'v237'),
     // ★ v90: 현재 이 컴퓨터가 실제로 연결된 웹훅 URL의 끝 8자리를 항상 화면에 표시.
     //   "동기화가 전혀 안 된다"는 문제의 상당수가 URL이 컴퓨터마다 미묘하게 다른 경우라서
     //   (O/0 혼동 등), 메뉴 안 들어가고 스크린샷 한 장으로 두 컴퓨터를 바로 비교 가능하게 함.
@@ -4350,7 +4375,7 @@ function App(){
           h('div',{style:{fontSize:38,fontWeight:800,lineHeight:1}},completedCount,h('span',{style:{fontSize:15,fontWeight:500,opacity:.65,marginLeft:4}},'/ '+orderCount+' orders')),
           h('div',{style:{background:'rgba(255,255,255,.16)',border:'1px solid rgba(255,255,255,.25)',padding:'5px 14px',borderRadius:100,fontSize:12.5,fontWeight:700}},rate+'% complete')
         ),
-        activeTab&&activeTab.issueSum>0&&h('div',{style:{fontSize:11,color:'#FCA5A5',marginTop:-10,marginBottom:10,fontWeight:600}},'⚠ 이슈 등록 '+activeTab.issueSum+'건만큼 목표 제외됨 (해당 건은 Pending 목록에 남아있을 수 있음)'),
+        activeTab&&activeTab.issueSum>0&&h('div',{style:{fontSize:11,color:'#FCA5A5',marginTop:-10,marginBottom:10,fontWeight:600}},'⚠ '+activeTab.issueSum+' order(s) excluded from target due to registered issues (these may still appear in the Pending list)'),
         h('div',{style:{height:6,borderRadius:6,background:'rgba(255,255,255,.18)',overflow:'hidden',marginBottom:16}},
           h('div',{style:{height:'100%',background:'#C6A44C',borderRadius:6,width:rate+'%',transition:'width .4s'}})
         ),
@@ -4406,7 +4431,7 @@ function App(){
                     h('span',{style:{color:'#888',marginLeft:8}},o.buyer||''),
                     h('span',{style:{color:'#B45309',marginLeft:8,fontWeight:700}},'⚠ '+(prog.issueReason||'')+(prog.issueBy?' · '+prog.issueBy:''))
                   ),
-                  h('button',{onClick:(e)=>{e.stopPropagation();unmarkTtOrderIssue(o.orderId,o.date);},style:{fontSize:11,padding:'4px 10px',borderRadius:7,border:'1px solid #D97706',background:'#fff',color:'#B45309',cursor:'pointer',fontWeight:700,flexShrink:0}},'↩ 되돌리기')
+                  h('button',{onClick:(e)=>{e.stopPropagation();unmarkTtOrderIssue(o.orderId,o.date);},style:{fontSize:11,padding:'4px 10px',borderRadius:7,border:'1px solid #D97706',background:'#fff',color:'#B45309',cursor:'pointer',fontWeight:700,flexShrink:0}},'↩ Undo')
                 );
               }
               return h('div',{key:o.orderId,onClick:()=>ttOpenOrderDirect(o),title:'클릭해서 이 주문 바로 열기',style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',background:'#F9F8F4',borderRadius:8,fontSize:12,cursor:'pointer'},onMouseEnter:e=>e.currentTarget.style.background='#F0EEE6',onMouseLeave:e=>e.currentTarget.style.background='#F9F8F4'},
@@ -4415,7 +4440,7 @@ function App(){
                   h('span',{style:{color:'#888',marginLeft:8}},o.buyer||'')
                 ),
                 // ★ v178: 작업자(매니저 아님)도 바로 이 자리에서 이슈 등록 가능 — isMgr 조건 없음
-                h('button',{onClick:(e)=>{e.stopPropagation();setTtIssueFor(o);},title:'이 주문을 이슈로 등록(출고 불가 확정)',style:{fontSize:10.5,padding:'3px 8px',borderRadius:6,border:'1px solid #E5B98A',background:'#fff',color:'#B45309',cursor:'pointer',fontWeight:700,flexShrink:0}},'⚠ 이슈')
+                h('button',{onClick:(e)=>{e.stopPropagation();setTtIssueFor(o);},title:'Register this order as an issue (confirmed not shippable)',style:{fontSize:10.5,padding:'3px 8px',borderRadius:6,border:'1px solid #E5B98A',background:'#fff',color:'#B45309',cursor:'pointer',fontWeight:700,flexShrink:0}},'⚠ Issue')
               );
             })
           )
@@ -4503,7 +4528,7 @@ function App(){
               // ★ v178 신규: 스캔 중인 이 주문을 바로 이슈 등록(출고 불가 확정)할 수 있는 탈출구.
               //   매니저 전용이 아님 — 작업자가 검수하다가 OOS/유통기한 등을 바로 발견했을 때
               //   그 자리에서 처리할 수 있어야 한다는 요청(v178).
-              h('button',{onClick:()=>setTtIssueFor({orderId:ttCurrentOrder.orderId,buyer:ttCurrentOrder.buyer}),title:'이 주문을 이슈로 등록(출고 불가 확정)',style:{fontSize:11,color:'#B45309',background:'#FFF6E8',border:'1px solid #E5B98A',borderRadius:7,padding:'4px 10px',cursor:'pointer',fontWeight:700}},'⚠ 이슈 등록'),
+              h('button',{onClick:()=>setTtIssueFor({orderId:ttCurrentOrder.orderId,buyer:ttCurrentOrder.buyer}),title:'Register this order as an issue (confirmed not shippable)',style:{fontSize:11,color:'#B45309',background:'#FFF6E8',border:'1px solid #E5B98A',borderRadius:7,padding:'4px 10px',cursor:'pointer',fontWeight:700}},'⚠ Register Issue'),
               // ★ v99: 파싱 누락 등으로 lines가 비어 스캔이 영구히 막히는 경우를 대비해
               //   언제든 이 주문을 취소하고 라벨 스캔 화면으로 돌아갈 수 있는 탈출구 추가.
               h('button',{onClick:()=>{setTtCurrentOrder(null);setTtAlert(null);},title:'이 주문 취소하고 라벨 스캔으로 돌아가기',style:{fontSize:11,color:'#999',background:'transparent',border:'1px solid #E5E2DA',borderRadius:7,padding:'4px 10px',cursor:'pointer',fontWeight:600}},'✕ 취소')
@@ -5056,7 +5081,7 @@ function App(){
       endScanModal&&h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}},
         h('div',{style:{background:'#fff',borderRadius:16,padding:28,minWidth:340,maxWidth:420,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
           h('div',{style:{fontWeight:700,fontSize:16,marginBottom:4}},'⏹ End Scan — '+endScanModal.pgNo),
-          h('div',{style:{fontSize:13,color:'#666',marginBottom:16}},'Orders: '+endScanModal.oc+'건'+(issueTotalOf(endScanModal.baseIssueQtys)>0?(' (이슈 등록 '+issueTotalOf(endScanModal.baseIssueQtys)+'건 이미 반영됨)'):'')),
+          h('div',{style:{fontSize:13,color:'#666',marginBottom:16}},'Orders: '+endScanModal.oc+(issueTotalOf(endScanModal.baseIssueQtys)>0?(' (already accounts for '+issueTotalOf(endScanModal.baseIssueQtys)+' registered issue(s))'):'')),
           h('div',{style:{background:'#F0F9FF',border:'1px solid #BAE6FD',borderRadius:10,padding:'12px 16px',marginBottom:16}},
             h('div',{style:{fontSize:12,fontWeight:700,color:'#0369A1',marginBottom:8}},'① Actual scanned (shipped) qty:'),
             h('div',{style:{display:'flex',alignItems:'center',gap:10}},
@@ -5166,29 +5191,52 @@ function App(){
       //   (작업자/매니저 모두 사용 가능)
       ttIssueFor&&h('div',{className:'overlay',onClick:e=>{if(e.target===e.currentTarget){setTtIssueFor(null);setTtIssueOtherMode(false);setTtIssueOtherText('');}}},
         h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:300,maxWidth:380,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
-          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:4,color:'#B45309'}},'⚠ 이슈 등록'),
-          h('div',{style:{fontSize:12,color:'#888',marginBottom:16}},'주문 #'+ttIssueFor.orderId+(ttIssueFor.buyer?' · '+ttIssueFor.buyer:'')),
+          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:4,color:'#B45309'}},'⚠ Register Issue'),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:16}},'Order #'+ttIssueFor.orderId+(ttIssueFor.buyer?' · '+ttIssueFor.buyer:'')),
           h('div',{style:{padding:'10px 14px',background:'#FFF6E8',border:'1px solid #F5C070',borderRadius:8,fontSize:11.5,color:'#7A3A00',marginBottom:14,lineHeight:1.6}},
-            '이 주문은 출고가 불가능하다고 확정합니다. 등록 즉시 Pending 목록에서 제외되며, 매니저가 Records에서 되돌릴 수 있습니다.'
+            'This order is confirmed as not shippable. It will be removed from the Pending list immediately, and a manager can undo this from Records.'
           ),
           !ttIssueOtherMode&&h(Fragment,null,
-            h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'사유 선택'),
+            h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'Select Reason'),
             h('div',{style:{display:'flex',flexDirection:'column',gap:7,marginBottom:16}},
               ISSUE_REASONS.map(r=>h('button',{key:r,onClick:()=>markTtOrderIssue(ttIssueFor,r),style:{padding:'10px 14px',borderRadius:8,border:'1px solid #E5B98A',background:'#FFF6E8',color:'#B45309',cursor:'pointer',fontWeight:700,fontSize:13,textAlign:'left'}},r)),
               // ★ v235: 정해진 사유에 없는 경우 직접 입력할 수 있는 탈출구
-              h('button',{key:'_other',onClick:()=>setTtIssueOtherMode(true),style:{padding:'10px 14px',borderRadius:8,border:'1px dashed #AAA',background:'#F8F8F8',color:'#555',cursor:'pointer',fontWeight:700,fontSize:13,textAlign:'left'}},'✏️ 기타 (직접 입력)')
+              h('button',{key:'_other',onClick:()=>setTtIssueOtherMode(true),style:{padding:'10px 14px',borderRadius:8,border:'1px dashed #AAA',background:'#F8F8F8',color:'#555',cursor:'pointer',fontWeight:700,fontSize:13,textAlign:'left'}},'✏️ Other (enter manually)')
             )
           ),
           ttIssueOtherMode&&h(Fragment,null,
-            h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'사유 직접 입력'),
-            h('textarea',{autoFocus:true,value:ttIssueOtherText,onChange:e=>setTtIssueOtherText(e.target.value),placeholder:'예: 라벨 훼손, 박스 파손 등 구체적으로 적어주세요',rows:3,style:{width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:8,border:'1px solid #DDD',fontSize:13,fontFamily:'inherit',marginBottom:14,resize:'vertical'}}),
+            h('label',{style:{display:'block',fontSize:11,fontWeight:700,color:'#999',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}},'Enter Reason'),
+            h('textarea',{autoFocus:true,value:ttIssueOtherText,onChange:e=>setTtIssueOtherText(e.target.value),placeholder:'e.g. Damaged label, damaged box — please be specific',rows:3,style:{width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:8,border:'1px solid #DDD',fontSize:13,fontFamily:'inherit',marginBottom:14,resize:'vertical'}}),
             h('div',{style:{display:'flex',gap:8,marginBottom:16}},
-              h('button',{onClick:()=>{setTtIssueOtherMode(false);setTtIssueOtherText('');},style:{flex:1,padding:'9px 14px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600,fontSize:13}},'← 뒤로'),
-              h('button',{disabled:!ttIssueOtherText.trim(),onClick:()=>{markTtOrderIssue(ttIssueFor,'기타: '+ttIssueOtherText.trim());setTtIssueOtherMode(false);setTtIssueOtherText('');},style:{flex:1,padding:'9px 14px',borderRadius:8,border:'none',background:ttIssueOtherText.trim()?'#B45309':'#CCC',color:'#fff',cursor:ttIssueOtherText.trim()?'pointer':'not-allowed',fontWeight:700,fontSize:13}},'등록')
+              h('button',{onClick:()=>{setTtIssueOtherMode(false);setTtIssueOtherText('');},style:{flex:1,padding:'9px 14px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600,fontSize:13}},'← Back'),
+              h('button',{disabled:!ttIssueOtherText.trim(),onClick:()=>{markTtOrderIssue(ttIssueFor,'Other: '+ttIssueOtherText.trim());setTtIssueOtherMode(false);setTtIssueOtherText('');},style:{flex:1,padding:'9px 14px',borderRadius:8,border:'none',background:ttIssueOtherText.trim()?'#B45309':'#CCC',color:'#fff',cursor:ttIssueOtherText.trim()?'pointer':'not-allowed',fontWeight:700,fontSize:13}},'Register')
             )
           ),
           h('div',{style:{display:'flex',justifyContent:'flex-end'}},
             h('button',{onClick:()=>{setTtIssueFor(null);setTtIssueOtherMode(false);setTtIssueOtherText('');},style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel')
+          )
+        )
+      ),
+      // ★ v236 신규: 하루에 TikTok CBT PickList가 2개 이상 활성 상태일 때, 방금 올린
+      //   레이블 PDF가 어느 리스트 소속인지 매니저가 직접 고르는 선택 모달. 여기서 고른
+      //   PgNo가 서버에 같이 전달되어 TT_Orders에 기록되고, 이후 그 리스트의 Scanned
+      //   집계가 다른 리스트와 섞이지 않고 정확히 분리된다(근본 수정, v226).
+      ttPgChoicePending&&h('div',{className:'overlay'},
+        h('div',{style:{background:'#fff',borderRadius:16,padding:24,minWidth:320,maxWidth:420,boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}},
+          h('div',{style:{fontWeight:700,fontSize:16,marginBottom:4,color:'#B45309'}},'🎵 어느 PickList 레이블인가요?'),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:16,lineHeight:1.6}},
+            '오늘 활성 TikTok CBT PickList가 '+ttPgChoicePending.options.length+'개입니다. 방금 올린 '+ttPgChoicePending.files.length+'개 파일이 어느 리스트 소속인지 선택해주세요 — 그래야 각 리스트의 스캔 완료 건수가 서로 섞이지 않고 정확히 집계됩니다.'
+          ),
+          h('div',{style:{display:'flex',flexDirection:'column',gap:7,marginBottom:16}},
+            ttPgChoicePending.options.map(l=>h('button',{
+              key:l.pgNo,
+              onClick:()=>{const p=ttPgChoicePending;setTtPgChoicePending(null);ttUploadLabelFilesRun(p.files,l.pgNo);},
+              style:{padding:'10px 14px',borderRadius:8,border:'1px solid #E5B98A',background:'#FFF6E8',color:'#B45309',cursor:'pointer',fontWeight:700,fontSize:13,textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}
+            },h('span',null,'PG #'+l.pgNo),h('span',{style:{fontSize:11,opacity:.75}},(l.orderCount||0)+'건 · Scanned '+(l.scanned||0)))
+            )
+          ),
+          h('div',{style:{display:'flex',justifyContent:'flex-end'}},
+            h('button',{onClick:()=>setTtPgChoicePending(null),style:{padding:'9px 18px',borderRadius:8,border:'1px solid #DDD',background:'#F5F5F5',cursor:'pointer',fontWeight:600}},'Cancel')
           )
         )
       ),
